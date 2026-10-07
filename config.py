@@ -103,19 +103,19 @@ TREND_PARAMS = {
 
 REVERSION_PARAMS = {
     "rsi_period": 14,
-    "rsi_entry": 30.0,
+    "rsi_entry": 40.0,           # walk-forward: 30 almost never triggered
     "bb_period": 20,
     "bb_std": 2.0,
-    "quality_sma": 200,          # only buy assets above their long-term trend
+    "quality_sma": 0,            # 0 = off; 200 = only buy above long trend
     "max_holding_days": 20,      # time stop if the snap-back never comes
     "position_pct": 0.10,
 }
 
 VOLATILITY_PARAMS = {
-    "donchian_entry": 20,
-    "donchian_exit": 10,
+    "donchian_entry": 55,        # walk-forward: 20/10 churned on noise
+    "donchian_exit": 20,
     "atr_period": 14,
-    "atr_stop_mult": 3.0,        # trailing stop distance in ATRs
+    "atr_stop_mult": 3.5,        # trailing stop distance in ATRs
     "risk_per_trade_pct": 0.01,  # equity lost if the initial stop is hit
     "max_position_pct": 0.15,
 }

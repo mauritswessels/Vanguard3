@@ -24,7 +24,7 @@ from models.base_agent import Action, BaseAgent, Signal
 
 class ReversionAgent(BaseAgent):
     name = "Bargain Hunter"
-    style = "RSI < 30 below lower Bollinger Band, exit at the mean"
+    style = "Oversold RSI below the lower Bollinger Band, exit at the mean"
 
     def __init__(self, params: dict | None = None):
         super().__init__({**config.REVERSION_PARAMS, **(params or {})})
