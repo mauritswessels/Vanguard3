@@ -62,6 +62,17 @@ class BaseAgent(ABC):
         self.market = market
         self.indicators = {t: self.compute_indicators(market.bars[t])
                            for t in market.tickers}
+        self._index_rows()
+
+    def _index_rows(self) -> None:
+        """Pre-build a date -> row lookup; rows with any NaN map to None."""
+        self._rows = {}
+        for t, frame in self.indicators.items():
+            complete = frame.notna().all(axis=1).to_numpy()
+            self._rows[t] = {
+                d: (r if ok else None)
+                for d, r, ok in zip(frame.index,
+                                    frame.itertuples(index=False), complete)}
 
     @abstractmethod
     def compute_indicators(self, bars: pd.DataFrame) -> pd.DataFrame:
@@ -124,17 +135,21 @@ class BaseAgent(ABC):
         return int(math.floor(target / unit_cost_chf))
 
     # -- helpers -------------------------------------------------------------
-    def row(self, ticker: str, date: pd.Timestamp) -> pd.Series | None:
+    def get_state(self) -> dict:
+        """Strategy memory that must survive between daily runs."""
+        return {}
+
+    def set_state(self, state: dict) -> None:
+        """Restore memory saved by ``get_state``."""
+
+    def row(self, ticker: str, date: pd.Timestamp):
         """Indicator row for ``ticker`` on ``date``.
 
         Returns ``None`` if the ticker did not trade that day or any
         indicator is still warming up, so rules never act on NaNs.
         """
-        ind = self.indicators.get(ticker)
-        if ind is None or date not in ind.index:
-            return None
-        r = ind.loc[date]
-        return None if r.isna().any() else r
+        rows = self._rows.get(ticker)
+        return rows.get(date) if rows is not None else None
 
     def _quote(self, ticker: str, date: pd.Timestamp):
         close = float(self.market.close_panel.at[date, ticker])

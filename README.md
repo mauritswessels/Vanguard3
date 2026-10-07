@@ -15,7 +15,21 @@ python3 -m venv .venv
 .venv/bin/python main.py                      # 1-year backtest (auto data)
 .venv/bin/python main.py --source synthetic --seed 7 --days 730
 .venv/bin/python -m unittest discover -s tests -t .
+.venv/bin/python walk_forward.py              # tune on the past, test blind
+.venv/bin/python main.py --days 1825 --dashboard   # refresh dashboard backtest
 ```
+
+## Live paper trading and dashboard
+
+`daily_run.py` advances every agent by the sessions completed since its last
+run and saves everything (cash, positions, pending orders, trailing stops) to
+`state/paper_state.json`. The GitHub Actions workflow in
+`.github/workflows/daily.yml` runs it every weekday at 21:30 UTC, commits the
+new state, and refreshes `docs/data/`. GitHub Pages serves `docs/index.html`
+as the dashboard, so nothing needs to run on your own computer.
+
+To start over, delete `state/paper_state.json` and change
+`PAPER_START_DATE` in `config.py`.
 
 ## Layout
 
@@ -31,7 +45,13 @@ python3 -m venv .venv
 | `models/trend_agent.py` | Trend Follower: EMA 20/50 + ADX |
 | `models/reversion_agent.py` | Bargain Hunter: RSI < 30 + Bollinger, exit at the mean |
 | `models/volatility_agent.py` | Volatility Protected: Donchian breakout, ATR trailing stop, risk sizing |
-| `main.py` | Orchestrator: daily loop, benchmark, scoreboard, CSV output |
+| `engine/simulator.py` | The daily loop shared by backtests and paper trading, with save/restore |
+| `models/benchmark_agent.py` | Buy & Hold SPY, run as an agent so it pays the same costs |
+| `reporting.py` | Scoreboard and dashboard JSON export |
+| `main.py` | Backtest entry point |
+| `daily_run.py` | Live paper trading, one step per completed session |
+| `walk_forward.py` | Walk-forward parameter study |
+| `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |
 
 ## Execution model

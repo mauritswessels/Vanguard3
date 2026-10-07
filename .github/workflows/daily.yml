@@ -1,0 +1,53 @@
+# Runs the paper-trading agents every weekday after the New York close and
+# publishes the results to the dashboard (GitHub Pages, served from docs/).
+name: Daily paper trading
+
+on:
+  schedule:
+    # 21:30 UTC = 17:30 New York in summer, 16:30 in winter.
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-trading
+  cancel-in-progress: false
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -t .
+
+      - name: Advance paper accounts
+        run: python daily_run.py
+
+      - name: Refresh 5-year backtest
+        continue-on-error: true
+        run: python main.py --source yfinance --days 1825 --dashboard --no-save
+
+      - name: Commit results
+        run: |
+          git config user.name "vanguard3-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state docs/data
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Paper trading update $(date -u +%F)"
+            git push
+          fi

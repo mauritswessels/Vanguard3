@@ -3,8 +3,11 @@
 All tests use synthetic data, so they run offline and deterministically.
 """
 
+import json
 import math
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -14,7 +17,9 @@ from data_manager import SyntheticProvider, clean_bars, load_market_data
 from engine import metrics
 from engine.broker import Order, SimulatedBroker
 from engine.portfolio import CostModel, InsufficientFundsError, Portfolio
-from main import build_accounts, run_simulation
+from daily_run import advance, last_completed_session
+from engine.simulator import Simulator, build_accounts
+from main import default_agents, run_simulation
 from models import ReversionAgent, TrendAgent, VolatilityAgent
 from models import indicators as ind
 
@@ -173,8 +178,7 @@ class BacktestIntegrationTest(unittest.TestCase):
     def setUpClass(cls):
         cls.market = synthetic_market(days=800, seed=11)
         cls.start = cls.market.calendar[-1] - pd.Timedelta(days=365)
-        cls.accounts = run_simulation(cls.market, cls.start,
-                                      build_accounts(cls.market))
+        cls.accounts = run_simulation(cls.market, cls.start).accounts
 
     def test_every_agent_trades(self):
         for acc in self.accounts:
@@ -214,6 +218,51 @@ class BacktestIntegrationTest(unittest.TestCase):
             stats = acc.portfolio.performance()
             for key in ("final_equity_chf", "total_return", "max_drawdown"):
                 self.assertTrue(math.isfinite(stats[key]), key)
+
+
+class PersistenceTest(unittest.TestCase):
+    """Saving and restoring mid-run must not change a single trade."""
+
+    def test_split_run_with_save_restore_matches_straight_run(self):
+        market = synthetic_market(days=700, seed=5)
+        dates = market.calendar[-250:]
+        straight = run_simulation(market, dates[0])
+
+        first = Simulator(market, build_accounts(market,
+                                                 default_agents(market)))
+        first.run(dates[:120])
+        saved = json.loads(json.dumps(first.to_dict()))
+        resumed = Simulator.from_dict(saved, market)
+        resumed.run(dates[120:])
+
+        for a, b in zip(straight.accounts, resumed.accounts):
+            self.assertEqual(len(a.portfolio.trades), len(b.portfolio.trades),
+                             a.agent.name)
+            self.assertAlmostEqual(a.portfolio.cash, b.portfolio.cash,
+                                   places=4)
+            pd.testing.assert_series_equal(a.portfolio.equity_curve,
+                                           b.portfolio.equity_curve)
+
+    def test_daily_run_catches_up_and_is_idempotent(self):
+        market = synthetic_market(days=60)
+        start = market.calendar[-30]
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "state.json"
+            mid = market.calendar[-15]
+            _, n1 = advance(state, "synthetic", start, mid)
+            sim, n2 = advance(state, "synthetic", start, market.calendar[-1])
+            _, n3 = advance(state, "synthetic", start, market.calendar[-1])
+        self.assertEqual(n1 + n2, 30)
+        self.assertEqual(n3, 0)
+        self.assertEqual(sim.last_date, market.calendar[-1])
+
+    def test_waits_for_new_york_close(self):
+        before = pd.Timestamp("2026-10-07 19:00", tz="UTC")  # 15:00 NY
+        after = pd.Timestamp("2026-10-07 21:00", tz="UTC")   # 17:00 NY
+        self.assertEqual(last_completed_session(before),
+                         pd.Timestamp("2026-10-06"))
+        self.assertEqual(last_completed_session(after),
+                         pd.Timestamp("2026-10-07"))
 
 
 if __name__ == "__main__":

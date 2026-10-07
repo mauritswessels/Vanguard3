@@ -31,7 +31,7 @@ class VolatilityAgent(BaseAgent):
     style = "Donchian breakout with ATR trailing stops and risk sizing"
 
     def __init__(self, params: dict | None = None):
-        super().__init__(params or config.VOLATILITY_PARAMS)
+        super().__init__({**config.VOLATILITY_PARAMS, **(params or {})})
         # Trailing stop per held ticker, in trading currency.
         self.stops: dict[str, float] = {}
 
@@ -76,6 +76,12 @@ class VolatilityAgent(BaseAgent):
                     score=float((r.close - r.entry_upper) / r.atr),
                     stop_price=float(trail)))
         return signals
+
+    def get_state(self) -> dict:
+        return {"stops": dict(self.stops)}
+
+    def set_state(self, state: dict) -> None:
+        self.stops = {t: float(s) for t, s in state.get("stops", {}).items()}
 
     def position_size(self, signal: Signal, date: pd.Timestamp,
                       equity: float, unit_cost_chf: float) -> int:

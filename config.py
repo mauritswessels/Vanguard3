@@ -13,6 +13,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 CACHE_DIR = PROJECT_ROOT / "data" / "cache"
 RESULTS_DIR = PROJECT_ROOT / "results"
+DASHBOARD_DATA_DIR = PROJECT_ROOT / "docs" / "data"
+PAPER_STATE_FILE = PROJECT_ROOT / "state" / "paper_state.json"
 
 # ---------------------------------------------------------------------------
 # Account
@@ -64,6 +66,10 @@ FX_TICKERS = {
 # Ticker used for the passive buy-and-hold benchmark on the scoreboard.
 BENCHMARK_TICKER = "SPY"
 
+# Competitors, by registry key (see models/__init__.py). The benchmark runs
+# as a normal agent so it pays the same costs as everyone else.
+AGENT_LINEUP = ["trend", "reversion", "volatility", "benchmark"]
+
 # ---------------------------------------------------------------------------
 # Simulation window
 # ---------------------------------------------------------------------------
@@ -76,6 +82,13 @@ RISK_FREE_RATE = 0.005           # annual CHF risk-free rate used for Sharpe
 # "yfinance", "synthetic", or "auto" (yfinance, falling back to synthetic).
 DATA_SOURCE = "auto"
 SYNTHETIC_SEED = 42
+
+# ---------------------------------------------------------------------------
+# Live paper trading (daily_run.py)
+# ---------------------------------------------------------------------------
+PAPER_START_DATE = "2026-10-08"  # first session the paper accounts trade
+# Minutes after the 16:00 New York close before a day's bar is final.
+CLOSE_SETTLE_MINUTES = 30
 
 # ---------------------------------------------------------------------------
 # Agent parameters

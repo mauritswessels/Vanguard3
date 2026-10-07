@@ -16,6 +16,7 @@ Conventions
 from __future__ import annotations
 
 import logging
+import time
 import zlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -54,23 +55,34 @@ class YFinanceProvider(DataProvider):
 
     name = "yfinance"
 
+    def __init__(self, retries: int = 3):
+        self.retries = retries
+
     def fetch(self, symbol, start, end):
         try:
             import yfinance as yf
         except ImportError as exc:  # pragma: no cover - environment issue
             raise DataUnavailableError("yfinance is not installed") from exc
 
-        raw = yf.Ticker(symbol).history(
-            start=start.strftime("%Y-%m-%d"),
-            # yfinance treats ``end`` as exclusive.
-            end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            interval=config.DATA_INTERVAL,
-            auto_adjust=True,
-            actions=False,
-        )
-        if raw is None or raw.empty:
-            raise DataUnavailableError(f"No data returned for {symbol}")
-        return clean_bars(raw)
+        last_error = None
+        for attempt in range(self.retries):
+            try:
+                raw = yf.Ticker(symbol).history(
+                    start=start.strftime("%Y-%m-%d"),
+                    # yfinance treats ``end`` as exclusive.
+                    end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+                    interval=config.DATA_INTERVAL,
+                    auto_adjust=True,
+                    actions=False,
+                )
+                if raw is not None and not raw.empty:
+                    return clean_bars(raw)
+                last_error = DataUnavailableError(f"No data for {symbol}")
+            except Exception as exc:  # network hiccup, rate limit, ...
+                last_error = exc
+            if attempt + 1 < self.retries:
+                time.sleep(2 ** attempt)
+        raise DataUnavailableError(f"{symbol}: {last_error}")
 
 
 class SyntheticProvider(DataProvider):
@@ -260,13 +272,19 @@ class DataManager:
 
     # -- public API ----------------------------------------------------------
     def load(self, watchlist: dict[str, str], start: pd.Timestamp,
-             end: pd.Timestamp) -> MarketData:
-        """Fetch all tickers plus the FX rates they need."""
+             end: pd.Timestamp, strict: bool = False) -> MarketData:
+        """Fetch all tickers plus the FX rates they need.
+
+        With ``strict`` every ticker must load; otherwise failing tickers
+        are skipped with a warning.
+        """
         bars = {}
         for ticker in watchlist:
             try:
                 bars[ticker] = self.get_bars(ticker, start, end)
             except Exception as exc:  # one bad ticker must not kill a run
+                if strict:
+                    raise
                 logger.warning("Skipping %s: %s", ticker, exc)
         if not bars:
             raise DataUnavailableError(
@@ -283,7 +301,8 @@ class DataManager:
 def load_market_data(source: str, start: pd.Timestamp, end: pd.Timestamp,
                      watchlist: dict[str, str] = config.WATCHLIST,
                      cache_dir: Path | None = config.CACHE_DIR,
-                     seed: int = config.SYNTHETIC_SEED) -> MarketData:
+                     seed: int = config.SYNTHETIC_SEED,
+                     strict: bool = False) -> MarketData:
     """Convenience loader honouring ``config.DATA_SOURCE`` semantics.
 
     ``auto`` tries yfinance first and falls back to synthetic data when the
@@ -292,7 +311,7 @@ def load_market_data(source: str, start: pd.Timestamp, end: pd.Timestamp,
     if source in ("yfinance", "auto"):
         try:
             return DataManager(YFinanceProvider(), cache_dir).load(
-                watchlist, start, end)
+                watchlist, start, end, strict=strict)
         except Exception as exc:
             if source == "yfinance":
                 raise

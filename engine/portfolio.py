@@ -233,6 +233,36 @@ class Portfolio:
     def trade_log(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(t) for t in self.trades])
 
+    # -- persistence ---------------------------------------------------------
+    def to_dict(self) -> dict:
+        """JSON-serialisable snapshot of the full account."""
+        return {
+            "name": self.name,
+            "initial_cash": self.initial_cash,
+            "cash": self.cash,
+            "costs": asdict(self.costs),
+            "positions": [_jsonable(asdict(p))
+                          for p in self.positions.values()],
+            "trades": [_jsonable(asdict(t)) for t in self.trades],
+            "equity": {d.strftime("%Y-%m-%d"): v
+                       for d, v in self._equity.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Portfolio":
+        """Rebuild an account saved with ``to_dict``."""
+        pf = cls(data["name"], data["initial_cash"],
+                 CostModel(**data.get("costs", {})))
+        pf.cash = float(data["cash"])
+        for p in data["positions"]:
+            p = dict(p, entry_date=pd.Timestamp(p["entry_date"]))
+            pf.positions[p["ticker"]] = Position(**p)
+        pf.trades = [TradeRecord(**dict(t, date=pd.Timestamp(t["date"])))
+                     for t in data["trades"]]
+        pf._equity = {pd.Timestamp(d): float(v)
+                      for d, v in data["equity"].items()}
+        return pf
+
     def performance(self) -> dict[str, float]:
         """Risk/return statistics computed from the equity curve and fills."""
         stats = metrics.summarize(self.equity_curve, self.initial_cash)
@@ -261,3 +291,9 @@ def _validate(quantity: int, price: float, fx_rate: float) -> None:
         raise ValueError(f"invalid price {price!r}")
     if not (math.isfinite(fx_rate) and fx_rate > 0):
         raise ValueError(f"invalid fx rate {fx_rate!r}")
+
+
+def _jsonable(d: dict) -> dict:
+    """Convert timestamps to ISO dates so the dict can be written as JSON."""
+    return {k: (v.strftime("%Y-%m-%d") if isinstance(v, pd.Timestamp) else v)
+            for k, v in d.items()}

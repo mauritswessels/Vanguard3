@@ -27,14 +27,16 @@ class ReversionAgent(BaseAgent):
     style = "RSI < 30 below lower Bollinger Band, exit at the mean"
 
     def __init__(self, params: dict | None = None):
-        super().__init__(params or config.REVERSION_PARAMS)
+        super().__init__({**config.REVERSION_PARAMS, **(params or {})})
 
     def compute_indicators(self, bars: pd.DataFrame) -> pd.DataFrame:
         p = self.params
         out = pd.DataFrame(index=bars.index)
         out["close"] = bars["Close"]
         out["rsi"] = ind.rsi(bars["Close"], p["rsi_period"])
-        out["sma_quality"] = ind.sma(bars["Close"], p["quality_sma"])
+        # quality_sma = 0 disables the long-term trend filter.
+        out["sma_quality"] = (ind.sma(bars["Close"], p["quality_sma"])
+                              if p["quality_sma"] else 0.0)
         return out.join(ind.bollinger_bands(bars["Close"], p["bb_period"],
                                             p["bb_std"]))
 

@@ -24,7 +24,7 @@ class TrendAgent(BaseAgent):
     style = "EMA 20/50 cross filtered by ADX trend strength"
 
     def __init__(self, params: dict | None = None):
-        super().__init__(params or config.TREND_PARAMS)
+        super().__init__({**config.TREND_PARAMS, **(params or {})})
 
     def compute_indicators(self, bars: pd.DataFrame) -> pd.DataFrame:
         p = self.params

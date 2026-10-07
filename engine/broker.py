@@ -105,6 +105,17 @@ class SimulatedBroker(BaseBroker):
         return pf.buy(date, order.ticker, currency, qty, price, fx,
                       order.reason)
 
+    # -- persistence ---------------------------------------------------------
+    def pending_to_list(self) -> list[dict]:
+        return [{"ticker": o.ticker, "side": o.side, "quantity": o.quantity,
+                 "created": o.created.strftime("%Y-%m-%d"),
+                 "reason": o.reason} for o in self.pending]
+
+    def load_pending(self, orders: list[dict]) -> None:
+        self.pending = [Order(o["ticker"], o["side"], int(o["quantity"]),
+                              pd.Timestamp(o["created"]), o.get("reason", ""))
+                        for o in orders]
+
     def _reject(self, order: Order, why: str):
         logger.debug("%s rejected %s %s: %s", self.portfolio.name,
                      order.side, order.ticker, why)

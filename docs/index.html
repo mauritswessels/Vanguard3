@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vanguard3 Trading Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a race-standings desk. Standings first, then the race (equity),
+   then each agent's own desk: book, orders, decisions, trades. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6b78;
+  --line: #d9dfe5;
+  --swiss: #c8102e;
+  --up: #0f7b4f;
+  --down: #c0392b;
+  --a-trend: #1f5fbf;
+  --a-reversion: #b7791f;
+  --a-volatility: #0e8a87;
+  --a-benchmark: #7a8794;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1419; --surface: #161d24; --ink: #e6ebf0; --muted: #94a3b1;
+    --line: #26313b; --swiss: #ff4d5e; --up: #3ecf8e; --down: #ff6b5b;
+    --a-trend: #6ea8ff; --a-reversion: #f0b75a; --a-volatility: #3fd1cb;
+    --a-benchmark: #9aa7b4; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1419; --surface: #161d24; --ink: #e6ebf0; --muted: #94a3b1;
+  --line: #26313b; --swiss: #ff4d5e; --up: #3ecf8e; --down: #ff6b5b;
+  --a-trend: #6ea8ff; --a-reversion: #f0b75a; --a-volatility: #3fd1cb;
+  --a-benchmark: #9aa7b4; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body);
+  padding-inline: max(16px, 3vw); padding-block: 20px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; margin: 0;
+  letter-spacing: .01em; text-wrap: balance; }
+h1 { font-size: 2.2rem; line-height: 1; display: flex; align-items: center; gap: 10px; }
+h1 .cross { width: 26px; height: 26px; background: var(--swiss); border-radius: 4px;
+  position: relative; flex: none; }
+h1 .cross::before, h1 .cross::after { content: ""; position: absolute; background: #fff; }
+h1 .cross::before { left: 11px; top: 5px; width: 4px; height: 16px; }
+h1 .cross::after { left: 5px; top: 11px; width: 16px; height: 4px; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.1rem; }
+.eyebrow { font: 600 .72rem/1 var(--f-body); text-transform: uppercase;
+  letter-spacing: .09em; color: var(--muted); }
+.muted { color: var(--muted); }
+.num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); } .down { color: var(--down); }
+
+header.top { display: flex; flex-wrap: wrap; justify-content: space-between;
+  align-items: end; gap: 16px; }
+.status { font-size: .9rem; color: var(--muted); }
+.status b { color: var(--ink); font-weight: 600; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px;
+  border-radius: 999px; border: 1px solid var(--line); font-size: .8rem; }
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill.live .dot { background: var(--up); }
+
+nav.views { display: flex; gap: 4px; border-bottom: 1px solid var(--line);
+  overflow-x: auto; }
+nav.views button, .chips button {
+  font: 600 1rem var(--f-display); letter-spacing: .02em; color: var(--muted);
+  background: none; border: 0; padding: 10px 14px; cursor: pointer;
+  border-bottom: 3px solid transparent; white-space: nowrap; }
+nav.views button[aria-selected="true"] { color: var(--ink); border-color: var(--swiss); }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--swiss); outline-offset: 2px; }
+
+section { display: grid; gap: 14px; min-width: 0; }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between;
+  align-items: baseline; gap: 8px 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px; min-width: 0; }
+.notice { border-left: 4px solid var(--swiss); }
+
+/* Standings */
+.standings { display: grid; gap: 0; }
+.lane { display: grid; align-items: center; gap: 12px;
+  grid-template-columns: 2.2rem minmax(9rem, 1.4fr) minmax(7rem, 1fr) repeat(4, minmax(4.5rem, .6fr)) minmax(90px, 1fr);
+  padding: 12px 4px; border-bottom: 1px solid var(--line); }
+.lane:last-child { border-bottom: 0; }
+.lane.head { padding-block: 0 8px; }
+.lane.head span { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.rank { font: 700 1.6rem/1 var(--f-display); color: var(--muted); }
+.agent-name { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.agent-name small { display: block; font-weight: 400; color: var(--muted); font-size: .8rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.big { font: 600 1.25rem/1.1 var(--f-data); font-variant-numeric: tabular-nums; }
+.r { text-align: right; }
+canvas.spark { width: 100%; height: 34px; display: block; }
+.bench .rank { font-size: 1rem; }
+@media (max-width: 760px) {
+  .lane { grid-template-columns: 2rem 1fr auto; row-gap: 4px; }
+  .lane.head { display: none; }
+  .lane .opt { display: none; }
+  .lane .spark-cell { grid-column: 2 / -1; }
+}
+
+.chart-box { position: relative; height: 320px; }
+.chart-box.short { height: 170px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+.grid2 { display: grid; gap: 16px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+
+/* Allocation bars */
+.alloc { display: grid; gap: 10px; }
+.alloc-row { display: grid; grid-template-columns: minmax(8rem, 12rem) 1fr; gap: 12px; align-items: center; }
+.bar { display: flex; height: 22px; border-radius: 4px; overflow: hidden; background: var(--bg);
+  border: 1px solid var(--line); }
+.bar div { height: 100%; border-right: 1px solid var(--surface); font: 500 .68rem/22px var(--f-data);
+  color: #fff; padding-left: 4px; overflow: hidden; white-space: nowrap; }
+.bar .cash { background: transparent; color: var(--muted); }
+@media (max-width: 520px) { .alloc-row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Agent desk */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { font-size: .95rem; border: 1px solid var(--line); border-radius: 999px;
+  padding: 6px 14px; display: inline-flex; gap: 8px; align-items: center; background: var(--surface); }
+.chips button[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+.desk-intro { display: flex; flex-wrap: wrap; gap: 6px 24px; align-items: baseline; }
+.params { font: .8rem var(--f-data); color: var(--muted); }
+
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th { font: 600 .7rem var(--f-body); text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.num, th.r { text-align: right; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.side { font: 600 .72rem var(--f-data); padding: 1px 6px; border-radius: 3px; }
+.side.BUY { color: var(--up); border: 1px solid var(--up); }
+.side.SELL { color: var(--down); border: 1px solid var(--down); }
+.empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+
+.feed { display: grid; gap: 0; max-height: 420px; overflow-y: auto; }
+.feed-day { padding: 8px 0; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+.feed-day:last-child { border-bottom: 0; }
+.feed-day time { font: 500 .78rem var(--f-data); color: var(--muted); }
+.feed-item { display: flex; gap: 8px; align-items: baseline; font-size: .88rem; flex-wrap: wrap; }
+.feed-item .tick { font: 600 .85rem var(--f-data); min-width: 3.4rem; }
+.tag { font-size: .72rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 3px; padding: 0 5px; }
+
+select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 4px; padding: 4px 8px; }
+
+.heat td { text-align: center; font: .78rem var(--f-data); padding: 6px 4px; min-width: 3rem; }
+.heat th { text-align: center; }
+
+.wf-agent { display: grid; gap: 12px; }
+.kv { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.kv div { display: grid; }
+footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div style="display:grid;gap:6px">
+      <span class="eyebrow">Paper-trading competition · 100'000 CHF each</span>
+      <h1><span class="cross" aria-hidden="true"></span>Vanguard3</h1>
+    </div>
+    <div class="status" id="status">Loading data…</div>
+  </header>
+
+  <nav class="views" role="tablist" aria-label="View">
+    <button role="tab" id="tab-paper" data-view="paper" aria-selected="false">Live paper trading</button>
+    <button role="tab" id="tab-backtest" data-view="backtest" aria-selected="false">5-year backtest</button>
+    <button role="tab" id="tab-walkforward" data-view="walkforward" aria-selected="false">Walk-forward test</button>
+  </nav>
+
+  <main id="view" class="wrap" style="gap:32px"></main>
+
+  <footer id="foot">Rules-based agents in pure Python. Orders are decided after the New York close and filled at the next open,
+    with a 2 CHF fee per fill, slippage and a USD/CHF conversion spread. Paper money only.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s, el = document) => el.querySelector(s);
+  const chf = new Intl.NumberFormat("de-CH", { maximumFractionDigits: 0 });
+  const chf2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = (v, d = 1) => v == null ? "–" : (v >= 0 ? "+" : "") + (v * 100).toFixed(d) + "%";
+  const fix = (v, d = 2) => v == null ? "–" : v.toFixed(d);
+  const cls = v => v == null ? "" : v >= 0 ? "up" : "down";
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const color = key => css("--a-" + key) || css("--muted");
+  const ts = d => Date.parse(d + "T00:00:00Z");
+  const fmtDate = ms => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" });
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+  };
+
+  const DATA = {};
+  let view = null, deskAgent = null, charts = [];
+
+  async function load(name) {
+    try {
+      const r = await fetch("data/" + name + ".json", { cache: "no-store" });
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  }
+
+  function destroyCharts() { charts.forEach(c => c.destroy()); charts = []; }
+
+  // ---------- chart helpers ----------
+  function baseOptions(yFmt) {
+    const grid = css("--line"), tick = css("--muted");
+    return {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? fmtDate(items[0].parsed.x) : "",
+            label: c => " " + c.dataset.label + ": " + yFmt(c.parsed.y),
+          },
+        },
+      },
+      scales: {
+        x: { type: "linear", grid: { color: grid, drawTicks: false },
+             ticks: { color: tick, maxTicksLimit: 7, callback: v => fmtDate(v) }, border: { color: grid } },
+        y: { grid: { color: grid, drawTicks: false }, ticks: { color: tick, callback: v => yFmt(v) },
+             border: { display: false } },
+      },
+    };
+  }
+
+  function lineChart(canvas, datasets, yFmt) {
+    const opts = baseOptions(yFmt), xs = datasets.flatMap(d => d.data.map(p => p.x));
+    if (xs.length) { opts.scales.x.min = Math.min(...xs); opts.scales.x.max = Math.max(...xs); }
+    const c = new Chart(canvas, { type: "line", data: { datasets }, options: opts });
+    charts.push(c); return c;
+  }
+
+  function series(pairs, key, label, extra = {}) {
+    return Object.assign({
+      label, data: pairs.map(([d, v]) => ({ x: ts(d), y: v })),
+      borderColor: color(key), backgroundColor: color(key), borderWidth: 2,
+      pointRadius: 0, tension: 0, borderDash: key === "benchmark" ? [6, 4] : [],
+    }, extra);
+  }
+
+  function drawdown(pairs) {
+    let peak = -Infinity;
+    return pairs.map(([d, v]) => { peak = Math.max(peak, v); return [d, v / peak - 1]; });
+  }
+
+  function spark(canvas, pairs, key) {
+    const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth || 120, h = canvas.clientHeight || 34;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const g = canvas.getContext("2d"); g.scale(dpr, dpr);
+    if (pairs.length < 2) return;
+    const ys = pairs.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
+    const X = i => 2 + i * (w - 6) / (pairs.length - 1), Y = v => h - 3 - (v - lo) * (h - 6) / span;
+    g.strokeStyle = color(key); g.lineWidth = 1.6; g.beginPath();
+    ys.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))); g.stroke();
+    g.fillStyle = color(key); g.beginPath(); g.arc(X(ys.length - 1), Y(ys[ys.length - 1]), 2.6, 0, 7); g.fill();
+  }
+
+  // ---------- run views (paper / backtest) ----------
+  function ranked(d) {
+    return [...d.agents].sort((a, b) => (b.stats.final_equity_chf ?? 0) - (a.stats.final_equity_chf ?? 0));
+  }
+
+  function standings(d) {
+    const rows = ranked(d).map((a, i) => `
+      <div class="lane ${a.benchmark ? "bench" : ""}">
+        <span class="rank">${a.benchmark ? "Ref" : i + 1 - ranked(d).slice(0, i).filter(x => x.benchmark).length}</span>
+        <div class="agent-name"><span class="swatch" style="background:${color(a.key)}"></span>
+          <div style="min-width:0">${esc(a.name)}<small>${esc(a.style)}</small></div></div>
+        <div class="r"><div class="big">${chf.format(a.stats.final_equity_chf)}</div>
+          <div class="num ${cls(a.stats.total_return)}" style="font-size:.85rem">${pct(a.stats.total_return)}</div></div>
+        <div class="r num opt">${fix(a.stats.sharpe)}</div>
+        <div class="r num opt down">${pct(a.stats.max_drawdown)}</div>
+        <div class="r num opt">${a.stats.trades}</div>
+        <div class="r num opt">${a.stats.win_rate == null ? "–" : Math.round(a.stats.win_rate * 100) + "%"}</div>
+        <div class="spark-cell"><canvas class="spark" data-key="${a.key}" data-agent="${esc(a.name)}"></canvas></div>
+      </div>`).join("");
+    return `<section>
+      <div class="section-head"><h2>Standings</h2>
+        <span class="muted" style="font-size:.85rem">Equity in CHF, ranked. Ref = passive benchmark.</span></div>
+      <div class="panel standings">
+        <div class="lane head"><span></span><span>Agent</span><span class="r">Equity</span><span class="r">Sharpe</span>
+          <span class="r">Max drop</span><span class="r">Fills</span><span class="r">Wins</span><span>Path</span></div>
+        ${rows}
+      </div></section>`;
+  }
+
+  function legendHtml(d) {
+    return `<div class="legend">${d.agents.map(a =>
+      `<span><span class="swatch" style="background:${color(a.key)}"></span>${esc(a.name)}</span>`).join("")}</div>`;
+  }
+
+  function allocation(d) {
+    const rows = d.agents.map(a => {
+      const eq = a.stats.final_equity_chf || 1;
+      const segs = a.positions.slice().sort((x, y) => y.value_chf - x.value_chf).map(p => {
+        const w = p.value_chf / eq * 100;
+        return `<div title="${esc(p.ticker)} · ${chf.format(p.value_chf)} CHF (${w.toFixed(1)}%)"
+          style="width:${w}%;background:${color(a.key)};opacity:${0.55 + 0.45 * Math.min(1, w / 20)}">${w > 6 ? esc(p.ticker) : ""}</div>`;
+      }).join("");
+      const cashW = Math.max(0, a.cash_chf / eq * 100);
+      return `<div class="alloc-row"><div class="agent-name"><span class="swatch" style="background:${color(a.key)}"></span>${esc(a.name)}</div>
+        <div class="bar" role="img" aria-label="${esc(a.name)}: ${(100 - cashW).toFixed(0)}% invested">${segs}
+          <div class="cash" style="width:${cashW}%">${cashW > 10 ? "cash " + cashW.toFixed(0) + "%" : ""}</div></div></div>`;
+    }).join("");
+    return `<section><div class="section-head"><h2>Where the money is</h2>
+      <span class="muted" style="font-size:.85rem">Share of each account in each holding today; the empty part is cash.</span></div>
+      <div class="panel alloc">${rows}</div></section>`;
+  }
+
+  function renderRun(d, isPaper) {
+    const days = d.agents[0].equity.length;
+    const html = [];
+    if (isPaper) html.push(`<div class="panel notice"><b>Live since ${fmtDate(ts(d.start))}.</b>
+      <span class="muted">The agents trade every weekday evening after the New York close, on their own. ${days} session${days === 1 ? "" : "s"} so far.</span></div>`);
+    html.push(standings(d));
+    html.push(`<section><div class="section-head"><h2>The race</h2>${legendHtml(d)}</div>
+      <div class="panel"><div class="chart-box"><canvas id="c-eq" aria-label="Equity curves"></canvas></div></div>
+      <div class="panel"><span class="eyebrow">Drop from previous high</span>
+        <div class="chart-box short"><canvas id="c-dd" aria-label="Drawdowns"></canvas></div></div></section>`);
+    html.push(allocation(d));
+    html.push(`<section id="desk"></section>`);
+    $("#view").innerHTML = html.join("");
+
+    lineChart($("#c-eq"), d.agents.map(a => series(a.equity, a.key, a.name)), v => chf.format(v));
+    lineChart($("#c-dd"), d.agents.map(a => series(drawdown(a.equity), a.key, a.name,
+      { fill: false })), v => (v * 100).toFixed(0) + "%");
+    document.querySelectorAll("canvas.spark").forEach(cv => {
+      const a = d.agents.find(x => x.name === cv.dataset.agent); spark(cv, a.equity, a.key);
+    });
+    const saved = store.get("v3-agent");
+    deskAgent = d.agents.find(a => a.key === saved && !a.benchmark) || d.agents.find(a => !a.benchmark);
+    renderDesk(d);
+  }
+
+  // ---------- agent desk ----------
+  function renderDesk(d) {
+    const a = deskAgent, el = $("#desk");
+    const chips = d.agents.filter(x => !x.benchmark).map(x =>
+      `<button type="button" data-agent="${x.key}" aria-pressed="${x === a}">
+        <span class="swatch" style="background:${color(x.key)}"></span>${esc(x.name)}</button>`).join("");
+    const params = Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(" · ");
+
+    const pos = a.positions.length ? `<div class="tbl-wrap"><table><thead><tr><th>Holding</th><th class="r">Shares</th>
+      <th class="r">Value CHF</th><th class="r">P&amp;L</th><th class="r">Since</th>${a.key === "volatility" ? '<th class="r">Stop</th>' : ""}</tr></thead><tbody>
+      ${a.positions.map(p => `<tr><td class="num"><b>${esc(p.ticker)}</b></td><td class="num">${p.quantity}</td>
+        <td class="num">${chf.format(p.value_chf)}</td>
+        <td class="num ${cls(p.pnl_chf)}">${chf.format(p.pnl_chf)} <span style="font-size:.78rem">(${pct(p.pnl_pct)})</span></td>
+        <td class="num">${fmtDate(ts(p.entry_date))}</td>${a.key === "volatility" ? `<td class="num">${p.stop == null ? "–" : fix(p.stop)}</td>` : ""}</tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">No open positions: all ${chf.format(a.cash_chf)} CHF in cash.</div>`;
+
+    const pend = a.pending_orders.length ? a.pending_orders.map(o =>
+      `<div class="feed-item"><span class="side ${o.side}">${o.side}</span><span class="tick">${esc(o.ticker)}</span>
+       <span class="num">${o.quantity} sh</span><span class="muted">${esc(o.reason)}</span></div>`).join("")
+      : `<div class="empty">Nothing queued for the next open.</div>`;
+
+    const feed = a.activity.slice().reverse().slice(0, 40).map(day => {
+      const items = [];
+      day.fills.forEach(f => items.push(`<div class="feed-item"><span class="side ${f.side}">${f.side === "BUY" ? "BOUGHT" : "SOLD"}</span>
+        <span class="tick">${esc(f.ticker)}</span><span class="num">${f.quantity} @ ${fix(f.price)}</span>
+        ${f.side === "SELL" ? `<span class="num ${cls(f.pnl_chf)}">${chf.format(f.pnl_chf)} CHF</span>` : ""}</div>`));
+      day.signals.forEach(s => items.push(`<div class="feed-item"><span class="tag">${s.action === "BUY" ? "wants in" : "wants out"}</span>
+        <span class="tick">${esc(s.ticker)}</span><span class="muted">${esc(s.reason)}</span>
+        ${s.ordered ? "" : '<span class="tag">no cash left</span>'}</div>`));
+      return `<div class="feed-day"><time>${fmtDate(ts(day.date))}</time>${items.join("")}</div>`;
+    }).join("") || `<div class="empty">No decisions yet.</div>`;
+
+    const tickers = Object.keys(d.prices);
+    const counts = {}; a.trades.forEach(t => counts[t.ticker] = (counts[t.ticker] || 0) + 1);
+    const savedT = store.get("v3-ticker-" + a.key);
+    const pick = tickers.includes(savedT) ? savedT
+      : (Object.entries(counts).sort((x, y) => y[1] - x[1])[0] || [tickers[0]])[0];
+
+    el.innerHTML = `
+      <div class="section-head"><h2>Agent desk</h2><div class="chips" role="group" aria-label="Choose agent">${chips}</div></div>
+      <div class="desk-intro"><b>${esc(a.style)}</b><span class="params">${esc(params)}</span></div>
+      <div class="grid2">
+        <div class="panel" style="display:grid;gap:10px"><h3>Book today</h3>${pos}</div>
+        <div class="panel" style="display:grid;gap:10px"><h3>Orders for the next open</h3>${pend}
+          <h3 style="margin-top:8px">Recent decisions</h3><div class="feed">${feed}</div></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <div class="section-head"><h3>Trades on the chart</h3>
+          <label class="muted" style="font-size:.85rem">Ticker <select id="tick-sel">${tickers.map(t =>
+            `<option ${t === pick ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
+        <div class="chart-box"><canvas id="c-trades" aria-label="Price with trades"></canvas></div>
+        <span class="muted" style="font-size:.8rem">Price in ${esc(d.currencies[pick] || "USD")}. ▲ buys, ▼ sells by ${esc(a.name)}.</span>
+      </div>
+      <div class="panel" style="display:grid;gap:10px"><h3>Monthly returns</h3><div class="tbl-wrap" id="heat"></div></div>
+      <div class="panel" style="display:grid;gap:10px"><h3>Trade log</h3><div class="tbl-wrap">${tradeTable(a)}</div></div>`;
+
+    el.querySelectorAll(".chips button").forEach(b => b.addEventListener("click", () => {
+      deskAgent = d.agents.find(x => x.key === b.dataset.agent); store.set("v3-agent", deskAgent.key);
+      charts = charts.filter(c => { if (c.canvas.id === "c-trades") { c.destroy(); return false; } return true; });
+      renderDesk(d);
+    }));
+    $("#tick-sel").addEventListener("change", e => {
+      store.set("v3-ticker-" + a.key, e.target.value);
+      charts = charts.filter(c => { if (c.canvas.id === "c-trades") { c.destroy(); return false; } return true; });
+      renderDesk(d);
+    });
+    tradeChart(d, a, pick);
+    $("#heat").innerHTML = heatmap(a, d.initial_capital_chf);
+  }
+
+  function tradeChart(d, a, ticker) {
+    const px = d.prices[ticker] || [];
+    const mine = a.trades.filter(t => t.ticker === ticker);
+    const pt = side => mine.filter(t => t.side === side).map(t => ({ x: ts(t.date), y: t.price }));
+    const ds = [
+      { label: ticker, data: px.map(([dd, v]) => ({ x: ts(dd), y: v })), borderColor: css("--muted"),
+        borderWidth: 1.5, pointRadius: 0 },
+      { label: "Buy", type: "scatter", data: pt("BUY"), pointStyle: "triangle", pointRadius: 7,
+        backgroundColor: css("--up"), borderColor: css("--up") },
+      { label: "Sell", type: "scatter", data: pt("SELL"), pointStyle: "triangle", rotation: 180, pointRadius: 7,
+        backgroundColor: css("--down"), borderColor: css("--down") },
+    ];
+    const opts = baseOptions(v => fix(v));
+    if (px.length) { opts.scales.x.min = ts(px[0][0]); opts.scales.x.max = ts(px[px.length - 1][0]); }
+    opts.interaction = { mode: "nearest", intersect: false };
+    charts.push(new Chart($("#c-trades"), { type: "line", data: { datasets: ds }, options: opts }));
+  }
+
+  function heatmap(a, start) {
+    const months = {}; let prev = start;
+    const byMonth = {};
+    a.equity.forEach(([d, v]) => { byMonth[d.slice(0, 7)] = v; });
+    Object.keys(byMonth).sort().forEach(m => { months[m] = byMonth[m] / prev - 1; prev = byMonth[m]; });
+    const years = [...new Set(Object.keys(months).map(m => m.slice(0, 4)))];
+    const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const up = css("--up"), dn = css("--down");
+    const cell = r => {
+      if (r == null) return "<td></td>";
+      const k = Math.min(1, Math.abs(r) / 0.06);
+      const bg = `color-mix(in srgb, ${r >= 0 ? up : dn} ${Math.round(12 + 60 * k)}%, transparent)`;
+      return `<td style="background:${bg}">${(r * 100).toFixed(1)}</td>`;
+    };
+    return `<table class="heat"><thead><tr><th>Year</th>${names.map(n => `<th>${n}</th>`).join("")}<th>Year</th></tr></thead><tbody>
+      ${years.map(y => {
+        const ms = names.map((_, i) => months[`${y}-${String(i + 1).padStart(2, "0")}`]);
+        const yr = ms.filter(x => x != null).reduce((p, r) => p * (1 + r), 1) - 1;
+        return `<tr><th>${y}</th>${ms.map(cell).join("")}${cell(yr)}</tr>`;
+      }).join("")}</tbody></table>`;
+  }
+
+  function tradeTable(a) {
+    if (!a.trades.length) return `<div class="empty">No trades yet.</div>`;
+    return `<table><thead><tr><th>Date</th><th>Side</th><th>Ticker</th><th class="r">Shares</th><th class="r">Price</th>
+      <th class="r">Value CHF</th><th class="r">Result CHF</th><th>Why</th></tr></thead><tbody>
+      ${a.trades.slice().reverse().slice(0, 120).map(t => `<tr><td class="num">${fmtDate(ts(t.date))}</td>
+        <td><span class="side ${t.side}">${t.side}</span></td><td class="num"><b>${esc(t.ticker)}</b></td>
+        <td class="num">${t.quantity}</td><td class="num">${fix(t.price)}</td><td class="num">${chf.format(t.value_chf)}</td>
+        <td class="num ${cls(t.pnl_chf)}">${t.pnl_chf == null ? "" : chf2.format(t.pnl_chf)}</td>
+        <td class="muted">${esc(t.reason)}</td></tr>`).join("")}</tbody></table>`;
+  }
+
+  // ---------- walk-forward ----------
+  function renderWF(w) {
+    const b = w.benchmark;
+    const parts = [`<div class="panel notice"><b>Is the edge real?</b> <span class="muted">Each year, the parameters are re-picked using only the
+      ${w.train_years} years before it, then traded on that year blind. Stitching those blind years together shows what tuning would really have earned.</span></div>`];
+    parts.push(`<section><div class="section-head"><h2>Blind years, stitched</h2>
+      <span class="muted" style="font-size:.85rem">${fmtDate(ts(w.folds[0][0]))} to ${fmtDate(ts(w.folds[w.folds.length - 1][1]))}</span></div>
+      <div class="panel"><div class="tbl-wrap"><table><thead><tr><th>Agent</th><th class="r">Tuned return</th><th class="r">Sharpe</th>
+      <th class="r">Max drop</th><th class="r">Default return</th><th class="r">Sharpe</th><th class="r">Max drop</th></tr></thead><tbody>
+      ${w.agents.map(a => `<tr><td><span class="agent-name"><span class="swatch" style="background:${color(a.key)}"></span>${esc(a.name)}</span></td>
+        <td class="num ${cls(a.tuned.return)}">${pct(a.tuned.return)}</td><td class="num">${fix(a.tuned.sharpe)}</td><td class="num down">${pct(a.tuned.max_drawdown)}</td>
+        <td class="num ${cls(a.default.return)}">${pct(a.default.return)}</td><td class="num">${fix(a.default.sharpe)}</td><td class="num down">${pct(a.default.max_drawdown)}</td></tr>`).join("")}
+      <tr><td><span class="agent-name"><span class="swatch" style="background:${color("benchmark")}"></span>${esc(b.name)}</span></td>
+        <td class="num ${cls(b.return)}">${pct(b.return)}</td><td class="num">${fix(b.sharpe)}</td><td class="num down">${pct(b.max_drawdown)}</td><td colspan="3"></td></tr>
+      </tbody></table></div></div></section>`);
+    w.agents.forEach((a, i) => parts.push(`<section class="wf-agent"><div class="section-head"><h2>${esc(a.name)}</h2>
+      <div class="legend"><span><span class="swatch" style="background:${color(a.key)}"></span>Tuned each year</span>
+      <span><span class="swatch" style="background:${color(a.key)};opacity:.45"></span>Default settings</span>
+      <span><span class="swatch" style="background:${color("benchmark")}"></span>${esc(b.name)}</span></div></div>
+      <div class="panel"><div class="chart-box"><canvas id="wf-${i}"></canvas></div></div>
+      <div class="panel"><div class="tbl-wrap"><table><thead><tr><th>Blind year</th><th>Settings picked</th><th class="r">Train Sharpe</th>
+      <th class="r">Tuned</th><th class="r">Default</th><th class="r">Fills</th></tr></thead><tbody>
+      ${a.folds.map(f => `<tr><td class="num">${fmtDate(ts(f.test[0]))} – ${fmtDate(ts(f.test[1]))}</td>
+        <td class="params">${esc(Object.entries(f.params).map(([k, v]) => k + "=" + v).join(" · "))}</td>
+        <td class="num">${fix(f.train_sharpe)}</td><td class="num ${cls(f.test_return)}">${pct(f.test_return)}</td>
+        <td class="num ${cls(f.default_test_return)}">${pct(f.default_test_return)}</td><td class="num">${f.test_trades}</td></tr>`).join("")}
+      </tbody></table></div></div></section>`));
+    $("#view").innerHTML = parts.join("");
+    w.agents.forEach((a, i) => lineChart($("#wf-" + i), [
+      series(a.tuned_equity, a.key, "Tuned"),
+      series(a.default_equity, a.key, "Default", { borderWidth: 1.2, borderDash: [2, 3] }),
+      series(b.equity, "benchmark", b.name, { borderWidth: 1.5 }),
+    ], v => chf.format(v)));
+  }
+
+  // ---------- shell ----------
+  function setStatus() {
+    const d = DATA[view];
+    const el = $("#status");
+    if (view === "walkforward") {
+      el.innerHTML = d ? `Study run ${fmtDate(Date.parse(d.generated_utc))} · data <b>${esc(d.data_source)}</b>` : "";
+      return;
+    }
+    if (!d || d.status === "waiting") { el.innerHTML = ""; return; }
+    const live = view === "paper";
+    el.innerHTML = `<span class="pill ${live ? "live" : ""}"><span class="dot"></span>${live ? "Live" : "Backtest"}</span>
+      &nbsp;Data to <b>${fmtDate(ts(d.last))}</b> · source <b>${esc(d.data_source)}</b>`;
+  }
+
+  function show(v) {
+    view = v; store.set("v3-view", v);
+    document.querySelectorAll("nav.views button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v));
+    destroyCharts();
+    const d = DATA[v];
+    if (!d) {
+      $("#view").innerHTML = `<div class="panel notice">No data for this view yet. It appears after the next scheduled run.</div>`;
+    } else if (v === "walkforward") renderWF(d);
+    else if (d.status === "waiting") {
+      $("#view").innerHTML = `<div class="panel notice"><b>Paper trading starts ${fmtDate(ts(d.start))}.</b>
+        <span class="muted">Each agent opens with 100'000 CHF. The first results appear after that evening's run.
+        The 5-year backtest shows how the same rules did on history.</span></div>`;
+    } else renderRun(d, v === "paper");
+    setStatus();
+  }
+
+  document.querySelectorAll("nav.views button").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => view && show(view));
+  new MutationObserver(() => view && show(view)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  Promise.all(["paper", "backtest", "walkforward"].map(load)).then(([p, b, w]) => {
+    Object.assign(DATA, { paper: p, backtest: b, walkforward: w });
+    const saved = store.get("v3-view");
+    const first = DATA[saved] && !(saved === "paper" && p.status === "waiting") ? saved
+      : p && p.status === "live" ? "paper" : b ? "backtest" : "walkforward";
+    show(first);
+  });
+})();
+</script>
+</body>
+</html>
