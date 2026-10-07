@@ -28,6 +28,12 @@ run and saves everything (cash, positions, pending orders, trailing stops) to
 new state, and refreshes `docs/data/`. GitHub Pages serves `docs/index.html`
 as the dashboard, so nothing needs to run on your own computer.
 
+Live, each strategy runs twice: a **learning** agent that reviews its own
+settings on the first trading day of every month (`learning.py`: it replays
+the last 3 years with every allowed setting and switches only when another
+one is clearly better), and a **fixed twin** that never changes. Comparing
+the two on the dashboard shows whether learning pays off.
+
 To start over, delete `state/paper_state.json` and change
 `PAPER_START_DATE` in `config.py`.
 
@@ -50,6 +56,7 @@ To start over, delete `state/paper_state.json` and change
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
+| `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
 | `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |

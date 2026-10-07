@@ -27,9 +27,19 @@ def agent_key(agent) -> str:
     raise KeyError(f"Unregistered agent type {type(agent).__name__}")
 
 
-def make_agent(key: str, params: dict | None = None):
-    """Instantiate a registered agent with optional parameter overrides."""
+def make_agent(key: str, params: dict | None = None, learning: bool = False,
+               name: str | None = None):
+    """Instantiate a registered agent.
+
+    ``params`` override the config defaults, ``learning`` turns on monthly
+    self-tuning and ``name`` replaces the display name (used for twins).
+    """
     cls = AGENT_TYPES[key]
     if key == "benchmark":
-        return cls(**({"ticker": params["ticker"]} if params else {}))
-    return cls(params)
+        agent = cls(**({"ticker": params["ticker"]} if params else {}))
+    else:
+        agent = cls(params)
+    agent.learning = learning
+    if name:
+        agent.name = name
+    return agent

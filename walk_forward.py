@@ -18,7 +18,6 @@ Writes ``docs/data/walkforward.json`` for the dashboard and prints a table.
 from __future__ import annotations
 
 import argparse
-import itertools
 import logging
 import math
 import time
@@ -30,44 +29,14 @@ import config
 from data_manager import load_market_data
 from engine import metrics
 from engine.simulator import build_accounts
+from learning import GRIDS, expand
 from main import run_simulation, setup_logging
 from models import make_agent
 from reporting import write_json
 
 logger = logging.getLogger("vanguard3.wf")
 
-#: Parameter grids. Every combination is backtested; keep them small.
-GRIDS = {
-    "trend": {
-        ("ema_fast", "ema_slow"): [(10, 30), (20, 50), (50, 200)],
-        "adx_threshold": [20.0, 25.0, 30.0],
-    },
-    "reversion": {
-        "rsi_entry": [30.0, 35.0, 40.0],
-        "bb_std": [1.5, 2.0],
-        "quality_sma": [0, 200],
-    },
-    "volatility": {
-        ("donchian_entry", "donchian_exit"): [(20, 10), (40, 20), (55, 20)],
-        "atr_stop_mult": [2.5, 3.5, 4.5],
-    },
-}
 MIN_TRAIN_TRADES = 10   # ignore parameter sets that barely trade
-
-
-def expand(grid: dict) -> list[dict]:
-    """All parameter combinations of a grid as flat dicts."""
-    keys, values = zip(*grid.items())
-    combos = []
-    for choice in itertools.product(*values):
-        params = {}
-        for k, v in zip(keys, choice):
-            if isinstance(k, tuple):
-                params.update(dict(zip(k, v)))
-            else:
-                params[k] = v
-        combos.append(params)
-    return combos
 
 
 def window_stats(equity: pd.Series, trades: pd.Series,

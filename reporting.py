@@ -89,8 +89,14 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
                 "pnl_pct": value / pos.cost_basis_chf - 1,
                 "stop": acc.agent.get_state().get("stops", {}).get(t),
             })
+        key = agent_key(acc.agent)
+        twin = "(fixed)" in acc.agent.name
         agents.append({
-            "key": agent_key(acc.agent),
+            "id": key + ("-fixed" if twin else ""),
+            "key": key,
+            "learning": acc.agent.learning,
+            "fixed_twin": twin,
+            "learning_log": acc.agent.learning_log[-24:],
             "name": acc.agent.name,
             "style": acc.agent.style,
             "benchmark": isinstance(acc.agent, BuyHoldAgent),

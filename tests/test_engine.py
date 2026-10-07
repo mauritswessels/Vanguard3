@@ -20,7 +20,7 @@ from engine.portfolio import CostModel, InsufficientFundsError, Portfolio
 from daily_run import advance, last_completed_session
 from engine.simulator import Simulator, build_accounts
 from main import default_agents, run_simulation
-from models import ReversionAgent, TrendAgent, VolatilityAgent
+from models import ReversionAgent, TrendAgent, VolatilityAgent, make_agent
 from models import indicators as ind
 
 D1 = pd.Timestamp("2025-01-06")
@@ -263,6 +263,28 @@ class PersistenceTest(unittest.TestCase):
                          pd.Timestamp("2026-10-06"))
         self.assertEqual(last_completed_session(after),
                          pd.Timestamp("2026-10-07"))
+
+
+class LearningTest(unittest.TestCase):
+
+    def test_monthly_review_picks_a_grid_setting_and_logs_it(self):
+        from learning import GRIDS, expand, retune
+        market = synthetic_market(days=1500, seed=9)
+        agent = make_agent("volatility", learning=True)
+        agent.prepare(market)
+        entry = retune(agent, market, market.calendar[-1])
+        current = {k: agent.params[k] for k in entry["new"]}
+        self.assertEqual(current, entry["new"])
+        self.assertIn(entry["new"], expand(GRIDS["volatility"])
+                      + [entry["old"]])
+        self.assertEqual(agent.learning_log, [entry])
+
+    def test_paper_lineup_has_learner_and_fixed_twin_per_strategy(self):
+        from learning import paper_lineup
+        agents = paper_lineup(synthetic_market(days=60))
+        self.assertEqual(sum(a.learning for a in agents), 3)
+        self.assertEqual(sum("(fixed)" in a.name for a in agents), 3)
+        self.assertEqual(len({a.name for a in agents}), len(agents))
 
 
 if __name__ == "__main__":

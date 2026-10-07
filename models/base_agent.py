@@ -53,6 +53,10 @@ class BaseAgent(ABC):
 
     def __init__(self, params: dict):
         self.params = dict(params)
+        #: Learning agents re-tune their own parameters every month.
+        self.learning = False
+        #: One entry per monthly review (see learning.py).
+        self.learning_log: list[dict] = []
         self.market: MarketData | None = None
         self.indicators: dict[str, pd.DataFrame] = {}
 

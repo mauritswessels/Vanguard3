@@ -209,6 +209,10 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const color = key => css("--a-" + key) || css("--muted");
   const ts = d => Date.parse(d + "T00:00:00Z");
+  const sw = a => a.fixed_twin
+    ? `<span class="swatch" style="border:2px solid ${color(a.key)};background:transparent"></span>`
+    : `<span class="swatch" style="background:${color(a.key)}"></span>`;
+  const lineStyle = a => a.fixed_twin ? { borderDash: [3, 3], borderWidth: 1.5 } : {};
   const fmtDate = ms => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" });
 
   const store = {
@@ -293,15 +297,15 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
     const rows = ranked(d).map((a, i) => `
       <div class="lane ${a.benchmark ? "bench" : ""}">
         <span class="rank">${a.benchmark ? "Ref" : i + 1 - ranked(d).slice(0, i).filter(x => x.benchmark).length}</span>
-        <div class="agent-name"><span class="swatch" style="background:${color(a.key)}"></span>
-          <div style="min-width:0">${esc(a.name)}<small>${esc(a.style)}</small></div></div>
+        <div class="agent-name">${sw(a)}
+          <div style="min-width:0">${esc(a.name)} ${a.learning ? '<span class="tag">learns</span>' : ""}<small>${esc(a.fixed_twin ? "Same rules, never re-tuned" : a.style)}</small></div></div>
         <div class="r"><div class="big">${chf.format(a.stats.final_equity_chf)}</div>
           <div class="num ${cls(a.stats.total_return)}" style="font-size:.85rem">${pct(a.stats.total_return)}</div></div>
         <div class="r num opt">${fix(a.stats.sharpe)}</div>
         <div class="r num opt down">${pct(a.stats.max_drawdown)}</div>
         <div class="r num opt">${a.stats.trades}</div>
         <div class="r num opt">${a.stats.win_rate == null ? "–" : Math.round(a.stats.win_rate * 100) + "%"}</div>
-        <div class="spark-cell"><canvas class="spark" data-key="${a.key}" data-agent="${esc(a.name)}"></canvas></div>
+        <div class="spark-cell"><canvas class="spark" data-agent="${esc(a.id)}"></canvas></div>
       </div>`).join("");
     return `<section>
       <div class="section-head"><h2>Standings</h2>
@@ -315,7 +319,7 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
 
   function legendHtml(d) {
     return `<div class="legend">${d.agents.map(a =>
-      `<span><span class="swatch" style="background:${color(a.key)}"></span>${esc(a.name)}</span>`).join("")}</div>`;
+      `<span>${sw(a)}${esc(a.name)}</span>`).join("")}</div>`;
   }
 
   function allocation(d) {
@@ -327,7 +331,7 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
           style="width:${w}%;background:${color(a.key)};opacity:${0.55 + 0.45 * Math.min(1, w / 20)}">${w > 6 ? esc(p.ticker) : ""}</div>`;
       }).join("");
       const cashW = Math.max(0, a.cash_chf / eq * 100);
-      return `<div class="alloc-row"><div class="agent-name"><span class="swatch" style="background:${color(a.key)}"></span>${esc(a.name)}</div>
+      return `<div class="alloc-row"><div class="agent-name">${sw(a)}${esc(a.name)}</div>
         <div class="bar" role="img" aria-label="${esc(a.name)}: ${(100 - cashW).toFixed(0)}% invested">${segs}
           <div class="cash" style="width:${cashW}%">${cashW > 10 ? "cash " + cashW.toFixed(0) + "%" : ""}</div></div></div>`;
     }).join("");
@@ -350,14 +354,14 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
     html.push(`<section id="desk"></section>`);
     $("#view").innerHTML = html.join("");
 
-    lineChart($("#c-eq"), d.agents.map(a => series(a.equity, a.key, a.name)), v => chf.format(v));
+    lineChart($("#c-eq"), d.agents.map(a => series(a.equity, a.key, a.name, lineStyle(a))), v => chf.format(v));
     lineChart($("#c-dd"), d.agents.map(a => series(drawdown(a.equity), a.key, a.name,
-      { fill: false })), v => (v * 100).toFixed(0) + "%");
+      lineStyle(a))), v => (v * 100).toFixed(0) + "%");
     document.querySelectorAll("canvas.spark").forEach(cv => {
-      const a = d.agents.find(x => x.name === cv.dataset.agent); spark(cv, a.equity, a.key);
+      const a = d.agents.find(x => x.id === cv.dataset.agent); spark(cv, a.equity, a.key);
     });
     const saved = store.get("v3-agent");
-    deskAgent = d.agents.find(a => a.key === saved && !a.benchmark) || d.agents.find(a => !a.benchmark);
+    deskAgent = d.agents.find(a => (a.id || a.key) === saved && !a.benchmark) || d.agents.find(a => !a.benchmark);
     renderDesk(d);
   }
 
@@ -365,8 +369,8 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
   function renderDesk(d) {
     const a = deskAgent, el = $("#desk");
     const chips = d.agents.filter(x => !x.benchmark).map(x =>
-      `<button type="button" data-agent="${x.key}" aria-pressed="${x === a}">
-        <span class="swatch" style="background:${color(x.key)}"></span>${esc(x.name)}</button>`).join("");
+      `<button type="button" data-agent="${esc(x.id || x.key)}" aria-pressed="${x === a}">
+        ${sw(x)}${esc(x.name)}</button>`).join("");
     const params = Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(" · ");
 
     const pos = a.positions.length ? `<div class="tbl-wrap"><table><thead><tr><th>Holding</th><th class="r">Shares</th>
@@ -395,7 +399,7 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
 
     const tickers = Object.keys(d.prices);
     const counts = {}; a.trades.forEach(t => counts[t.ticker] = (counts[t.ticker] || 0) + 1);
-    const savedT = store.get("v3-ticker-" + a.key);
+    const savedT = store.get("v3-ticker-" + (a.id || a.key));
     const pick = tickers.includes(savedT) ? savedT
       : (Object.entries(counts).sort((x, y) => y[1] - x[1])[0] || [tickers[0]])[0];
 
@@ -414,21 +418,40 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
         <div class="chart-box"><canvas id="c-trades" aria-label="Price with trades"></canvas></div>
         <span class="muted" style="font-size:.8rem">Price in ${esc(d.currencies[pick] || "USD")}. ▲ buys, ▼ sells by ${esc(a.name)}.</span>
       </div>
+      ${learningPanel(a)}
       <div class="panel" style="display:grid;gap:10px"><h3>Monthly returns</h3><div class="tbl-wrap" id="heat"></div></div>
       <div class="panel" style="display:grid;gap:10px"><h3>Trade log</h3><div class="tbl-wrap">${tradeTable(a)}</div></div>`;
 
     el.querySelectorAll(".chips button").forEach(b => b.addEventListener("click", () => {
-      deskAgent = d.agents.find(x => x.key === b.dataset.agent); store.set("v3-agent", deskAgent.key);
+      deskAgent = d.agents.find(x => (x.id || x.key) === b.dataset.agent); store.set("v3-agent", b.dataset.agent);
       charts = charts.filter(c => { if (c.canvas.id === "c-trades") { c.destroy(); return false; } return true; });
       renderDesk(d);
     }));
     $("#tick-sel").addEventListener("change", e => {
-      store.set("v3-ticker-" + a.key, e.target.value);
+      store.set("v3-ticker-" + (a.id || a.key), e.target.value);
       charts = charts.filter(c => { if (c.canvas.id === "c-trades") { c.destroy(); return false; } return true; });
       renderDesk(d);
     });
     tradeChart(d, a, pick);
     $("#heat").innerHTML = heatmap(a, d.initial_capital_chf);
+  }
+
+  function learningPanel(a) {
+    if (a.benchmark) return "";
+    if (!a.learning) return `<div class="panel" style="display:grid;gap:6px"><h3>Learning</h3>
+      <div class="muted">This twin never changes its settings. Compare it with the learning version to see whether learning pays off.</div></div>`;
+    const kv = o => esc(Object.entries(o).map(([k, v]) => k + "=" + v).join(" · "));
+    const log = (a.learning_log || []).slice().reverse();
+    const rows = log.length ? `<div class="tbl-wrap"><table><thead><tr><th>Review</th><th>Outcome</th><th>Settings now</th>
+      <th class="r">Sharpe before</th><th class="r">Best found</th></tr></thead><tbody>
+      ${log.map(e => `<tr><td class="num">${fmtDate(ts(e.date))}</td>
+        <td>${e.switched ? '<span class="side BUY">SWITCHED</span>' : '<span class="tag">kept</span>'}</td>
+        <td class="params">${kv(e.new)}</td><td class="num">${fix(e.sharpe_old)}</td><td class="num">${fix(e.sharpe_best)}</td></tr>`).join("")}
+      </tbody></table></div>`
+      : `<div class="empty">First review on the first trading day of next month.</div>`;
+    return `<div class="panel" style="display:grid;gap:10px"><h3>Learning</h3>
+      <div class="muted" style="font-size:.88rem">Every month this agent replays its strategy over the last 3 years with each allowed setting
+      and switches only if another setting is clearly better.</div>${rows}</div>`;
   }
 
   function tradeChart(d, a, ticker) {

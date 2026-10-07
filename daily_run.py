@@ -31,7 +31,8 @@ import pandas as pd
 import config
 from data_manager import load_market_data
 from engine.simulator import Simulator, build_accounts
-from main import default_agents, setup_logging
+from learning import LOOKBACK_YEARS, paper_lineup, retune
+from main import setup_logging
 from reporting import dashboard_payload, print_scoreboard, write_json
 
 logger = logging.getLogger("vanguard3.paper")
@@ -57,7 +58,9 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
     Returns the simulator (``None`` before the first session) and the number
     of sessions simulated in this call.
     """
-    data_start = paper_start - pd.Timedelta(days=config.WARMUP_DAYS)
+    # Learning agents replay the last LOOKBACK_YEARS at every review.
+    data_start = (paper_start - pd.DateOffset(years=LOOKBACK_YEARS)
+                  - pd.Timedelta(days=config.WARMUP_DAYS))
     # Strict: an account holding a ticker that failed to download could not
     # be valued, so a partial download aborts the run (the next run catches
     # up on the missed sessions).
@@ -65,12 +68,13 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
                               strict=True)
 
     if state_path.exists():
-        sim = Simulator.from_dict(json.loads(state_path.read_text()), market)
+        sim = Simulator.from_dict(json.loads(state_path.read_text()), market,
+                                  tuner=retune)
     else:
         logger.info("No saved state: opening fresh %s CHF accounts",
                     f"{config.INITIAL_CAPITAL_CHF:,.0f}")
-        sim = Simulator(market, build_accounts(market,
-                                               default_agents(market)))
+        sim = Simulator(market, build_accounts(market, paper_lineup(market)),
+                        tuner=retune)
 
     cal = market.calendar
     new = cal[(cal >= paper_start) & (cal <= cutoff)]
