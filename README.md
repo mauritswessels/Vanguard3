@@ -4,12 +4,17 @@ End-of-day, multi-agent paper-trading simulator. Three rule-based agents
 (pure pandas/NumPy, no LLM calls) each trade their own 100,000 CHF account
 against the same watchlist; a scoreboard ranks them against buy-and-hold SPY.
 
+On macOS the command is `python3` (there is no `python`). Install the
+packages once into a virtual environment, then run through it:
+
 ```bash
-pip install -r requirements.txt
-python main.py                      # 1-year backtest (yfinance, falls back to synthetic)
-python main.py --source yfinance    # fail loudly if Yahoo is unreachable
-python main.py --source synthetic --seed 7 --days 730
-python -m unittest discover -s tests -t .
+cd vanguard3
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+
+.venv/bin/python main.py                      # 1-year backtest (auto data)
+.venv/bin/python main.py --source synthetic --seed 7 --days 730
+.venv/bin/python -m unittest discover -s tests -t .
 ```
 
 ## Layout
