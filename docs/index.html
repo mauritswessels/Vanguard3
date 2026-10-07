@@ -82,6 +82,9 @@ nav.views button, .chips button {
   background: none; border: 0; padding: 10px 14px; cursor: pointer;
   border-bottom: 3px solid transparent; white-space: nowrap; }
 nav.views button[aria-selected="true"] { color: var(--ink); border-color: var(--swiss); }
+nav.views .lab-link { margin-left: auto; font: 600 1rem var(--f-display); color: var(--swiss); text-decoration: none;
+  padding: 10px 14px; white-space: nowrap; }
+nav.views .lab-link:hover { text-decoration: underline; }
 button:focus-visible, select:focus-visible { outline: 2px solid var(--swiss); outline-offset: 2px; }
 
 section { display: grid; gap: 14px; min-width: 0; }
@@ -187,6 +190,7 @@ footer { font-size: .82rem; color: var(--muted); border-top: 1px solid var(--lin
     <button role="tab" id="tab-paper" data-view="paper" aria-selected="false">Live paper trading</button>
     <button role="tab" id="tab-backtest" data-view="backtest" aria-selected="false">5-year backtest</button>
     <button role="tab" id="tab-walkforward" data-view="walkforward" aria-selected="false">Walk-forward test</button>
+    <a class="lab-link" href="lab/">3D AI research lab →</a>
   </nav>
 
   <main id="view" class="wrap" style="gap:32px"></main>

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Vanguard3 Research Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/lab.css">
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <div class="boot-core"></div>
+  <div class="boot-title">VANGUARD3 RESEARCH LAB</div>
+  <div class="boot-msg" id="bootMsg">Loading market history…</div>
+  <div class="boot-note">Simulation only. No connection to any broker.</div>
+</div>
+
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark"></span>
+    <span class="brand-name">VANGUARD3</span>
+    <span class="brand-sub">AI Research Lab</span>
+    <span class="sim-badge" title="Every number on this page comes from a simulation on historical prices. No real orders can be placed.">SIMULATION ONLY</span>
+  </div>
+  <div class="regime" id="regime" title="Market regime of the asset the agent is trading right now">
+    <span class="regime-label">Regime</span>
+    <span class="rg" data-rg="Trending">Trending</span>
+    <span class="rg" data-rg="Range-bound">Range-bound</span>
+    <span class="rg" data-rg="High volatility">High vol</span>
+    <span class="rg" data-rg="Low volatility">Low vol</span>
+  </div>
+  <div class="controls">
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input id="search" type="search" placeholder="Find component" autocomplete="off" spellcheck="false" aria-label="Find a component">
+    </label>
+    <button class="btn icon" id="btnPlay" title="Pause / resume the simulation (space)"><span class="i-pause"></span></button>
+    <div class="seg" id="speed" role="group" aria-label="Simulation speed"></div>
+    <button class="btn toggle on" id="btnRotate" title="Auto-rotate the view (R)">Rotate</button>
+    <button class="btn" id="btnReset" title="Reset the camera (0)">Reset</button>
+  </div>
+</header>
+
+<main>
+  <div id="stage" class="stage">
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div class="hint">Drag to rotate · scroll to zoom · right-drag to pan · drag a node to move it · click for details</div>
+    <ol class="strip" id="strip" aria-label="Decision pipeline"></ol>
+  </div>
+
+  <aside class="col left">
+    <section class="panel" id="livePanel">
+      <h2>Live system <span class="tag" id="liveStatus">–</span></h2>
+      <div class="kv-grid" id="live"></div>
+      <div class="bars">
+        <div class="bar-row"><span>Episode progress</span><b id="epProgTxt">–</b></div>
+        <div class="bar"><i id="epProg"></i></div>
+        <div class="bar-row"><span>Next model version</span><b id="verProgTxt">–</b></div>
+        <div class="bar"><i id="verProg" class="violet"></i></div>
+      </div>
+      <canvas class="spark" id="spark" height="46"></canvas>
+      <p class="fine" id="sparkNote">Simulated equity in the current training episode</p>
+    </section>
+    <section class="panel" id="healthPanel">
+      <h2>System health</h2>
+      <ul class="health" id="health"></ul>
+    </section>
+  </aside>
+
+  <aside class="col right">
+    <section class="panel" id="nodePanel" hidden>
+      <h2><span id="nodeTitle">Component</span><button class="x" id="nodeClose" aria-label="Close">×</button></h2>
+      <p class="node-cat" id="nodeCat"></p>
+      <p class="node-desc" id="nodeDesc"></p>
+      <div class="kv-list" id="nodeRows"></div>
+      <div class="node-actions"><button class="btn" id="nodeFocus">Focus camera</button></div>
+    </section>
+    <section class="panel" id="decisionPanel">
+      <h2>Latest decision <span class="tag" id="decTime">–</span></h2>
+      <div class="dec-head">
+        <div class="dec-action" id="decAction">–</div>
+        <div class="dec-meta"><b id="decAsset">–</b><span id="decDate">–</span></div>
+        <div class="dec-conf"><span>Confidence</span><b id="decConf">–</b></div>
+      </div>
+      <div class="qbars" id="decQ"></div>
+      <div class="kv-list" id="decRows"></div>
+      <h3>Model's selected signals</h3>
+      <div class="attr" id="decAttr"></div>
+      <p class="fine">Each bar is that feature's share of the agent's linear score for this action versus the average action. It shows what the model weighted, not a causal reason the market moved.</p>
+    </section>
+  </aside>
+
+  <section class="drawer" id="drawer">
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="training" class="on">Training</button>
+      <button role="tab" data-tab="backtest">Backtest</button>
+      <button role="tab" data-tab="model">Model</button>
+      <button role="tab" data-tab="risk">Risk <span class="dot" id="riskDot"></span></button>
+      <button role="tab" data-tab="trades">Trade history</button>
+      <span class="tabs-fill"></span>
+      <button class="drawer-toggle" id="drawerToggle" aria-label="Collapse panel"><span></span></button>
+    </nav>
+
+    <div class="tab-body on" data-body="training">
+      <div class="tab-head">
+        <p>Training history of the simulated agent. Each episode is 120 trading days on a randomly chosen asset from the training period.</p>
+        <div class="seg small" id="trainRange">
+          <button data-n="50">50 ep</button><button data-n="200" class="on">200 ep</button><button data-n="0">All</button>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <figure><figcaption>Episode reward</figcaption><canvas id="chReward"></canvas></figure>
+        <figure><figcaption>Simulated portfolio at episode end (CHF)</figcaption><canvas id="chEquity"></canvas></figure>
+        <figure><figcaption>Win rate, last 50 closed trades</figcaption><canvas id="chWin"></canvas></figure>
+        <figure><figcaption>Max drawdown per episode</figcaption><canvas id="chDD"></canvas></figure>
+        <figure><figcaption>Episode return</figcaption><canvas id="chRet"></canvas></figure>
+        <figure><figcaption>Exploration rate (epsilon)</figcaption><canvas id="chEps"></canvas></figure>
+      </div>
+    </div>
+
+    <div class="tab-body" data-body="backtest">
+      <div class="bt">
+        <form class="bt-form" id="btForm">
+          <p class="label-warn">Historical simulation. Past results do not predict future returns.</p>
+          <label>Asset<select id="btAsset"></select></label>
+          <div class="two">
+            <label>From<input type="date" id="btFrom"></label>
+            <label>To<input type="date" id="btTo"></label>
+          </div>
+          <div class="two">
+            <label>Starting capital (CHF)<input type="number" id="btCap" min="1000" step="1000" value="100000"></label>
+            <label>Decision frequency<select id="btFreq"><option value="daily">Daily</option><option value="weekly">Weekly</option></select></label>
+          </div>
+          <label>Model version<select id="btVer"></select></label>
+          <div class="bt-quick" id="btQuick">
+            <button type="button" data-q="val">Held-out year</button><button type="button" data-q="1y">1Y</button><button type="button" data-q="3y">3Y</button><button type="button" data-q="all">All</button>
+          </div>
+          <button class="btn primary" type="submit">Run backtest</button>
+          <p class="fine" id="btErr"></p>
+        </form>
+        <div class="bt-out">
+          <div class="bt-title" id="btTitle">Historical simulation results</div>
+          <div class="kpis" id="btKpis"></div>
+          <figure class="bt-chart"><canvas id="chBT"></canvas></figure>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-body" data-body="model">
+      <div class="model">
+        <div class="model-card" id="modelCard"></div>
+        <div class="model-hist">
+          <div class="tab-head">
+            <p>Every 20 episodes the agent's weights are frozen as a version and scored on the held-out final year (never used for training). Pick two versions to compare.</p>
+          </div>
+          <div class="table-wrap short"><table class="tbl" id="verTable"></table></div>
+          <div class="compare" id="verCompare"></div>
+        </div>
+        <figure class="model-chart"><figcaption>Training vs validation return by version</figcaption><canvas id="chVer"></canvas></figure>
+      </div>
+    </div>
+
+    <div class="tab-body" data-body="risk">
+      <div class="risk">
+        <div class="risk-gauges" id="riskGauges"></div>
+        <div class="risk-side">
+          <div class="risk-status" id="riskStatus"></div>
+          <h3>Position limits</h3>
+          <div class="kv-list" id="riskLimits"></div>
+        </div>
+        <div class="risk-events">
+          <h3>Recent risk events</h3>
+          <ul id="riskEvents"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-body" data-body="trades">
+      <div class="trades">
+        <div class="table-wrap"><table class="tbl sortable" id="tradeTable"></table></div>
+        <div class="inspect" id="inspect"><p class="fine">Select a trade to inspect it.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/sim/market.js"></script>
+<script src="js/sim/agent.js"></script>
+<script src="js/sim/engine.js"></script>
+<script src="js/viz/graph3d.js"></script>
+<script src="js/ui/charts.js"></script>
+<script src="js/ui/panels.js"></script>
+<script src="js/ui/tabs.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

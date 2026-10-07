@@ -122,6 +122,9 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
     prices = {t: [[d.strftime("%Y-%m-%d"), float(f"{v:.6g}")]
                   for d, v in window[t].dropna().items()]
               for t in market.tickers}
+    fx = {c: [[d.strftime("%Y-%m-%d"), float(f"{v:.6g}")]
+              for d, v in market.fx_close.loc[start:last, c].items()]
+          for c in market.fx_close.columns if c != config.BASE_CURRENCY}
     payload = {
         "mode": mode,
         "generated_utc": datetime.now(timezone.utc).isoformat(
@@ -137,6 +140,7 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
         "currencies": market.currencies,
         "agents": agents,
         "prices": prices,
+        "fx": fx,
     }
     if extra:
         payload.update(extra)

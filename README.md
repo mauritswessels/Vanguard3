@@ -59,7 +59,40 @@ To start over, delete `state/paper_state.json` and change
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
 | `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
+| `docs/lab/` | 3D AI research lab: a browser-only reinforcement-learning simulation (see below) |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |
+
+## 3D AI research lab (`docs/lab/`)
+
+An interactive 3D view of a learning trading agent, running entirely in the
+browser on the prices in `docs/data/backtest.json`. It is a research
+simulation: nothing in it can place a real order.
+
+Run it locally:
+
+```bash
+cd docs
+python3 -m http.server 8000
+# open http://localhost:8000/lab/
+```
+
+It is also served by GitHub Pages at `/lab/`. Opening `index.html` straight
+from disk works too, but browsers block the data file there, so it falls back
+to a synthetic market (the System Health panel says so).
+
+| File | Layer | Role |
+| --- | --- | --- |
+| `js/core.js` | shared | Event bus, `V3.EVENTS` contract, config, component graph, helpers |
+| `js/sim/market.js` | simulation | Loads and CHF-converts prices, 10 causal features, regime classifier |
+| `js/sim/agent.js` | simulation | Linear Q-learning agent, risk manager, simulated execution |
+| `js/sim/engine.js` | simulation | Training episodes, validation on the held-out final year, versions, backtests |
+| `js/viz/graph3d.js` | visualization | three.js network, camera controls, particles, decision flow |
+| `js/ui/*.js` | UI | Panels, charts, tabs; they only listen to the bus and read `engine.state()` |
+| `js/main.js` | wiring | Boots everything and connects the bus to the 3D view |
+
+To plug in your own model, keep the same `act()` / `update()` shape in
+`sim/agent.js`, or replace `V3.Engine` in `main.js` with your own object that
+emits the same `V3.EVENTS`. The UI and the 3D view need no changes.
 
 ## Execution model
 
