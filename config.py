@@ -86,7 +86,7 @@ SYNTHETIC_SEED = 42
 # ---------------------------------------------------------------------------
 # Live paper trading (daily_run.py)
 # ---------------------------------------------------------------------------
-PAPER_START_DATE = "2026-10-08"  # first session the paper accounts trade
+PAPER_START_DATE = "2026-10-07"  # first session the paper accounts trade
 # Minutes after the 16:00 New York close before a day's bar is final.
 CLOSE_SETTLE_MINUTES = 30
 
