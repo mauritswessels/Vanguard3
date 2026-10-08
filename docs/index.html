@@ -422,7 +422,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     const near = w.filter(x => !x.held && x.progress != null).sort((x, y) => y.progress - x.progress)[0];
     const first = held ? `Holds ${held} position${held === 1 ? "" : "s"}, ${Math.round(cash * 100)}% in cash.` : "Holds only cash.";
     const queued = a.pending_orders.length ? ` ${a.pending_orders.length} order${a.pending_orders.length === 1 ? "" : "s"} queued for the next open.` : "";
-    const next = !near ? "" : near.ready ? ` ${esc(near.ticker)} meets its buy rule.`
+    const next = !near ? "" : near.ready && a.pending_orders.some(o => o.ticker === near.ticker) ? ""
+      : near.ready ? ` ${esc(near.ticker)} meets its buy rule.`
       : near.progress >= 0.8 ? ` Closest to a new buy: ${esc(near.ticker)} (${Math.round(near.progress * 100)}% there).`
       : " Nothing is close to its buy rule yet.";
     return first + queued + next;
@@ -452,7 +453,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       }).join("");
       const cands = w.filter(x => !x.held && x.progress != null);
       const row = x => `<div class="w-row"><span class="tick">${esc(x.ticker)}</span>${bar(x.progress, c)}
-        <span class="w-note">${x.ready ? "<b>Buy rule met.</b> " : ""}${esc(x.note)}</span></div>`;
+        <span class="w-note">${a.pending_orders.some(o => o.ticker === x.ticker) ? "<b>Buy order queued for the next open.</b> " : x.ready ? "<b>Buy rule met.</b> " : ""}${esc(x.note)}</span></div>`;
       const top = cands.slice(0, 4).map(row).join(""), rest = cands.slice(4);
       const watching = a.benchmark ? "" : `<div class="w-block"><h3>Watching · ${cands.length} markets, closest first</h3>${top || `<p class="empty">${a.watch ? "No data yet." : "The rule check appears after the next daily run."}</p>`}
         ${rest.length ? `<details><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : ""}</div>`;
