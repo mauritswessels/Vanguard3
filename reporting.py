@@ -17,6 +17,7 @@ import pandas as pd
 
 import config
 from engine.portfolio import Portfolio
+from engine import journal
 from engine.simulator import Simulator
 from models import BuyHoldAgent, agent_key
 
@@ -91,6 +92,7 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             })
         key = agent_key(acc.agent)
         twin = "(fixed)" in acc.agent.name
+        rows = journal.fills(pf, acc.activity)
         agents.append({
             "id": key + ("-fixed" if twin else ""),
             "key": key,
@@ -106,14 +108,13 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
                        for d, v in pf.equity_curve.items()],
             "cash_chf": pf.cash,
             "positions": positions,
-            "trades": [{
-                "date": t.date.strftime("%Y-%m-%d"), "ticker": t.ticker,
-                "side": t.side, "quantity": t.quantity,
-                "price": t.exec_price, "fx": t.fx_rate,
-                "value_chf": t.gross_chf,
-                "pnl_chf": t.realized_pnl_chf if t.side == "SELL" else None,
-                "reason": t.reason,
-            } for t in pf.trades[-300:]],
+            # Every fill with the decision behind it (journal.py); the
+            # 5-year replay keeps the latest 300 to stay small.
+            "trades": rows if mode == "paper" else rows[-300:],
+            # Positions from first buy to last sell (paper only).
+            "trips": journal.round_trips(rows, pf.equity_curve, pf.positions,
+                                         prices_chf, pf.initial_cash, last)
+            if mode == "paper" else [],
             "activity": acc.activity[-120:],
             "pending_orders": acc.broker.pending_to_list(),
             # What each rule is waiting for at the last close.
@@ -146,6 +147,7 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
                   "slippage_bps": config.SLIPPAGE_BPS,
                   "fx_bps": config.FX_CONVERSION_BPS},
         "currencies": market.currencies,
+        "groups": {t: journal.asset_group(t) for t in market.tickers},
         "agents": agents,
         "prices": prices,
         "fx": fx,

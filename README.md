@@ -74,6 +74,18 @@ trade) and a rough closeness score to its buy rule. The 3D network at the top
 (`docs/hub.js`) adds a small point every day an agent comes close to buying
 a market, so it gets denser the longer the accounts run.
 
+The live page has six sections: **Overview** (the 3D network, what each
+agent is doing, standings, warnings and latest trades), **Leaderboard**,
+**Agent analysis** (any two accounts side by side, with a summary written
+only from the numbers), **Trades** (every position from entry to exit, with
+the reasons, rule values, scores and headlines the agent recorded when it
+decided), **Risk** (drawdowns, volatility, concentration, exposure and
+warnings) and **Performance** (all equity curves, zoomable, in CHF, % or
+P&L). A time range (today, 7 days, 30 days, all time or custom) applies to
+all of them. Every number is computed once, in `docs/metrics.js`, from the
+fills and closing values the simulation saved (`engine/journal.py` groups
+fills into positions); for "all time" it matches the Python scoreboard.
+
 To start over, delete `state/paper_state.json` and change
 `PAPER_START_DATE` in `config.py`.
 
@@ -96,6 +108,9 @@ To start over, delete `state/paper_state.json` and change
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
+| `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
+| `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
+| `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
 | `midday_news.py` | News Analyst midday check: live prices, trades fill at once |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |

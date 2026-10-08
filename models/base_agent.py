@@ -174,6 +174,14 @@ class BaseAgent(ABC):
         items.sort(key=lambda i: (not i["held"], -(i["progress"] or 0)))
         return items
 
+    def decision_details(self, signal: Signal, date: pd.Timestamp) -> dict:
+        """Extra facts the agent itself used for ``signal`` (journal only).
+
+        Called right after ``calculate_signals`` on the decision date, so it
+        can only see what the agent saw. Agents without extra facts add none.
+        """
+        return {}
+
     # -- helpers -------------------------------------------------------------
     def get_state(self) -> dict:
         """Strategy memory that must survive between daily runs."""

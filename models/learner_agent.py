@@ -221,6 +221,18 @@ class LearnerAgent(BaseAgent):
         keep = [s for s in signals if s.action is Action.SELL] + buys
         return super().execute_trade(keep, date, portfolio, broker)
 
+    def decision_details(self, signal, date) -> dict:
+        d = self.last_decisions.get(signal.ticker)
+        m = self.memory.get(signal.ticker)
+        if not d or not m or self.w is None:
+            return {}
+        a = ACTIONS.index(d["action"])
+        parts = self._contributions(np.array(m["phi"]), a)[:3]
+        return {"model_scores": dict(zip(ACTIONS, d["q"])),
+                "explored": d["explored"],
+                "factors": [{"feature": n, "effect": round(c, 4)}
+                            for n, c in parts]}
+
     # -- explaining ----------------------------------------------------------
     def _contributions(self, phi: np.ndarray, a: int) -> list[tuple[str, float]]:
         avg = self.w[:, :N_FEAT].mean(axis=0)

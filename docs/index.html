@@ -197,6 +197,86 @@ details summary { cursor: pointer; font: .76rem var(--f-data); color: var(--mute
 @media (max-width: 600px) { .hub-key span + span { display: none; } }
 .hub-key { position: absolute; top: 12px; left: max(16px, 4vw); font: .74rem var(--f-data); color: var(--faint); display: grid; gap: 2px; pointer-events: none; }
 
+/* Research terminal (terminal.js) */
+.faint { color: var(--faint); }
+.small { font-size: .8rem !important; }
+.h-sm { font: 500 .74rem var(--f-data); color: var(--faint); margin: 0 0 6px; font-weight: 500; }
+.na { font: .7rem var(--f-data); color: var(--faint); white-space: nowrap; }
+.live-nav { display: flex; flex-wrap: wrap; gap: 4px 22px; border-bottom: 1px solid var(--line); margin-top: -20px; }
+.live-nav button { font: 500 .86rem var(--f-data); color: var(--muted); background: none; border: 0; padding: 8px 0; cursor: pointer;
+  border-bottom: 2px solid transparent; text-transform: uppercase; letter-spacing: .04em; }
+.live-nav button[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+.timebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; font: .78rem var(--f-data); margin-bottom: -12px; }
+.timebar button { font: inherit; color: var(--muted); background: var(--raise); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 9px; cursor: pointer; }
+.timebar button[aria-pressed="true"] { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+.timebar .custom { display: inline-flex; gap: 6px; align-items: center; margin-left: 6px; }
+.timebar input[type=date] { font: inherit; color: var(--ink); background: var(--raise); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 6px; color-scheme: dark; }
+.timebar .range-note { margin-left: 8px; }
+table.dense { font-size: .8rem; }
+table.dense td { padding: 6px 10px 6px 0; vertical-align: middle; }
+table.dense th { padding-right: 10px; }
+table.dense .agent-name small { font-size: .7rem; }
+table.lb tr.lead td { background: color-mix(in srgb, var(--c) 7%, transparent); }
+table.lb tr.lead td:first-child { box-shadow: inset 2px 0 0 var(--c); color: var(--ink); font-weight: 600; }
+table.lb tr.ref td { color: var(--muted); }
+.rk { color: var(--faint); padding-left: 8px !important; }
+.vs { font: .74rem var(--f-data); white-space: nowrap; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font: .8rem var(--f-data); }
+.filters input[type=search] { font: .82rem var(--f-data); color: var(--ink); background: var(--raise); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 4px 8px; min-width: min(280px, 100%); flex: 1 1 220px; }
+.trips { display: grid; border-top: 1px solid var(--line); }
+details.trip { border-bottom: 1px solid var(--line); }
+details.trip > summary { list-style: none; display: grid; align-items: center; gap: 4px 14px; padding: 8px 0 8px 8px; font: .82rem var(--f-body);
+  color: var(--ink); grid-template-columns: 5.6rem minmax(8rem, 1.2fr) 4.8rem auto minmax(9rem, 1.4fr) minmax(6rem, .8fr) minmax(8rem, 1fr) 3rem;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--c) 60%, transparent); }
+details.trip > summary::-webkit-details-marker { display: none; }
+details.trip[open] > summary { background: var(--raise); }
+details.trip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.trip .tick, .mini .tick { font: 500 .84rem var(--f-data); }
+.st-open { color: var(--ink); } .st-closed { color: var(--faint); }
+.trip-body { display: grid; gap: 12px; padding: 10px 0 16px 10px; }
+.grid-dec { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.dec { display: grid; gap: 6px; align-content: start; }
+.dec h4 { margin: 0; font: 500 .8rem var(--f-body); }
+.dec h4 .faint { font-weight: 400; }
+.kvs { display: grid; grid-template-columns: 9.5rem 1fr; gap: 8px; font-size: .82rem; }
+.kvs > span:first-child { color: var(--faint); font: .72rem var(--f-data); padding-top: 2px; }
+.kvs b { font-weight: 500; }
+ul.heads { margin: 0; padding-left: 16px; display: grid; gap: 2px; color: var(--muted); }
+.more { justify-self: start; font: .8rem var(--f-data); color: var(--ink); background: var(--raise); border: 1px solid var(--line); border-radius: var(--radius); padding: 5px 10px; cursor: pointer; }
+@media (max-width: 860px) {
+  details.trip > summary { grid-template-columns: 1fr auto; }
+  details.trip > summary > :nth-child(1), details.trip > summary > :nth-child(6), details.trip > summary > :nth-child(8) { display: none; }
+  .kvs { grid-template-columns: 1fr; gap: 2px; }
+}
+.alerts { display: grid; gap: 6px; }
+.alert { font-size: .84rem; padding: 7px 10px; border-left: 2px solid var(--faint); background: var(--raise); color: var(--muted); }
+.alert b { color: var(--ink); font: 600 .72rem var(--f-data); text-transform: uppercase; letter-spacing: .05em; margin-right: 6px; }
+.alert.warn { border-left-color: var(--down); }
+.glance-grid { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); align-items: start; }
+.glance .alert { margin-bottom: 6px; }
+.mini { display: grid; }
+.mini-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
+.mini-row:last-child { border-bottom: 0; }
+.mini-row .agent-name { font-weight: 400; gap: 7px; }
+.perf-grid { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: 20px; align-items: start; }
+.chart-box.tall { height: 380px; }
+.perf-side { display: grid; font-size: .82rem; }
+.ps-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.ps-row .faint { grid-column: 2; font-size: .74rem; text-align: right; }
+.ps-row.off { opacity: .4; }
+@media (max-width: 860px) { .perf-grid { grid-template-columns: 1fr; } }
+.near { padding-top: 6px; }
+.hbar { display: grid; grid-template-columns: minmax(6rem, 12rem) 1fr 4rem; gap: 10px; align-items: center; font-size: .82rem; padding: 3px 0; }
+.hb { height: 8px; background: var(--raise); } .hb i { display: block; height: 100%; background: var(--muted); }
+table.cmp td.best::before { content: "● "; color: var(--up); font-size: .6rem; vertical-align: middle; }
+.vs-pick { display: flex; gap: 8px; align-items: center; }
+.summary p { margin: 0 0 6px; font-size: .9rem; max-width: 70ch; }
+.asset-box { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; font-size: .84rem; border-top: 1px solid var(--line); padding-top: 10px; }
+.asset-box > div { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.asset-box .eyebrow { min-width: 6.5rem; }
+.chip { font: .78rem var(--f-data); }
+
 footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--line); padding-top: 14px; max-width: 80ch; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -224,7 +304,11 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="hub.js"></script>
+<script src="metrics.js"></script>
+<script src="terminal.js"></script>
 <script>
 (() => {
   "use strict";
@@ -547,16 +631,37 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       <div class="panel"><div class="pair head"><span>Strategy</span><span class="r">Learning</span><span class="r">Fixed twin</span><span class="r">Difference</span></div>${rows}</div></section>`;
   }
 
+  const liveSub = () => {
+    const s = store.get("v3-live-sub");
+    return window.V3Terminal && V3Terminal.TABS.some(t => t[0] === s) ? s : "overview";
+  };
+
   function renderLive(d) {
-    const days = d.agents[0].equity.length;
-    const html = [hubHtml(d), hero(d), raceHtml(d, true), agentsNow(d), standings(d, true), learningVsFixed(d)];
+    const sub = window.V3Terminal ? liveSub() : "overview";
+    const nav = window.V3Terminal ? `<nav class="live-nav" aria-label="Live sections">${V3Terminal.TABS.map(([k, l]) =>
+      `<button type="button" data-live="${k}" aria-pressed="${k === sub}">${l}</button>`).join("")}</nav>` : "";
+    if (sub !== "overview") {
+      root.innerHTML = nav + `<div id="term" style="display:grid;gap:28px"></div>`;
+      bindLiveNav();
+      V3Terminal.render(sub, $("#term"), d);
+      return;
+    }
+    const html = [nav, hubHtml(d), hero(d), window.V3Terminal ? V3Terminal.overviewHtml(d) : "", raceHtml(d, true), agentsNow(d),
+      standings(d, true), learningVsFixed(d)];
     html.push(allocation(d));
     html.push(`<section id="desk"></section>`);
     root.innerHTML = html.join("");
+    bindLiveNav();
     drawRace(d, true);
     drawSparks(d);
     pickDesk(d);
     mountHub(d);
+  }
+
+  function bindLiveNav() {
+    document.querySelectorAll("[data-live]").forEach(b => b.addEventListener("click", () => {
+      store.set("v3-live-sub", b.dataset.live); show("paper"); scrollTo(0, 0);
+    }));
   }
 
   function hubHtml(d) {
@@ -901,6 +1006,20 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   document.querySelectorAll("nav.views button").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => view && show(view));
   new MutationObserver(() => view && show(view)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  if (window.V3Terminal) V3Terminal.init({ cls, pct, chf, chf2, esc, fmtDate, ts, sw, color, store, baseOptions, series, lineStyle,
+    addChart: c => charts.push(c), clearCharts: destroyCharts });
+
+  // New results arrive after each daily run and each midday check: look for
+  // them every 5 minutes and redraw the page when the data has changed.
+  setInterval(async () => {
+    if (document.hidden) return;
+    const p = await load("paper");
+    if (p && DATA.paper && p.generated_utc !== DATA.paper.generated_utc) {
+      DATA.paper = p;
+      if (view === "paper") { const y = scrollY; show("paper"); scrollTo(0, y); }
+    }
+  }, 5 * 60 * 1000);
 
   Promise.all(["paper", "backtest", "walkforward"].map(load)).then(([p, b, w]) => {
     Object.assign(DATA, { paper: p, backtest: b, walkforward: w });
