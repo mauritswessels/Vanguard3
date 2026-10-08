@@ -85,6 +85,43 @@ class YFinanceProvider(DataProvider):
         raise DataUnavailableError(f"{symbol}: {last_error}")
 
 
+class StooqProvider(DataProvider):
+    """Free end-of-day data from stooq.com, used as a backup for Yahoo.
+
+    Only US listings (stocks and ETFs) and Xetra shares are mapped.
+    """
+
+    name = "stooq"
+
+    @staticmethod
+    def symbol(ticker: str) -> str | None:
+        if "." not in ticker and "=" not in ticker:
+            return ticker.lower() + ".us"
+        if ticker.endswith(".DE"):
+            return ticker[:-3].lower() + ".de"
+        return None
+
+    def fetch(self, symbol, start, end):
+        import io
+        import urllib.request
+        code = self.symbol(symbol)
+        if code is None:
+            raise DataUnavailableError(f"{symbol}: not available on stooq")
+        url = (f"https://stooq.com/q/d/l/?s={code}&i=d"
+               f"&d1={start:%Y%m%d}&d2={end:%Y%m%d}")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            text = r.read().decode()
+        if not text.startswith("Date"):
+            raise DataUnavailableError(f"{symbol}: stooq said {text[:60]!r}")
+        df = pd.read_csv(io.StringIO(text), index_col="Date", parse_dates=True)
+        if "Volume" not in df:
+            df["Volume"] = 0
+        if df.empty:
+            raise DataUnavailableError(f"No stooq data for {symbol}")
+        return clean_bars(df)
+
+
 class SyntheticProvider(DataProvider):
     """Deterministic random-walk data for offline tests and demos.
 
@@ -230,8 +267,10 @@ class DataManager:
     """Loads market data through a provider with an on-disk CSV cache."""
 
     def __init__(self, provider: DataProvider,
-                 cache_dir: Path | None = config.CACHE_DIR):
+                 cache_dir: Path | None = config.CACHE_DIR,
+                 backup: DataProvider | None = None):
         self.provider = provider
+        self.backup = backup
         self.cache_dir = Path(cache_dir) if cache_dir else None
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -266,7 +305,14 @@ class DataManager:
         if cached is not None:
             logger.debug("cache hit %s", symbol)
             return cached
-        df = clean_bars(self.provider.fetch(symbol, start, end))
+        try:
+            df = clean_bars(self.provider.fetch(symbol, start, end))
+        except Exception as exc:
+            if self.backup is None:
+                raise
+            logger.warning("%s failed on %s (%s); trying %s", symbol,
+                           self.provider.name, exc, self.backup.name)
+            return clean_bars(self.backup.fetch(symbol, start, end))
         self._write_cache(symbol, df)
         return df
 
@@ -275,15 +321,16 @@ class DataManager:
              end: pd.Timestamp, strict: bool = False) -> MarketData:
         """Fetch all tickers plus the FX rates they need.
 
-        With ``strict`` every ticker must load; otherwise failing tickers
-        are skipped with a warning.
+        With ``strict`` every ticker must load (``True``), or every ticker
+        in that collection (a set of tickers); other failing tickers are
+        skipped with a warning.
         """
         bars = {}
         for ticker in watchlist:
             try:
                 bars[ticker] = self.get_bars(ticker, start, end)
             except Exception as exc:  # one bad ticker must not kill a run
-                if strict:
+                if strict is True or (strict and ticker in strict):
                     raise
                 logger.warning("Skipping %s: %s", ticker, exc)
         if not bars:
@@ -302,7 +349,7 @@ def load_market_data(source: str, start: pd.Timestamp, end: pd.Timestamp,
                      watchlist: dict[str, str] = config.WATCHLIST,
                      cache_dir: Path | None = config.CACHE_DIR,
                      seed: int = config.SYNTHETIC_SEED,
-                     strict: bool = False) -> MarketData:
+                     strict: bool | set = False) -> MarketData:
     """Convenience loader honouring ``config.DATA_SOURCE`` semantics.
 
     ``auto`` tries yfinance first and falls back to synthetic data when the
@@ -310,7 +357,8 @@ def load_market_data(source: str, start: pd.Timestamp, end: pd.Timestamp,
     """
     if source in ("yfinance", "auto"):
         try:
-            return DataManager(YFinanceProvider(), cache_dir).load(
+            return DataManager(YFinanceProvider(), cache_dir,
+                               backup=StooqProvider()).load(
                 watchlist, start, end, strict=strict)
         except Exception as exc:
             if source == "yfinance":

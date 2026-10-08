@@ -18,12 +18,20 @@
   "use strict";
   const THREE = window.THREE;
 
-  const GROUPS = {   // market colours, by kind of asset
-    tech: { color: "#f17bb4", tickers: ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"] },
-    index: { color: "#a58cf2", tickers: ["SPY", "QQQ", "EWL", "VGK", "EWJ", "EEM"] },
-    macro: { color: "#e9c75a", tickers: ["TLT", "GLD", "SLV", "DBC"] },
+  // Market colours, by kind of asset.
+  const FUNDS = ["SPY", "QQQ", "IWM", "DIA", "EWL", "VGK", "EWJ", "EEM", "FXI", "INDA", "EWZ",
+    "XLK", "XLF", "XLV", "XLE", "XLI", "XLU", "VNQ"];
+  const MACRO = ["TLT", "IEF", "LQD", "HYG", "GLD", "SLV", "DBC", "USO"];
+  const GROUPS = {
+    us: { color: "#f17bb4", label: "US stocks" },
+    swiss: { color: "#ff9d5c", label: "Swiss stocks" },
+    euro: { color: "#7fd1ff", label: "European stocks" },
+    funds: { color: "#a58cf2", label: "index and country funds" },
+    macro: { color: "#e9c75a", label: "bonds, metals, commodities" },
   };
-  const groupOf = t => Object.values(GROUPS).find(g => g.tickers.includes(t)) || { color: "#9aa3ad" };
+  const groupOf = t => GROUPS[/\.SW$/.test(t) ? "swiss" : /\.(DE|PA|AS)$/.test(t) ? "euro"
+    : FUNDS.includes(t) ? "funds" : MACRO.includes(t) ? "macro" : "us"];
+  const LABELS = 28;          // only the busiest markets get a name tag
   const EDGE = "#2bb3a3";   // the network's thin links
 
   function label(text, color, size = 22) {
@@ -120,10 +128,13 @@
         a.trades.forEach(t => add(t.ticker, 4));
         (a.watch || []).forEach(w => add(w.ticker, w.held ? 4 : 0.2));
       }
-      const R = 80, pos = new Map(), N = tickers.length;
+      const N = tickers.length, extra = Math.max(0, N - 15);
+      const R = 80 + 0.25 * extra, bandMax = 88 + 0.32 * extra, yMax = 28 + 0.18 * extra;
+      this.extent = bandMax;
+      const pos = new Map();
       tickers.forEach((t, i) => {               // start on a Fibonacci sphere
         const y = 1 - (i + 0.5) / N * 2, rr = Math.sqrt(1 - y * y), th = i * Math.PI * (3 - Math.sqrt(5));
-        pos.set(t, new THREE.Vector3(Math.cos(th) * rr * R, y * R * 0.55, Math.sin(th) * rr * R));
+        pos.set(t, new THREE.Vector3(Math.cos(th) * rr * R, y * yMax, Math.sin(th) * rr * R));
       });
       const tmp = new THREE.Vector3();
       for (let it = 0; it < 220; it++) {
@@ -137,8 +148,8 @@
           }
           p.add(f);
           const len = Math.hypot(p.x, p.z);                // keep markets in an outer band
-          const target = Math.min(Math.max(len, 62), 88);
-          p.x *= target / (len || 1); p.z *= target / (len || 1); p.y = Math.max(-26, Math.min(30, p.y));
+          const target = Math.min(Math.max(len, 62), bandMax);
+          p.x *= target / (len || 1); p.z *= target / (len || 1); p.y = Math.max(-yMax, Math.min(yMax + 4, p.y));
         }
       }
       this.tickers = tickers; this.tickerPos = pos;
@@ -214,8 +225,8 @@
               .add(new THREE.Vector3(gauss(r), gauss(r), gauss(r)).multiplyScalar(2.4 + 2.5 * (1 - p)));
             const col = g.color.clone().lerp(new THREE.Color("#7d8791"), p >= 1 ? 0 : 0.45 - 0.4 * p);
             speck(pos, col, p >= 1 ? 0.8 : 0.45 + 0.2 * p, { kind: "scan", agent: a, ticker: t, date: d, p }, key);
-            link(pos, tp, EDGE, d === date ? 0.45 : 0.07 + 0.08 * p, key);
-            if (d === date) link(home, pos, EDGE, 0.22, key);
+            link(pos, tp, EDGE, d === date ? 0.3 : 0.05 + 0.06 * p, key);
+            if (d === date) link(home, pos, EDGE, 0.1, key);
             tally.set(t, (tally.get(t) || 0) + 1);
             touches.set(t, touches.get(t) + 1);
           });
@@ -257,8 +268,10 @@
         });
       }
 
-      // Markets grow with how often the agents look at or trade them.
+      // Markets grow with how often the agents look at or trade them; the busiest get a name tag.
+      const rank = new Map([...this.markets].sort((a, b) => touches.get(b.t) - touches.get(a.t)).map((m, i) => [m.t, i]));
       for (const m of this.markets) {
+        m.lab.visible = this.markets.length <= LABELS || (rank.get(m.t) < LABELS && touches.get(m.t) > 0);
         const s = Math.min(5.5, 1.3 + 0.3 * Math.sqrt(touches.get(m.t))) * (0.3 + 0.7 * k);
         m.group.position.copy(P(m.home)); m.node.scale.setScalar(s); m.lab.position.set(0, s + 3.2, 0); m.size = s;
       }
@@ -266,7 +279,7 @@
       // Specks: one instanced mesh, so thousands stay cheap.
       this.specks = specks;
       if (specks.length) {
-        const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8),
+        const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 7, 5),
           new THREE.MeshStandardMaterial({ roughness: 0.6, emissiveIntensity: 0.3 }), specks.length);
         const m4 = new THREE.Matrix4();
         specks.forEach((s, i) => {
@@ -415,7 +428,7 @@
     resize() {
       const w = this.el.clientWidth || 1, h = this.el.clientHeight || 1;
       this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
-      this.view.radius = w / h < 1 ? 185 : 205;
+      this.view.radius = (this.extent || 88) * (w / h < 1 ? 2.0 : 1.75);
     }
 
     frame() {

@@ -536,7 +536,10 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     return `<section class="hub" id="hub" aria-label="3D view of the live accounts">
       <div class="hub-key"><span>big nodes = agents (size = account value) · labelled = markets</span>
         <span>specks = a day an agent came close to buying that market</span>
-        <span>solid line = held now · dashed = order for the next open</span></div>
+        <span>solid line = held now · dashed = order for the next open</span>
+        <span>markets: <i style="color:#f17bb4;font-style:normal">US stocks</i> · <i style="color:#ff9d5c;font-style:normal">Swiss</i> ·
+          <i style="color:#7fd1ff;font-style:normal">European</i> · <i style="color:#a58cf2;font-style:normal">funds</i> ·
+          <i style="color:#e9c75a;font-style:normal">bonds and raw materials</i></span></div>
       <div class="hub-tip" hidden></div>
       <div class="hub-bar"><button type="button" class="hub-play">replay</button>
         <input type="range" min="0" max="${days - 1}" value="${days - 1}" aria-label="Day since launch">
@@ -668,7 +671,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     if (a.benchmark) return "";
     if (a.ai && a.ai.kind === "news") return `<div class="panel" style="display:grid;gap:6px"><h3>How it decides</h3>
       <div class="muted" style="font-size:.88rem">Each evening it reads headlines on every market, on politics and the economy, plus the latest
-      quarterly results of the five stocks, and asks Claude for a target share of the account per market. It buys new targets, sells
+      quarterly results of every stock, and asks Claude for a target share of the account per market. It buys new targets, sells
       markets set to zero and leaves the rest alone to save fees. ${esc(a.ai.status)}.</div></div>`;
     if (a.ai) {
       const ai = a.ai, W = ai.weights;

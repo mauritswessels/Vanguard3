@@ -31,28 +31,46 @@ FX_CONVERSION_BPS = 2.0          # spread paid when converting CHF <-> foreign
 CASH_BUFFER_PCT = 0.005          # cash kept back when sizing to absorb gaps
 
 # ---------------------------------------------------------------------------
-# Watchlist: ticker -> trading currency.
-# The currency decides which FX rate converts prices into CHF.
+# Watchlist: ticker (Yahoo Finance symbol) -> trading currency.
+# About 100 large, heavily traded markets, all tradable at Interactive
+# Brokers. The currency decides which FX rate converts prices into CHF;
+# Swiss shares trade in CHF and need no conversion.
 # ---------------------------------------------------------------------------
+_US_STOCKS = [
+    # Technology and communication
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "AVGO", "TSLA", "ORCL",
+    "ADBE", "CRM", "AMD", "CSCO", "INTC", "QCOM", "TXN", "IBM", "NFLX", "DIS",
+    # Finance
+    "BRK-B", "JPM", "V", "MA", "BAC", "GS",
+    # Health care
+    "UNH", "LLY", "JNJ", "ABBV", "MRK", "PFE", "TMO", "ABT",
+    # Consumer
+    "PG", "KO", "PEP", "WMT", "COST", "HD", "MCD", "NKE",
+    # Energy, industry, telecoms
+    "XOM", "CVX", "CAT", "GE", "HON", "BA", "LIN", "T", "VZ",
+]
+_SWISS_STOCKS = [   # the SMI and other large SIX shares, traded in CHF
+    "NESN.SW", "ROG.SW", "NOVN.SW", "UBSG.SW", "ZURN.SW", "ABBN.SW",
+    "CFR.SW", "LONN.SW", "SIKA.SW", "GIVN.SW", "ALC.SW", "HOLN.SW",
+    "SREN.SW", "PGHN.SW", "SCMN.SW", "SLHN.SW", "GEBN.SW", "LOGN.SW",
+    "KNIN.SW", "SOON.SW",
+]
+_EURO_STOCKS = [    # large euro-area shares, traded in EUR
+    "ASML.AS", "SAP.DE", "MC.PA", "SIE.DE", "TTE.PA", "SAN.PA", "ALV.DE",
+    "OR.PA", "AIR.PA", "SU.PA", "DTE.DE", "BNP.PA",
+]
+_FUNDS = [          # US-listed ETFs: indices, countries, sectors, bonds, raw materials
+    "SPY", "QQQ", "IWM", "DIA",
+    "EWL", "VGK", "EWJ", "EEM", "FXI", "INDA", "EWZ",
+    "XLK", "XLF", "XLV", "XLE", "XLI", "XLU", "VNQ",
+    "TLT", "IEF", "LQD", "HYG",
+    "GLD", "SLV", "DBC", "USO",
+]
 WATCHLIST = {
-    # High-volume US technology
-    "AAPL": "USD",
-    "MSFT": "USD",
-    "NVDA": "USD",
-    "GOOGL": "USD",
-    "AMZN": "USD",
-    # Global index ETFs
-    "SPY": "USD",   # S&P 500
-    "QQQ": "USD",   # Nasdaq 100
-    "EWL": "USD",   # MSCI Switzerland
-    "VGK": "USD",   # FTSE Europe
-    "EWJ": "USD",   # MSCI Japan
-    "EEM": "USD",   # MSCI Emerging Markets
-    # Macro: rates, commodities and metals
-    "TLT": "USD",   # 20y+ US Treasuries
-    "GLD": "USD",   # Gold
-    "SLV": "USD",   # Silver
-    "DBC": "USD",   # Broad commodities basket
+    **{t: "USD" for t in _US_STOCKS},
+    **{t: "CHF" for t in _SWISS_STOCKS},
+    **{t: "EUR" for t in _EURO_STOCKS},
+    **{t: "USD" for t in _FUNDS},
 }
 
 # Yahoo Finance symbol giving the price of 1 unit of the currency in CHF.

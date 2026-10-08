@@ -1,7 +1,7 @@
 """Agent 5 - "The News Analyst" (reads the news with Claude).
 
 Every evening, on the latest completed session only, it builds a brief of
-headlines (per market and on politics / the economy), the five stocks'
+headlines (per market and on politics / the economy), each stock's
 latest quarterly results and recent price moves, then asks Claude for
 target weights with a short reason per market (see ``news.py``).
 
@@ -64,7 +64,8 @@ class NewsAgent(BaseAgent):
         r = self.row(t, date)
         if r is None:
             return "price history incomplete"
-        return (f"close {r.close:.2f} USD, 1 week {r.ret5:+.1%}, "
+        ccy = self.market.currencies[t]
+        return (f"close {r.close:.2f} {ccy}, 1 week {r.ret5:+.1%}, "
                 f"1 month {r.ret20:+.1%}, vs 200-day average {r.vs200:+.1%}")
 
     def calculate_signals(self, date: pd.Timestamp,

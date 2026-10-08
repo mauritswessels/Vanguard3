@@ -2,7 +2,7 @@
 
 End-of-day, multi-agent paper-trading simulator. Three rule-based agents
 (pure pandas/NumPy, no LLM calls) each trade their own 100,000 CHF account
-against the same watchlist; a scoreboard ranks them against buy-and-hold SPY.
+against the same watchlist of 108 large markets (US, Swiss and euro-area shares plus index, sector, bond and commodity funds), all tradable at Interactive Brokers; a scoreboard ranks them against buy-and-hold SPY.
 
 On macOS the command is `python3` (there is no `python`). Install the
 packages once into a virtual environment, then run through it:
@@ -45,7 +45,7 @@ after launch join automatically on the next daily run.
 
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and
-the economy, plus the five stocks' latest quarterly results (SEC EDGAR), and
+the economy, plus each stock's latest quarterly results (Yahoo Finance), and
 asks Claude for target weights with a short stated reason per market. It
 needs an `ANTHROPIC_API_KEY` repository secret; without one it waits and
 the dashboard says so. It only decides for the newest session (news cannot

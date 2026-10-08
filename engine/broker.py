@@ -71,8 +71,12 @@ class SimulatedBroker(BaseBroker):
 
     def process(self, date: pd.Timestamp) -> list[TradeRecord]:
         # Orders submitted today are only eligible from tomorrow's open.
-        eligible = [o for o in self.pending if o.created < date]
-        self.pending = [o for o in self.pending if o.created >= date]
+        # An order for a market with no session today (a local holiday)
+        # waits for that market's next open instead of expiring.
+        opens = self.market.open_panel.loc[date]
+        ready = lambda o: o.created < date and math.isfinite(opens.get(o.ticker, math.nan))
+        eligible = [o for o in self.pending if ready(o)]
+        self.pending = [o for o in self.pending if not ready(o)]
         # Sells first so their proceeds can fund same-session buys.
         eligible.sort(key=lambda o: o.side != "SELL")
 

@@ -155,9 +155,11 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
     return payload
 
 
-def _scans(agent, calendar, start, last, floor: float = 0.6) -> list:
-    """``[[date, {ticker: progress}]]`` for tickers at least ``floor`` of
-    the way to the agent's buy rule. Uses the agent's current settings."""
+def _scans(agent, calendar, start, last, floor: float = 0.75,
+           top: int = 12) -> list:
+    """``[[date, {ticker: progress}]]``: each day's ``top`` tickers closest
+    to the agent's buy rule, if at least ``floor`` of the way there. Uses
+    the agent's current settings."""
     out = []
     for d in calendar[(calendar >= start) & (calendar <= last)]:
         day = {}
@@ -165,7 +167,8 @@ def _scans(agent, calendar, start, last, floor: float = 0.6) -> list:
             check = agent.entry_check(t, d)
             if check and check["progress"] >= floor:
                 day[t] = round(check["progress"], 2)
-        out.append([d.strftime("%Y-%m-%d"), day])
+        best = sorted(day.items(), key=lambda kv: -kv[1])[:top]
+        out.append([d.strftime("%Y-%m-%d"), dict(best)])
     return out
 
 

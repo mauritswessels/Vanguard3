@@ -62,15 +62,17 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
     # Learning agents replay the last LOOKBACK_YEARS at every review.
     data_start = (paper_start - pd.DateOffset(years=LOOKBACK_YEARS)
                   - pd.Timedelta(days=config.WARMUP_DAYS))
-    # Strict: an account holding a ticker that failed to download could not
-    # be valued, so a partial download aborts the run (the next run catches
-    # up on the missed sessions).
+    # An account holding (or about to trade) a ticker that failed to
+    # download could not be valued, so such a failure aborts the run (the
+    # next run catches up). Any other failing ticker is skipped for today.
+    saved = json.loads(state_path.read_text()) if state_path.exists() else None
+    needed = {p["ticker"] for a in (saved or {}).get("accounts", [])
+              for p in a["portfolio"]["positions"] + a["pending_orders"]}
     market = load_market_data(source, data_start, cutoff, seed=seed,
-                              strict=True)
+                              strict=needed or {config.BENCHMARK_TICKER})
 
-    if state_path.exists():
-        sim = Simulator.from_dict(json.loads(state_path.read_text()), market,
-                                  tuner=retune)
+    if saved is not None:
+        sim = Simulator.from_dict(saved, market, tuner=retune)
         # Agents added to the lineup after launch join with fresh accounts.
         have = {(agent_key(a.agent), a.agent.name) for a in sim.accounts}
         for agent in paper_lineup(market):
