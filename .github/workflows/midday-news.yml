@@ -1,12 +1,18 @@
-# Runs the paper-trading agents every weekday after the New York close and
-# publishes the results to the dashboard (GitHub Pages, served from docs/).
-name: Daily paper trading
+# The News Analyst's second look at the news, during the trading day.
+# Only that account is touched; fills are simulated at live Yahoo prices.
+name: Midday news check
 
 on:
   schedule:
-    # 21:30 UTC = 17:30 New York in summer, 16:30 in winter.
-    - cron: "30 21 * * 1-5"
-  workflow_dispatch: {}
+    # 14:37 UTC = 16:37 Swiss time in summer (15:37 in winter). New York has
+    # been open for a while and Europe still is.
+    - cron: "37 14 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run the check but save nothing"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -16,9 +22,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  trade:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -33,15 +39,10 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -t .
 
-      - name: Advance paper accounts
+      - name: Midday news check
         env:
-          # Only the News Analyst uses it; without it that agent just waits.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python daily_run.py
-
-      - name: Refresh 5-year backtest
-        continue-on-error: true
-        run: python main.py --source yfinance --days 1825 --dashboard --no-save
+        run: python midday_news.py ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Commit results
         run: |
@@ -51,7 +52,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Paper trading update $(date -u +%F)"
+            git commit -m "Midday news check $(date -u +%F)"
             git pull --rebase origin main
             git push
           fi

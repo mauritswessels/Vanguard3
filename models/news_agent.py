@@ -10,6 +10,9 @@ target weights with a short reason per market (see ``news.py``).
 * Sells a held market whose target drops to zero.
 * Leaves other holdings alone, to keep trading costs down.
 
+A second, shorter check runs around midday (``midday_news.py``): it may
+change targets, and those trades fill at once at the live price.
+
 Sessions replayed while catching up after a missed run are skipped: the
 news it can read is today's, so it only decides for the newest session.
 Without ``ANTHROPIC_API_KEY`` (or when the news or the call fails) it does
@@ -36,7 +39,8 @@ logger = logging.getLogger("vanguard3.news")
 
 class NewsAgent(BaseAgent):
     name = "News Analyst"
-    style = "Claude reads headlines, politics and quarterly results each evening"
+    style = ("Claude reads headlines, politics and quarterly results each "
+             "evening, and again at midday")
 
     def __init__(self, params: dict | None = None):
         super().__init__({**config.NEWS_PARAMS, **(params or {})})
@@ -47,6 +51,9 @@ class NewsAgent(BaseAgent):
         self.calls = 0
         self.tokens = {"input": 0, "output": 0}
         self.headline_count = 0
+        self.model_used = self.params["model"]
+        #: The latest midday check: time (UTC), what happened, trades made.
+        self.midday: dict | None = None
         # Swappable for tests: brief(market_lines) and decide(brief, ...).
         import news
         self.build_brief = news.build_brief
@@ -79,39 +86,55 @@ class NewsAgent(BaseAgent):
         equity = portfolio.equity(prices)
         holdings = {t: p.quantity * float(prices[t]) / equity
                     for t, p in portfolio.positions.items()}
+        lines = {t: self._price_line(t, date) for t in self.indicators}
+        if not self.consult(lines, holdings, portfolio.cash / equity):
+            return []
+        self.decided = date.strftime("%Y-%m-%d")
+        self.status = f"Decided with {self.model_used}"
+        return self.target_signals(portfolio)
+
+    def consult(self, lines: dict[str, str], holdings: dict[str, float],
+                cash_pct: float, note: str = "") -> bool:
+        """Read the news and ask Claude; on success store the new targets.
+
+        On failure (no key, no news, a bad reply) the old targets stay and
+        ``status`` says why.
+        """
         p = self.params
         try:
-            brief = self.build_brief({t: self._price_line(t, date)
-                                      for t in self.indicators})
+            brief = self.build_brief(lines)
             self.headline_count = len(brief["macro"]) + sum(
                 len(e["news"]) for e in brief["markets"].values())
             if self.headline_count == 0:
                 raise RuntimeError("no headlines could be loaded")
-            decision = self.decide(brief, holdings, portfolio.cash / equity,
-                                   p["model"], p["max_weight"], p["max_total"])
+            extra = {"note": note} if note else {}
+            decision = self.decide(brief, holdings, cash_pct, p["model"],
+                                   p["max_weight"], p["max_total"], **extra)
         except Exception as exc:
             self.status = (
                 "Waiting for an Anthropic API key (no decision made)"
                 if "ANTHROPIC_API_KEY" in str(exc)
                 else f"No decision today: {str(exc)[:160]}")
             logger.warning("%s: %s", self.name, self.status)
-            return []
+            return False
 
         self.targets, self.view = decision["targets"], decision["market_view"]
-        self.decided = date.strftime("%Y-%m-%d")
         self.calls += 1
         usage = decision.get("usage", {})
         self.tokens["input"] += int(usage.get("input_tokens", 0))
         self.tokens["output"] += int(usage.get("output_tokens", 0))
-        self.status = f"Decided with {decision.get('model', p['model'])}"
+        self.model_used = decision.get("model", p["model"])
+        return True
 
+    def target_signals(self, portfolio: Portfolio) -> list[Signal]:
+        """Buy new targets, sell held markets whose target is 0."""
         signals = []
         for t, tgt in self.targets.items():
             held = portfolio.has_position(t)
             reason = tgt["reason"] or "No reason given"
             if held and tgt["weight"] <= 0:
                 signals.append(Signal(t, Action.SELL, reason))
-            elif not held and tgt["weight"] >= p["min_weight"]:
+            elif not held and tgt["weight"] >= self.params["min_weight"]:
                 signals.append(Signal(t, Action.BUY, reason,
                                       score=tgt["weight"]))
         return signals
@@ -148,14 +171,15 @@ class NewsAgent(BaseAgent):
         return {"kind": "news", "model": p["model"], "status": self.status,
                 "decided": self.decided, "market_view": self.view,
                 "calls": self.calls, "headlines": self.headline_count,
-                "tokens": self.tokens, "est_cost_usd": round(cost, 2)}
+                "tokens": self.tokens, "est_cost_usd": round(cost, 2),
+                "midday": self.midday}
 
     # -- persistence ---------------------------------------------------------
     def get_state(self) -> dict:
         return {"targets": self.targets, "view": self.view,
                 "status": self.status, "decided": self.decided,
                 "calls": self.calls, "tokens": self.tokens,
-                "headlines": self.headline_count}
+                "headlines": self.headline_count, "midday": self.midday}
 
     def set_state(self, state: dict) -> None:
         self.targets = state.get("targets", {})
@@ -165,3 +189,4 @@ class NewsAgent(BaseAgent):
         self.calls = state.get("calls", 0)
         self.tokens = state.get("tokens", {"input": 0, "output": 0})
         self.headline_count = state.get("headlines", 0)
+        self.midday = state.get("midday")

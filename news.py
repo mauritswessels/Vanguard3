@@ -181,7 +181,9 @@ def brief_text(brief: dict) -> str:
 SYSTEM = """You manage one account in a PAPER-TRADING research simulation \
 called Vanguard3. No real money is involved and no real orders are placed. \
 Each evening after the New York close you read a news brief and choose \
-target weights for the next session; orders fill at the next open.
+target weights for the next session; orders fill at the next open. Around \
+midday there is a second, shorter check: changes then fill at once, at the \
+current price, in the markets that are open.
 
 Rules: long only. Each weight is between 0 and {max_w}. All weights \
 together at most {max_total}; the rest stays in cash. Every trade costs \
@@ -200,13 +202,16 @@ out is sold. Leave out everything else."""
 
 def ask_claude(brief: dict, holdings: dict[str, float], cash_pct: float,
                model: str, max_w: float, max_total: float,
-               api_key: str | None = None) -> dict:
-    """One Messages API call; returns the parsed decision plus token usage."""
+               note: str = "", api_key: str | None = None) -> dict:
+    """One Messages API call; returns the parsed decision plus token usage.
+
+    ``note`` goes before the brief (the midday check says what it is)."""
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     held = ", ".join(f"{t} {w:.1%}" for t, w in holdings.items()) or "none"
-    user = (f"Universe: {', '.join(brief['markets'])}\n"
+    user = ((note + "\n\n" if note else "")
+            + f"Universe: {', '.join(brief['markets'])}\n"
             f"Current holdings (share of account): {held}; cash {cash_pct:.1%}\n\n"
             + brief_text(brief))
     body = json.dumps({

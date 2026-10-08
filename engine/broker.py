@@ -93,6 +93,12 @@ class SimulatedBroker(BaseBroker):
             # Market closed for this ticker: DAY order expires unfilled.
             return self._reject(order, "no session")
         fx = self.market.fx_rate(order.ticker, date, "Open")
+        return self.fill_at(order, date, price, fx)
+
+    def fill_at(self, order: Order, date: pd.Timestamp, price: float,
+                fx: float):
+        """Fill ``order`` at a given price (the midday check uses this with
+        a live quote); same costs and cash checks as an open fill."""
         pf = self.portfolio
 
         if order.side == "SELL":

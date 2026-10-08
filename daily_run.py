@@ -51,6 +51,24 @@ def last_completed_session(now_utc: pd.Timestamp | None = None
     return day.tz_localize(None)
 
 
+def load_for_state(saved: dict | None, source: str,
+                   paper_start: pd.Timestamp, cutoff: pd.Timestamp,
+                   seed: int = config.SYNTHETIC_SEED):
+    """Daily bars up to ``cutoff`` for every watched market.
+
+    An account holding (or about to trade) a ticker that failed to
+    download could not be valued, so such a failure aborts the run (the
+    next run catches up). Any other failing ticker is skipped for today.
+    """
+    # Learning agents replay the last LOOKBACK_YEARS at every review.
+    data_start = (paper_start - pd.DateOffset(years=LOOKBACK_YEARS)
+                  - pd.Timedelta(days=config.WARMUP_DAYS))
+    needed = {p["ticker"] for a in (saved or {}).get("accounts", [])
+              for p in a["portfolio"]["positions"] + a["pending_orders"]}
+    return load_market_data(source, data_start, cutoff, seed=seed,
+                            strict=needed or {config.BENCHMARK_TICKER})
+
+
 def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
             cutoff: pd.Timestamp, seed: int = config.SYNTHETIC_SEED
             ) -> tuple[Simulator | None, int]:
@@ -59,17 +77,8 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
     Returns the simulator (``None`` before the first session) and the number
     of sessions simulated in this call.
     """
-    # Learning agents replay the last LOOKBACK_YEARS at every review.
-    data_start = (paper_start - pd.DateOffset(years=LOOKBACK_YEARS)
-                  - pd.Timedelta(days=config.WARMUP_DAYS))
-    # An account holding (or about to trade) a ticker that failed to
-    # download could not be valued, so such a failure aborts the run (the
-    # next run catches up). Any other failing ticker is skipped for today.
     saved = json.loads(state_path.read_text()) if state_path.exists() else None
-    needed = {p["ticker"] for a in (saved or {}).get("accounts", [])
-              for p in a["portfolio"]["positions"] + a["pending_orders"]}
-    market = load_market_data(source, data_start, cutoff, seed=seed,
-                              strict=needed or {config.BENCHMARK_TICKER})
+    market = load_for_state(saved, source, paper_start, cutoff, seed)
 
     if saved is not None:
         sim = Simulator.from_dict(saved, market, tuner=retune)

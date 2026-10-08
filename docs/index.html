@@ -405,7 +405,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   }
 
   function moves(d, a) {
-    const day = a.activity.length ? a.activity[a.activity.length - 1] : null, out = [];
+    const evenings = a.activity.filter(x => !x.time), out = [];
+    const day = evenings.length ? evenings[evenings.length - 1] : null;
     if (day && day.date === d.last) {
       day.fills.forEach(f => out.push(`<div class="feed-item"><span class="side ${f.side}">${f.side === "BUY" ? "BOUGHT" : "SOLD"}</span>
         <span class="tick">${esc(f.ticker)}</span><span class="num">${f.quantity} @ ${fix(f.price)}</span>
@@ -443,12 +444,39 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     return `<p class="twin">Fixed twin holds ${list(b)}${q}.</p>`;
   }
 
+  /** The latest midday check, if it came after the last evening decision. */
+  const middayOf = a => {
+    const m = a.ai && a.ai.midday;
+    return m && m.time.slice(0, 10) > (a.ai.decided || "") ? m : null;
+  };
+  const swissTime = iso => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" });
+
   /** The News Analyst: its status, latest view and running cost. */
   function newsLine(d, a) {
-    const ai = a.ai;
-    const cost = ai.calls ? ` ${ai.calls} evening${ai.calls === 1 ? "" : "s"} so far, roughly $${ai.est_cost_usd.toFixed(2)} of Claude usage (estimate).` : "";
-    const view = ai.market_view ? ` Its view on ${fmtDate(ts(ai.decided))}: “${esc(ai.market_view)}”` : "";
-    return `<p class="twin">${esc(ai.status)}.${view}${cost} Reasons are the model's own stated reasons.</p>`;
+    const ai = a.ai, m = middayOf(a);
+    const cost = ai.calls ? ` ${ai.calls} check${ai.calls === 1 ? "" : "s"} so far, roughly $${ai.est_cost_usd.toFixed(2)} of Claude usage (estimate).` : "";
+    let view = ai.market_view ? ` Its view on ${fmtDate(ts(ai.decided))}: “${esc(ai.market_view)}”.` : "";
+    let mid = "";
+    if (m) {
+      const did = !m.ok ? esc(m.status) : m.trades ? `${m.trades} trade${m.trades === 1 ? "" : "s"} at live prices` : "no changes";
+      const wait = m.waiting.length ? `, ${m.waiting.length} change${m.waiting.length === 1 ? "" : "s"} left for the evening because the market was closed` : "";
+      mid = ` Midday check at ${swissTime(m.time)} Swiss time: ${did}${wait}.`;
+      if (m.ok && m.view) view = ` Its view at midday: “${esc(m.view)}”.`;
+    }
+    return `<p class="twin">${esc(ai.status)}.${mid}${view}${cost} Reasons are the model's own stated reasons.</p>`;
+  }
+
+  /** Fills and changes from today's midday check (News Analyst only). */
+  function middayMoves(d, a) {
+    const m = middayOf(a), day = a.activity[a.activity.length - 1];
+    if (!m || !day || day.time !== "midday") return [];
+    const out = day.fills.map(f => `<div class="feed-item"><span class="side ${f.side}">${f.side === "BUY" ? "BOUGHT" : "SOLD"}</span>
+      <span class="tick">${esc(f.ticker)}</span><span class="num">${f.quantity} @ ${fix(f.price)}</span>
+      ${f.side === "SELL" ? `<span class="num ${cls(f.pnl_chf)}">${chf.format(f.pnl_chf)} CHF</span>` : ""}
+      ${f.at_open ? `<span class="muted">at the open, ordered last evening</span>` : ""}</div>`);
+    day.signals.filter(x => !x.ordered).forEach(x => out.push(`<div class="feed-item"><span class="tag">wants ${x.action === "BUY" ? "in" : "out"}</span>
+      <span class="tick">${esc(x.ticker)}</span><span class="muted">${esc(x.note || "no cash left")}</span></div>`));
+    return out;
   }
 
   /** What the daily learner has learned: its own BUY weights, largest first. */
@@ -472,7 +500,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     const live = d.agents.filter(a => !a.fixed_twin).sort((x, y) => x.benchmark - y.benchmark);
     const rows = live.map(a => {
       const c = color(a.key), w = a.watch || [];
-      const mv = moves(d, a);
+      const mv = moves(d, a), mid = middayMoves(d, a);
       const held = w.filter(x => x.held).map(x => {
         const p = a.positions.find(q => q.ticker === x.ticker) || {};
         return `<div class="w-row"><span class="tick">${esc(x.ticker)}</span><span class="num ${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</span>
@@ -485,9 +513,10 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       const watching = a.benchmark ? "" : `<div class="w-block"><h3>Watching · ${cands.length} markets, closest first</h3>${top || `<p class="empty">${a.watch ? "No data yet." : "The rule check appears after the next daily run."}</p>`}
         ${rest.length ? `<details><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : ""}</div>`;
       return `<div class="now-row">
-        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news daily" : "learns every day") : a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
+        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news evening and midday" : "learns every day") : a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
           <p class="now-sum">${summary(a)}</p>${a.ai ? (a.ai.kind === "news" ? newsLine(d, a) : aiLine(d, a)) : twinLine(d, a)}</div>
         <div class="now-what">
+          ${mid.length ? `<div class="w-block"><h3>At midday today (live prices)</h3>${mid.join("")}</div>` : ""}
           ${mv.length ? `<div class="w-block"><h3>At the last close</h3>${mv.join("")}</div>` : ""}
           ${held ? `<div class="w-block"><h3>Holding, and when it sells</h3>${held}</div>` : ""}
           ${watching}
@@ -623,8 +652,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
         ${f.side === "SELL" ? `<span class="num ${cls(f.pnl_chf)}">${chf.format(f.pnl_chf)} CHF</span>` : ""}</div>`));
       day.signals.forEach(s => items.push(`<div class="feed-item"><span class="tag">${s.action === "BUY" ? "wants in" : "wants out"}</span>
         <span class="tick">${esc(s.ticker)}</span><span class="muted">${esc(s.reason)}</span>
-        ${s.ordered ? "" : '<span class="tag">no cash left</span>'}</div>`));
-      return `<div class="feed-day"><time>${fmtDate(ts(day.date))}</time>${items.join("")}</div>`;
+        ${s.ordered ? "" : `<span class="tag">${esc(s.note || "no cash left")}</span>`}</div>`));
+      return `<div class="feed-day"><time>${fmtDate(ts(day.date))}${day.time === "midday" ? " · midday" : ""}</time>${items.join("")}</div>`;
     }).join("") || `<div class="empty">No decisions yet.</div>`;
 
     const tickers = Object.keys(d.prices);
@@ -672,7 +701,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     if (a.ai && a.ai.kind === "news") return `<div class="panel" style="display:grid;gap:6px"><h3>How it decides</h3>
       <div class="muted" style="font-size:.88rem">Each evening it reads headlines on every market, on politics and the economy, plus the latest
       quarterly results of every stock, and asks Claude for a target share of the account per market. It buys new targets, sells
-      markets set to zero and leaves the rest alone to save fees. ${esc(a.ai.status)}.</div></div>`;
+      markets set to zero and leaves the rest alone to save fees. Around midday (16:37 Swiss time in summer, 15:37 in winter) it reads the
+      news again with live prices; a change there is traded at once, in the markets that are open. ${esc(a.ai.status)}.</div></div>`;
     if (a.ai) {
       const ai = a.ai, W = ai.weights;
       const rows = W ? Object.keys(W.BUY).map(k => {

@@ -53,6 +53,15 @@ be replayed honestly) and cannot be backtested, because the model already
 knows how past markets turned out. `python news.py` prints today's brief, and
 the manual "News check" workflow does the same on GitHub.
 
+It also checks once around midday (`midday_news.py`, workflow "Midday news
+check", weekdays 14:37 UTC, while New York and Europe are both open). That
+run first fills last evening's orders at the morning's open, reads the news
+again with live Yahoo prices (about 15 minutes delayed) and asks Claude
+whether anything changed. Changes fill at once at the live price, with the
+usual costs; a market that is closed at that moment waits for the evening.
+Only the News Analyst's account is touched. Like everything else it is a
+simulation: no broker is contacted.
+
 The dashboard also shows what each agent is doing right now: for every
 watched market, the agent's own rule with the values from the last close
 (`entry_check` / `exit_check` in each agent; used for display only, never to
@@ -82,6 +91,7 @@ To start over, delete `state/paper_state.json` and change
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
+| `midday_news.py` | News Analyst midday check: live prices, trades fill at once |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
 | `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
