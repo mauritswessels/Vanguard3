@@ -34,6 +34,15 @@ the last 3 years with every allowed setting and switches only when another
 one is clearly better), and a **fixed twin** that never changes. Comparing
 the two on the dashboard shows whether learning pays off.
 
+An eighth account, the **AI Learner** (`models/learner_agent.py`), learns
+every day instead of every month. It is the Python version of the lab's
+reinforcement-learning agent: a linear score for SELL / HOLD / BUY built from
+10 price features, updated after every close with what its last decisions
+earned. It practises on the 3 years before its first day, then runs in
+practice mode (deciding and learning, but placing no orders) until
+`LEARNER_PARAMS["live_from"]` in `config.py`. Accounts added to the lineup
+after launch join automatically on the next daily run.
+
 The dashboard also shows what each agent is doing right now: for every
 watched market, the agent's own rule with the values from the last close
 (`entry_check` / `exit_check` in each agent; used for display only, never to

@@ -84,6 +84,20 @@ class Simulator:
                 acc.activity.append(_activity(date, signals, orders, fills))
         self.last_date = date
 
+    def add_account(self, agent: BaseAgent, since: pd.Timestamp) -> None:
+        """Join a new competitor mid-run with untouched starting cash.
+
+        Its equity curve is back-filled with the starting capital for the
+        sessions it missed, so every account shares the same dates.
+        """
+        agent.prepare(self.market)
+        acc = build_accounts(self.market, [agent])[0]
+        if self.last_date is not None:
+            cal = self.market.calendar
+            for d in cal[(cal >= since) & (cal <= self.last_date)]:
+                acc.portfolio._equity[d] = acc.portfolio.initial_cash
+        self.accounts.append(acc)
+
     def run(self, dates) -> None:
         for date in dates:
             self.step(date)

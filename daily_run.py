@@ -32,6 +32,7 @@ import config
 from data_manager import load_market_data
 from engine.simulator import Simulator, build_accounts
 from learning import LOOKBACK_YEARS, paper_lineup, retune
+from models import agent_key
 from main import setup_logging
 from reporting import dashboard_payload, print_scoreboard, write_json
 
@@ -70,6 +71,12 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
     if state_path.exists():
         sim = Simulator.from_dict(json.loads(state_path.read_text()), market,
                                   tuner=retune)
+        # Agents added to the lineup after launch join with fresh accounts.
+        have = {(agent_key(a.agent), a.agent.name) for a in sim.accounts}
+        for agent in paper_lineup(market):
+            if (agent_key(agent), agent.name) not in have:
+                logger.info("Adding new account: %s", agent.name)
+                sim.add_account(agent, paper_start)
     else:
         logger.info("No saved state: opening fresh %s CHF accounts",
                     f"{config.INITIAL_CAPITAL_CHF:,.0f}")

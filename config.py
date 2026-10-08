@@ -119,3 +119,16 @@ VOLATILITY_PARAMS = {
     "risk_per_trade_pct": 0.01,  # equity lost if the initial stop is hit
     "max_position_pct": 0.15,
 }
+
+LEARNER_PARAMS = {
+    "lr": 0.01,                  # learning rate of each daily update
+    "gamma": 0.9,                # how much tomorrow's value counts today
+    "epsilon": 0.05,             # share of random decisions, to keep learning
+    "trade_cost": 0.1,           # reward penalty (in %) per change of position
+    "pretrain_years": 3,         # practice on this much history before day one
+    "pretrain_epochs": 3,
+    "position_pct": 0.10,
+    "max_positions": 8,
+    "seed": 7,
+    "live_from": "2026-10-13",   # learns in shadow mode until this session
+}

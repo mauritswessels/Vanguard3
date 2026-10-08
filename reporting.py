@@ -118,6 +118,9 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             "pending_orders": acc.broker.pending_to_list(),
             # What each rule is waiting for at the last close.
             "watch": acc.agent.watch(last, pf),
+            # Daily learner only: what it has learned so far.
+            "ai": acc.agent.summary() if hasattr(acc.agent, "summary")
+            else None,
             # Daily closeness to a buy, per ticker (only the near misses).
             "scans": _scans(acc.agent, market.calendar, start, last)
             if mode == "paper" else [],
