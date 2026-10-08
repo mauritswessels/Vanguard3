@@ -32,17 +32,40 @@
   const groupOf = t => GROUPS[/\.SW$/.test(t) ? "swiss" : /\.(DE|PA|AS)$/.test(t) ? "euro"
     : FUNDS.includes(t) ? "funds" : MACRO.includes(t) ? "macro" : "us"];
   const LABELS = 28;          // only the busiest markets get a name tag
-  const EDGE = "#2bb3a3";   // the network's thin links
+  const EDGE = "#74b0ac";   // the network's thin links: the muted teal of the reference picture
+  const BG = new THREE.Color("#15181b");
 
-  function label(text, color, size = 22) {
+  function label(text, color, size = 22, pill = false) {
     const c = document.createElement("canvas"), g = c.getContext("2d");
-    const font = `500 ${size * 2}px "JetBrains Mono", ui-monospace, monospace`;
+    const font = `${pill ? 600 : 500} ${size * 2}px "JetBrains Mono", ui-monospace, monospace`;
     g.font = font;
-    c.width = Math.ceil(g.measureText(text).width) + 16; c.height = size * 3;
-    g.font = font; g.fillStyle = color; g.textBaseline = "middle"; g.fillText(text, 8, c.height / 2);
+    c.width = Math.ceil(g.measureText(text).width) + (pill ? 40 : 16); c.height = size * 3;
+    if (pill) {                                   // dark tag with a coloured edge, readable over the network
+      const r = c.height / 2 - 4;
+      g.beginPath(); g.roundRect(3, 4, c.width - 6, c.height - 8, r);
+      g.fillStyle = "rgba(12,14,16,0.86)"; g.fill(); g.lineWidth = 4; g.strokeStyle = color; g.stroke();
+    }
+    g.font = font; g.fillStyle = color; g.textBaseline = "middle"; g.textAlign = "center"; g.fillText(text, c.width / 2, c.height / 2 + 1);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: !pill }));
+    if (pill) sp.renderOrder = 10;
     const h = size / 3.4; sp.scale.set(h * c.width / c.height, h, 1);
+    return sp;
+  }
+
+  /** Soft round glow used behind the agents. */
+  let glowTex = null;
+  function glow(color, strength) {
+    if (!glowTex) {
+      const c = document.createElement("canvas"); c.width = c.height = 128;
+      const g = c.getContext("2d"), grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(255,255,255,1)"); grad.addColorStop(0.25, "rgba(255,255,255,.45)"); grad.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+      glowTex = new THREE.CanvasTexture(c);
+    }
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity: strength,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.userData.strength = strength;
     return sp;
   }
 
@@ -112,10 +135,10 @@
     /** Agents on an inner ring; markets settle outside, pulled toward the agents that watch them most. */
     layout() {
       const A = [...this.data.agents].sort((a, b) => (a.benchmark - b.benchmark) || a.key.localeCompare(b.key) || (a.fixed_twin - b.fixed_twin));
-      const n = A.length;
+      const n = A.length, ringR = 34 + 0.1 * Math.max(0, Object.keys(this.data.prices || {}).length - 15);
       this.agentPos = new Map(A.map((a, i) => {
         const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
-        return [a, new THREE.Vector3(Math.cos(ang) * 34, (i % 2 ? 6 : -6), Math.sin(ang) * 34)];
+        return [a, new THREE.Vector3(Math.cos(ang) * ringR, (i % 2 ? 7 : -7), Math.sin(ang) * ringR)];
       }));
       this.order = A;
       const tickers = Object.keys(this.data.prices || {}).length ? Object.keys(this.data.prices)
@@ -129,7 +152,7 @@
         (a.watch || []).forEach(w => add(w.ticker, w.held ? 4 : 0.2));
       }
       const N = tickers.length, extra = Math.max(0, N - 15);
-      const R = 80 + 0.25 * extra, bandMax = 88 + 0.32 * extra, yMax = 28 + 0.18 * extra;
+      const R = 76 + 0.2 * extra, bandMax = 84 + 0.22 * extra, yMax = 26 + 0.15 * extra;
       this.extent = bandMax;
       const pos = new Map();
       tickers.forEach((t, i) => {               // start on a Fibonacci sphere
@@ -165,14 +188,25 @@
     buildNodes() {
       this.agents = this.order.map(a => {
         const color = new THREE.Color(css("--a-" + a.key) || this.colors.muted);
+        const twin = a.fixed_twin;
+        // Learners are solid and glowing; fixed twins are a hollow wire shell around a small core.
         const node = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 24),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.05, emissive: color, emissiveIntensity: 0.25,
-            transparent: true, opacity: a.fixed_twin ? 0.6 : 1 }));
+          new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.05, emissive: color, emissiveIntensity: twin ? 0.25 : 0.55,
+            transparent: true, opacity: 1 }));
         node.userData = { kind: "agent", agent: a };
         const group = new THREE.Group(); group.add(node); this.world.add(group);
-        const lab = label(a.fixed_twin ? "fixed twin" : a.name, "#" + color.getHexString(), a.fixed_twin ? 15 : 22); group.add(lab);
-        if (a.fixed_twin) lab.material.opacity = 0.7;
-        return { a, node, group, lab, color, home: this.agentPos.get(a) };
+        let shell = null;
+        if (twin) {
+          node.scale.setScalar(0.55);
+          shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2),
+            new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.9 }));
+          shell.userData = { kind: "agent", agent: a };
+          group.add(shell);
+        }
+        const halo = glow(color, twin ? 0.35 : 0.7); group.add(halo);
+        const name = twin ? a.name.replace(" (fixed)", "") + " · fixed" : a.name;
+        const lab = label(name, "#" + color.getHexString(), twin ? 17 : 21, true); group.add(lab);
+        return { a, node, shell, halo, group, lab, color, home: this.agentPos.get(a) };
       });
       this.markets = this.tickers.map(t => {
         const color = new THREE.Color(groupOf(t).color);
@@ -180,7 +214,7 @@
           new THREE.MeshStandardMaterial({ color, roughness: 0.5, emissive: color, emissiveIntensity: 0.2 }));
         node.userData = { kind: "market", ticker: t };
         const group = new THREE.Group(); group.add(node); this.world.add(group);
-        const lab = label(t, "#" + color.getHexString(), 21); group.add(lab);
+        const lab = label(t, "#" + color.getHexString(), 18); group.add(lab);
         return { t, node, group, lab, color, home: this.tickerPos.get(t) };
       });
     }
@@ -202,13 +236,19 @@
 
       for (const g of this.agents) {
         const a = g.a, eq = (a.equity[day] || a.equity[a.equity.length - 1])[1];
-        const size = (3.6 * Math.sqrt(eq / this.data.initial_capital_chf) + 0.3 * Math.log1p(days)) * (0.3 + 0.7 * k);
+        const size = (4.4 * Math.sqrt(eq / this.data.initial_capital_chf) + 0.3 * Math.log1p(days)) * (0.3 + 0.7 * k);
         const home = P(g.home);
-        g.group.position.copy(home); g.node.scale.setScalar(size);
-        g.lab.position.set(0, size + 3.4, 0);
+        g.group.position.copy(home);
+        if (g.shell) { g.shell.scale.setScalar(size); g.node.scale.setScalar(size * 0.45); } else g.node.scale.setScalar(size);
+        g.halo.scale.setScalar(size * 6);
+        g.lab.position.set(0, size + 4.2, 0);
         g.size = size;
         const key = a.id || a.key;
-        link(new THREE.Vector3(), home, g.color, 0.25, key);
+        link(new THREE.Vector3(), home, g.color, 0.35, key);
+        if (a.fixed_twin) {                        // tie each fixed twin to its learning version
+          const mate = this.agents.find(o => o.a.key === a.key && !o.a.fixed_twin);
+          if (mate) link(home, P(mate.home), g.color, 0.6, key);
+        }
 
         // Near misses: one speck per day per market close to the buy rule.
         const held = holdings(a);
@@ -298,8 +338,8 @@
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-      this.linkMesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 1,
-        blending: THREE.AdditiveBlending, depthWrite: false }));
+      this.linkMesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9,
+        depthWrite: false }));
       this.dynamic.add(this.linkMesh);
       this.paint();
 
@@ -319,15 +359,18 @@
       }
       const col = this.linkMesh.geometry.getAttribute("color");
       this.links.forEach((l, i) => {
-        // Additive blending: a darker colour reads as a fainter line.
-        c.set(l.color).multiplyScalar(dim(l.focusKey) ? l.alpha * 0.12 : f ? Math.min(1, l.alpha * 2.2) : l.alpha);
+        // A fainter line is drawn closer to the background colour.
+        const k = dim(l.focusKey) ? 0.06 : Math.min(1, 0.3 + (f ? 3.5 : 2.2) * l.alpha);
+        c.copy(BG).lerp(new THREE.Color(l.color), k);
         col.array.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
       });
       col.needsUpdate = true;
       for (const g of this.agents) {
         const off = dim(g.a.id || g.a.key);
-        g.node.material.opacity = off ? 0.25 : g.a.fixed_twin ? 0.6 : 1;
-        g.lab.material.opacity = off ? 0.25 : g.a.fixed_twin ? 0.7 : 1;
+        g.node.material.opacity = off ? 0.25 : 1;
+        if (g.shell) g.shell.material.opacity = off ? 0.2 : 0.9;
+        g.halo.material.opacity = off ? 0.05 : g.halo.userData.strength * (f ? 1.4 : 1);
+        g.lab.material.opacity = off ? 0.25 : 1;
       }
       this.dynamic.children.forEach(o => {
         if (o.userData.focusKey && o.material) o.material.opacity = dim(o.userData.focusKey) ? 0.1 : 0.85;
@@ -364,7 +407,7 @@
       const ray = this.ray || (this.ray = new THREE.Raycaster()), ndc = new THREE.Vector2(
         ((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, this.camera);
-      const targets = [...this.agents.map(g => g.node), ...this.markets.map(m => m.node),
+      const targets = [...this.agents.flatMap(g => g.shell ? [g.node, g.shell] : [g.node]), ...this.markets.map(m => m.node),
         ...this.dynamic.children.filter(o => o.userData.kind === "order")];
       if (this.speckMesh) targets.push(this.speckMesh);
       const hit = ray.intersectObjects(targets, false)[0];
@@ -428,7 +471,7 @@
     resize() {
       const w = this.el.clientWidth || 1, h = this.el.clientHeight || 1;
       this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
-      this.view.radius = (this.extent || 88) * (w / h < 1 ? 2.0 : 1.75);
+      this.view.radius = (this.extent || 88) * (w / h < 1 ? 2.6 : 2.25);
     }
 
     frame() {

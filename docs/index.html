@@ -534,7 +534,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   function hubHtml(d) {
     const days = d.agents[0].equity.length;
     return `<section class="hub" id="hub" aria-label="3D view of the live accounts">
-      <div class="hub-key"><span>big nodes = agents (size = account value) · labelled = markets</span>
+      <div class="hub-key"><span>glowing balls = agents (size = account value) · wire balls = their fixed twins</span>
         <span>specks = a day an agent came close to buying that market</span>
         <span>solid line = held now · dashed = order for the next open</span>
         <span>markets: <i style="color:#f17bb4;font-style:normal">US stocks</i> · <i style="color:#ff9d5c;font-style:normal">Swiss</i> ·
