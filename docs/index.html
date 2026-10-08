@@ -21,10 +21,10 @@
   --line: #262a2f;
   --up: #6cc391;
   --down: #e27466;
-  --a-trend: #7fa7d9;
-  --a-reversion: #d3a75f;
-  --a-volatility: #74b9aa;
-  --a-benchmark: #8d939a;
+  --a-trend: #5b9cf5;
+  --a-reversion: #f0a93b;
+  --a-volatility: #2fd0a6;
+  --a-benchmark: #b4bac2;
   --f-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --f-display: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --f-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -160,6 +160,24 @@ select { font: .85rem var(--f-data); color: var(--ink); background: var(--raise)
 .lab-card { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
 .lab-card a { color: var(--ink); font-weight: 500; white-space: nowrap; }
 
+.now { display: grid; }
+.now-row { display: grid; grid-template-columns: minmax(12rem, 17rem) 1fr; gap: 10px 28px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.now-row:last-child { border-bottom: 0; }
+.now-who { display: grid; gap: 6px; align-content: start; }
+.now-sum { margin: 0; font-size: .86rem; color: var(--muted); }
+.twin { margin: 0; font-size: .78rem; color: var(--faint); }
+.now-what { display: grid; gap: 12px; min-width: 0; }
+.w-block { display: grid; gap: 4px; }
+.w-block h3 { font: 400 .72rem var(--f-data); color: var(--faint); }
+.w-row { display: grid; grid-template-columns: 3.4rem 4.5rem 1fr; gap: 12px; align-items: center; font-size: .86rem; padding: 2px 0; }
+.w-row .tick { font: 500 .84rem var(--f-data); }
+.w-note { color: var(--muted); min-width: 0; }
+.w-note b { color: var(--ink); font-weight: 500; }
+.closeness { display: block; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.closeness i { display: block; height: 100%; }
+details summary { cursor: pointer; font: .76rem var(--f-data); color: var(--muted); padding: 4px 0; }
+@media (max-width: 680px) { .now-row { grid-template-columns: 1fr; } .w-row { grid-template-columns: 3.2rem 3.5rem 1fr; gap: 8px; } }
+
 /* 3D hub */
 .hub { position: relative; height: min(62vh, 560px); min-height: 340px; background: radial-gradient(ellipse at 50% 55%, #171b1f 0, var(--bg) 70%);
   border-bottom: 1px solid var(--line); margin-inline: calc(-1 * max(16px, 4vw)); overflow: hidden; }
@@ -172,6 +190,7 @@ select { font: .85rem var(--f-data); color: var(--ink); background: var(--raise)
 .hub-tip { position: absolute; z-index: 2; pointer-events: none; background: var(--raise); border: 1px solid var(--line); padding: 7px 9px;
   font-size: .8rem; max-width: 240px; border-radius: var(--radius); }
 .hub-tip b { display: block; font-weight: 600; }
+@media (max-width: 600px) { .hub-key span + span { display: none; } }
 .hub-key { position: absolute; top: 12px; left: max(16px, 4vw); font: .74rem var(--f-data); color: var(--faint); display: grid; gap: 2px; pointer-events: none; }
 
 footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--line); padding-top: 14px; max-width: 80ch; }
@@ -383,27 +402,74 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       </div></section>`;
   }
 
-  function todayPanel(d) {
-    const rows = d.agents.map(a => {
-      const day = a.activity.length ? a.activity[a.activity.length - 1] : null;
-      const moves = [];
-      if (day && day.date === d.last) {
-        day.fills.forEach(f => moves.push(`<div class="feed-item"><span class="side ${f.side}">${f.side === "BUY" ? "BOUGHT" : "SOLD"}</span>
-          <span class="tick">${esc(f.ticker)}</span><span class="num">${f.quantity} @ ${fix(f.price)}</span>
-          ${f.side === "SELL" ? `<span class="num ${cls(f.pnl_chf)}">${chf.format(f.pnl_chf)} CHF</span>` : ""}</div>`));
-        day.signals.filter(x => !x.ordered).forEach(x => moves.push(`<div class="feed-item"><span class="tag">wanted ${x.action === "BUY" ? "in" : "out"}</span>
-          <span class="tick">${esc(x.ticker)}</span><span class="muted">${esc(x.reason)}, no cash left</span></div>`));
-      }
-      a.pending_orders.forEach(o => moves.push(`<div class="feed-item"><span class="side ${o.side}">${o.side}</span>
-        <span class="tick">${esc(o.ticker)}</span><span class="num">${o.quantity} sh</span><span class="muted">at the next open · ${esc(o.reason)}</span></div>`));
-      if (!moves.length) moves.push(`<div class="muted" style="font-size:.88rem">${a.positions.length
-        ? `Holding ${a.positions.map(p => esc(p.ticker)).join(", ")}. No change.` : `No signal. Waiting for: ${esc(a.style)}.`}</div>`);
-      return `<div class="today-row"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.fixed_twin ? "never re-tuned" : a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
-        <div class="moves">${moves.join("")}</div></div>`;
+  function moves(d, a) {
+    const day = a.activity.length ? a.activity[a.activity.length - 1] : null, out = [];
+    if (day && day.date === d.last) {
+      day.fills.forEach(f => out.push(`<div class="feed-item"><span class="side ${f.side}">${f.side === "BUY" ? "BOUGHT" : "SOLD"}</span>
+        <span class="tick">${esc(f.ticker)}</span><span class="num">${f.quantity} @ ${fix(f.price)}</span>
+        ${f.side === "SELL" ? `<span class="num ${cls(f.pnl_chf)}">${chf.format(f.pnl_chf)} CHF</span>` : ""}</div>`));
+      day.signals.filter(x => !x.ordered).forEach(x => out.push(`<div class="feed-item"><span class="tag">wanted ${x.action === "BUY" ? "in" : "out"}</span>
+        <span class="tick">${esc(x.ticker)}</span><span class="muted">${esc(x.reason)}, no cash left</span></div>`));
+    }
+    a.pending_orders.forEach(o => out.push(`<div class="feed-item"><span class="side ${o.side}">${o.side}</span>
+      <span class="tick">${esc(o.ticker)}</span><span class="num">${o.quantity} sh</span><span class="muted">at the next open · ${esc(o.reason)}</span></div>`));
+    return out;
+  }
+
+  function summary(a) {
+    const w = a.watch || [], eq = a.stats.final_equity_chf || 1;
+    const held = a.positions.length, cash = a.cash_chf / eq;
+    const near = w.filter(x => !x.held && x.progress != null).sort((x, y) => y.progress - x.progress)[0];
+    const first = held ? `Holds ${held} position${held === 1 ? "" : "s"}, ${Math.round(cash * 100)}% in cash.` : "Holds only cash.";
+    const queued = a.pending_orders.length ? ` ${a.pending_orders.length} order${a.pending_orders.length === 1 ? "" : "s"} queued for the next open.` : "";
+    const next = !near ? "" : near.ready ? ` ${esc(near.ticker)} meets its buy rule.`
+      : near.progress >= 0.8 ? ` Closest to a new buy: ${esc(near.ticker)} (${Math.round(near.progress * 100)}% there).`
+      : " Nothing is close to its buy rule yet.";
+    return first + queued + next;
+  }
+
+  const bar = (p, c) => `<span class="closeness" title="${Math.round(p * 100)}% of the way to the buy rule"><i style="width:${Math.round(p * 100)}%;background:${c}"></i></span>`;
+
+  function twinLine(d, a) {
+    const b = d.agents.find(x => x.fixed_twin && x.key === a.key);
+    if (!b) return "";
+    const sig = x => x.positions.map(p => p.ticker).sort().join(",") + "|" + x.pending_orders.map(o => o.side + o.ticker).sort().join(",");
+    if (sig(a) === sig(b)) return `<p class="twin">Fixed twin: same holdings and orders.</p>`;
+    const list = x => x.positions.map(p => esc(p.ticker)).join(", ") || "nothing";
+    const q = b.pending_orders.length ? `; queued ${b.pending_orders.map(o => o.side.toLowerCase() + " " + esc(o.ticker)).join(", ")}` : "";
+    return `<p class="twin">Fixed twin holds ${list(b)}${q}.</p>`;
+  }
+
+  function agentsNow(d) {
+    const live = d.agents.filter(a => !a.fixed_twin).sort((x, y) => x.benchmark - y.benchmark);
+    const rows = live.map(a => {
+      const c = color(a.key), w = a.watch || [];
+      const mv = moves(d, a);
+      const held = w.filter(x => x.held).map(x => {
+        const p = a.positions.find(q => q.ticker === x.ticker) || {};
+        return `<div class="w-row"><span class="tick">${esc(x.ticker)}</span><span class="num ${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</span>
+          <span class="w-note">${esc(x.note)}</span></div>`;
+      }).join("");
+      const cands = w.filter(x => !x.held && x.progress != null);
+      const row = x => `<div class="w-row"><span class="tick">${esc(x.ticker)}</span>${bar(x.progress, c)}
+        <span class="w-note">${x.ready ? "<b>Buy rule met.</b> " : ""}${esc(x.note)}</span></div>`;
+      const top = cands.slice(0, 4).map(row).join(""), rest = cands.slice(4);
+      const watching = a.benchmark ? "" : `<div class="w-block"><h3>Watching · ${cands.length} markets, closest first</h3>${top || `<p class="empty">${a.watch ? "No data yet." : "The rule check appears after the next daily run."}</p>`}
+        ${rest.length ? `<details><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : ""}</div>`;
+      return `<div class="now-row">
+        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
+          <p class="now-sum">${summary(a)}</p>${twinLine(d, a)}</div>
+        <div class="now-what">
+          ${mv.length ? `<div class="w-block"><h3>At the last close</h3>${mv.join("")}</div>` : ""}
+          ${held ? `<div class="w-block"><h3>Holding, and when it sells</h3>${held}</div>` : ""}
+          ${watching}
+        </div></div>`;
     }).join("");
-    return `<section><div class="section-head"><h2>What they did at the last close</h2>
-      <span class="muted" style="font-size:.85rem">${fmtDate(ts(d.last))}</span></div>
-      <div class="panel today">${rows}</div></section>`;
+    return `<section><div class="section-head"><h2>What each agent is doing</h2>
+      <span class="muted" style="font-size:.85rem">rule check at the ${fmtDate(ts(d.last))} close</span></div>
+      <div class="panel now">${rows}</div>
+      <p class="notice" style="font-size:.8rem">The notes are each agent's own rules with the values from the last close. The bar is a rough
+      closeness score (full = the buy rule is met), an approximation to show who is near a trade, not a forecast.</p></section>`;
   }
 
   function learningVsFixed(d) {
@@ -424,7 +490,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
 
   function renderLive(d) {
     const days = d.agents[0].equity.length;
-    const html = [hubHtml(d), hero(d), todayPanel(d), standings(d, true), learningVsFixed(d)];
+    const html = [hubHtml(d), hero(d), agentsNow(d), standings(d, true), learningVsFixed(d)];
     html.push(days < 2
       ? `<section><div class="section-head"><h2>The race</h2></div><div class="panel placeholder">The value chart starts after the second trading day.</div></section>`
       : raceHtml(d));
@@ -440,8 +506,9 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   function hubHtml(d) {
     const days = d.agents[0].equity.length;
     return `<section class="hub" id="hub" aria-label="3D view of the live accounts">
-      <div class="hub-key"><span>node size = account value</span><span>branch = a trade (dot colour = result once sold)</span>
-        <span>wire ball = order for the next open · ring = monthly review</span></div>
+      <div class="hub-key"><span>big nodes = agents (size = account value) · labelled = markets</span>
+        <span>specks = a day an agent came close to buying that market</span>
+        <span>solid line = held now · dashed = order for the next open</span></div>
       <div class="hub-tip" hidden></div>
       <div class="hub-bar"><button type="button" class="hub-play">replay</button>
         <input type="range" min="0" max="${days - 1}" value="${days - 1}" aria-label="Day since launch">

@@ -138,6 +138,42 @@ class BaseAgent(ABC):
         target = equity * self.params["position_pct"]
         return int(math.floor(target / unit_cost_chf))
 
+    # -- explaining (dashboard only, never used to trade) --------------------
+    def entry_check(self, ticker: str, date: pd.Timestamp) -> dict | None:
+        """How close ``ticker`` is to this agent's buy rule on ``date``.
+
+        Returns ``{"progress": 0..1, "ready": bool, "note": str}`` built from
+        the same indicator values ``calculate_signals`` reads, or ``None``
+        while the indicators are still warming up.
+        """
+        return None
+
+    def exit_check(self, ticker: str, date: pd.Timestamp,
+                   portfolio: Portfolio) -> str | None:
+        """Plain-English sell rule for a held ticker, with today's values."""
+        return None
+
+    def watch(self, date: pd.Timestamp, portfolio: Portfolio) -> list[dict]:
+        """Every watched ticker with what the agent is waiting for.
+
+        Held tickers come first, then the closest candidates to a buy.
+        """
+        items = []
+        for t in self.indicators:
+            if portfolio.has_position(t):
+                items.append({"ticker": t, "held": True, "progress": None,
+                              "ready": False,
+                              "note": self.exit_check(t, date, portfolio)
+                              or "Holding"})
+                continue
+            check = self.entry_check(t, date)
+            if check is None:
+                check = {"progress": None, "ready": False,
+                         "note": "Not enough price history yet"}
+            items.append({"ticker": t, "held": False, **check})
+        items.sort(key=lambda i: (not i["held"], -(i["progress"] or 0)))
+        return items
+
     # -- helpers -------------------------------------------------------------
     def get_state(self) -> dict:
         """Strategy memory that must survive between daily runs."""
@@ -162,3 +198,17 @@ class BaseAgent(ABC):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.params})"
+
+
+def clamp01(x: float) -> float:
+    return float(min(1.0, max(0.0, x)))
+
+
+def rule_check(parts: list[tuple[bool, float, str]], ready_note: str) -> dict:
+    """Combine ``(met, closeness 0..1, what is missing)`` rule parts."""
+    ready = all(met for met, _, _ in parts)
+    progress = 1.0 if ready else sum(
+        1.0 if met else clamp01(c) for met, c, _ in parts) / len(parts)
+    missing = [why for met, _, why in parts if not met]
+    note = ready_note if ready else "Waiting for " + "; ".join(missing)
+    return {"progress": round(progress, 3), "ready": ready, "note": note}

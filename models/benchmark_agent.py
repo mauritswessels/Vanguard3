@@ -44,3 +44,10 @@ class BuyHoldAgent(BaseAgent):
         spend = (equity * self.params["position_pct"]
                  - config.COMMISSION_PER_TRADE_CHF)
         return max(int(math.floor(spend / unit_cost_chf)), 0)
+
+    def watch(self, date, portfolio):
+        held = portfolio.has_position(self.ticker)
+        return [{"ticker": self.ticker, "held": held, "progress": None,
+                 "ready": not held,
+                 "note": "Holds it for good and never sells" if held
+                 else "Buys it once at the next open"}]

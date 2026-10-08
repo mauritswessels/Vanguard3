@@ -19,7 +19,7 @@ import pandas as pd
 import config
 from engine.portfolio import Portfolio
 from models import indicators as ind
-from models.base_agent import Action, BaseAgent, Signal
+from models.base_agent import Action, BaseAgent, Signal, rule_check
 
 
 class ReversionAgent(BaseAgent):
@@ -63,3 +63,39 @@ class ReversionAgent(BaseAgent):
                     ticker, Action.BUY, f"Oversold, RSI {r.rsi:.1f}",
                     score=float(p["rsi_entry"] - r.rsi)))
         return signals
+
+    def entry_check(self, ticker, date):
+        r = self.row(ticker, date)
+        if r is None:
+            return None
+        p = self.params
+        above_band = r.close / r.bb_lower - 1
+        parts = [
+            (r.rsi < p["rsi_entry"], 1 - (r.rsi - p["rsi_entry"]) / 20,
+             f"a sell-off, RSI below {p['rsi_entry']:g} (now {r.rsi:.0f})"),
+            (r.close < r.bb_lower, 1 - above_band / 0.06,
+             f"a close under the lower band {r.bb_lower:.2f} "
+             f"(now {above_band:.1%} above it)"),
+        ]
+        if p["quality_sma"]:
+            parts.append((r.close > r.sma_quality,
+                          1 - (1 - r.close / r.sma_quality) / 0.03,
+                          f"price back above its {p['quality_sma']}-day "
+                          f"average"))
+        return rule_check(parts, f"Oversold: RSI {r.rsi:.0f} and below "
+                                 f"the lower band")
+
+    def exit_check(self, ticker, date, portfolio):
+        r = self.row(ticker, date)
+        if r is None:
+            return None
+        p = self.params
+        entry = portfolio.positions[ticker].entry_date
+        held = len(self.indicators[ticker].loc[entry:date]) - 1
+        if r.close >= r.bb_mid:
+            return "Back at its average: selling at the next open"
+        if held >= p["max_holding_days"]:
+            return f"Time stop after {held} days: selling at the next open"
+        return (f"Sells at the 20-day average {r.bb_mid:.2f} "
+                f"({r.bb_mid / r.close - 1:.1%} away) or after "
+                f"{p['max_holding_days']} days (day {held} now)")

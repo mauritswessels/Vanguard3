@@ -116,6 +116,11 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             } for t in pf.trades[-300:]],
             "activity": acc.activity[-120:],
             "pending_orders": acc.broker.pending_to_list(),
+            # What each rule is waiting for at the last close.
+            "watch": acc.agent.watch(last, pf),
+            # Daily closeness to a buy, per ticker (only the near misses).
+            "scans": _scans(acc.agent, market.calendar, start, last)
+            if mode == "paper" else [],
         })
 
     window = market.close_panel.loc[start:last]
@@ -145,6 +150,20 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
     if extra:
         payload.update(extra)
     return payload
+
+
+def _scans(agent, calendar, start, last, floor: float = 0.6) -> list:
+    """``[[date, {ticker: progress}]]`` for tickers at least ``floor`` of
+    the way to the agent's buy rule. Uses the agent's current settings."""
+    out = []
+    for d in calendar[(calendar >= start) & (calendar <= last)]:
+        day = {}
+        for t in agent.indicators:
+            check = agent.entry_check(t, d)
+            if check and check["progress"] >= floor:
+                day[t] = round(check["progress"], 2)
+        out.append([d.strftime("%Y-%m-%d"), day])
+    return out
 
 
 def write_json(payload: dict, path: Path) -> None:

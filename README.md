@@ -34,6 +34,13 @@ the last 3 years with every allowed setting and switches only when another
 one is clearly better), and a **fixed twin** that never changes. Comparing
 the two on the dashboard shows whether learning pays off.
 
+The dashboard also shows what each agent is doing right now: for every
+watched market, the agent's own rule with the values from the last close
+(`entry_check` / `exit_check` in each agent; used for display only, never to
+trade) and a rough closeness score to its buy rule. The 3D network at the top
+(`docs/hub.js`) adds a small point every day an agent comes close to buying
+a market, so it gets denser the longer the accounts run.
+
 To start over, delete `state/paper_state.json` and change
 `PAPER_START_DATE` in `config.py`.
 

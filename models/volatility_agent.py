@@ -23,7 +23,7 @@ import pandas as pd
 import config
 from engine.portfolio import Portfolio
 from models import indicators as ind
-from models.base_agent import Action, BaseAgent, Signal
+from models.base_agent import Action, BaseAgent, Signal, rule_check
 
 
 class VolatilityAgent(BaseAgent):
@@ -94,3 +94,31 @@ class VolatilityAgent(BaseAgent):
         risk_qty = equity * p["risk_per_trade_pct"] / stop_distance_chf
         cap_qty = equity * p["max_position_pct"] / unit_cost_chf
         return int(math.floor(min(risk_qty, cap_qty)))
+
+    def entry_check(self, ticker, date):
+        r = self.row(ticker, date)
+        if r is None:
+            return None
+        n = self.params["donchian_entry"]
+        below = r.entry_upper / r.close - 1
+        return rule_check([
+            (r.close > r.entry_upper, 1 - below / 0.10,
+             f"a close above the {n}-day high {r.entry_upper:.2f} "
+             f"(now {below:.1%} below)"),
+        ], f"Breakout above the {n}-day high")
+
+    def exit_check(self, ticker, date, portfolio):
+        r = self.row(ticker, date)
+        if r is None:
+            return None
+        stop = self.stops.get(ticker)
+        if stop is not None and r.close <= stop:
+            return "Stop hit: selling at the next open"
+        if r.close < r.exit_lower:
+            return "Broke its exit channel: selling at the next open"
+        text = (f"Also sells under the {self.params['donchian_exit']}-day "
+                f"low {r.exit_lower:.2f}")
+        if stop is None:
+            return text
+        return (f"Trailing stop at {stop:.2f}, {1 - stop / r.close:.1%} "
+                f"below the price. " + text)

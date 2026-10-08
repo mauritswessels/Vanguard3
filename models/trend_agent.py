@@ -16,7 +16,7 @@ import pandas as pd
 import config
 from engine.portfolio import Portfolio
 from models import indicators as ind
-from models.base_agent import Action, BaseAgent, Signal
+from models.base_agent import Action, BaseAgent, Signal, rule_check
 
 
 class TrendAgent(BaseAgent):
@@ -53,3 +53,31 @@ class TrendAgent(BaseAgent):
                     ticker, Action.BUY,
                     f"Up-trend, ADX {r.adx:.1f}", score=float(r.adx)))
         return signals
+
+    def entry_check(self, ticker, date):
+        r = self.row(ticker, date)
+        if r is None:
+            return None
+        p, th = self.params, self.params["adx_threshold"]
+        gap = r.ema_fast / r.ema_slow - 1
+        return rule_check([
+            (gap > 0, 1 + gap / 0.05,
+             f"the {p['ema_fast']}-day average to rise above the "
+             f"{p['ema_slow']}-day (now {-gap:.1%} below)"),
+            (r.adx > th, 2 * r.adx / th - 1,
+             f"a stronger trend, ADX above {th:g} (now {r.adx:.1f})"),
+            (r.plus_di > r.minus_di, 2 * r.plus_di / max(r.minus_di, 1e-9) - 1,
+             f"buyers to lead sellers (+DI {r.plus_di:.0f} vs "
+             f"-DI {r.minus_di:.0f})"),
+        ], f"All rules met: strong up-trend, ADX {r.adx:.1f}")
+
+    def exit_check(self, ticker, date, portfolio):
+        r = self.row(ticker, date)
+        if r is None:
+            return None
+        p = self.params
+        gap = r.ema_fast / r.ema_slow - 1
+        if gap < 0:
+            return "Trend has turned: selling at the next open"
+        return (f"Sells when the {p['ema_fast']}-day average drops below the "
+                f"{p['ema_slow']}-day (now {gap:.1%} above)")
