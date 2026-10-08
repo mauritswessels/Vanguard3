@@ -52,6 +52,8 @@ class NewsAgent(BaseAgent):
         self.tokens = {"input": 0, "output": 0}
         self.headline_count = 0
         self.model_used = self.params["model"]
+        #: What it read per market in the latest check (not saved).
+        self.read: dict[str, dict] = {}
         #: The latest midday check: time (UTC), what happened, trades made.
         self.midday: dict | None = None
         # Swappable for tests: brief(market_lines) and decide(brief, ...).
@@ -119,6 +121,8 @@ class NewsAgent(BaseAgent):
             return False
 
         self.targets, self.view = decision["targets"], decision["market_view"]
+        self.read = {t: {"news": e.get("news", [])[:6], "results": e.get("results")}
+                     for t, e in brief["markets"].items()}
         self.calls += 1
         usage = decision.get("usage", {})
         self.tokens["input"] += int(usage.get("input_tokens", 0))
@@ -138,6 +142,15 @@ class NewsAgent(BaseAgent):
                 signals.append(Signal(t, Action.BUY, reason,
                                       score=tgt["weight"]))
         return signals
+
+    def decision_details(self, signal, date) -> dict:
+        tgt = self.targets.get(signal.ticker, {})
+        seen = self.read.get(signal.ticker, {})
+        return {"target_weight": tgt.get("weight"),
+                "market_view": self.view,
+                "headlines": seen.get("news", []),
+                "quarterly": seen.get("results"),
+                "model": self.model_used}
 
     def position_size(self, signal, date, equity, unit_cost_chf) -> int:
         w = self.targets.get(signal.ticker, {}).get("weight", 0.0)

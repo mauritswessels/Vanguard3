@@ -92,6 +92,8 @@ class TradeRecord:
     cash_flow_chf: float           # signed change in cash
     realized_pnl_chf: float        # net P&L on sells, 0 on buys
     reason: str = ""
+    #: Session whose data the decision used (the order's creation date).
+    decided: pd.Timestamp | None = None
 
 
 class Portfolio:
@@ -139,7 +141,8 @@ class Portfolio:
     # -- execution -----------------------------------------------------------
     def buy(self, date: pd.Timestamp, ticker: str, currency: str,
             quantity: int, market_price: float, fx_rate: float,
-            reason: str = "") -> TradeRecord:
+            reason: str = "", decided: pd.Timestamp | None = None
+            ) -> TradeRecord:
         """Simulate a buy fill, charging slippage, FX spread and commission."""
         _validate(quantity, market_price, fx_rate)
         quantity = int(quantity)
@@ -154,12 +157,13 @@ class Portfolio:
             fx_rate=fx_rate, gross_chf=gross,
             commission_chf=c.commission_chf, slippage_chf=slippage_cost,
             fx_cost_chf=fx_cost, cash_flow_chf=-(gross + c.commission_chf),
-            realized_pnl_chf=0.0, reason=reason,
+            realized_pnl_chf=0.0, reason=reason, decided=decided,
         ), currency)
 
     def sell(self, date: pd.Timestamp, ticker: str, quantity: int,
              market_price: float, fx_rate: float,
-             reason: str = "") -> TradeRecord:
+             reason: str = "", decided: pd.Timestamp | None = None
+             ) -> TradeRecord:
         """Simulate a sell fill of an existing long position."""
         _validate(quantity, market_price, fx_rate)
         quantity = int(quantity)
@@ -181,7 +185,7 @@ class Portfolio:
             fx_rate=fx_rate, gross_chf=gross,
             commission_chf=c.commission_chf, slippage_chf=slippage_cost,
             fx_cost_chf=fx_cost, cash_flow_chf=net,
-            realized_pnl_chf=realized, reason=reason,
+            realized_pnl_chf=realized, reason=reason, decided=decided,
         ), pos.currency)
 
     def record_fill(self, trade: TradeRecord, currency: str) -> TradeRecord:
@@ -257,8 +261,10 @@ class Portfolio:
         for p in data["positions"]:
             p = dict(p, entry_date=pd.Timestamp(p["entry_date"]))
             pf.positions[p["ticker"]] = Position(**p)
-        pf.trades = [TradeRecord(**dict(t, date=pd.Timestamp(t["date"])))
-                     for t in data["trades"]]
+        pf.trades = [TradeRecord(**dict(
+            t, date=pd.Timestamp(t["date"]),
+            decided=pd.Timestamp(t["decided"]) if t.get("decided") else None))
+            for t in data["trades"]]
         pf._equity = {pd.Timestamp(d): float(v)
                       for d, v in data["equity"].items()}
         return pf

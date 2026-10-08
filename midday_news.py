@@ -37,7 +37,7 @@ import config
 import finnhub_feed
 from daily_run import last_completed_session, load_for_state
 from engine.broker import Order
-from engine.simulator import Simulator, _activity
+from engine.simulator import Simulator, _activity, decision_context
 from main import setup_logging
 from models import agent_key
 from models.base_agent import Action
@@ -199,7 +199,8 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
             fills.append(f)
 
     if signals or fills:
-        entry = _activity(day, signals, orders, fills)
+        entry = _activity(day, signals, orders, fills,
+                          decision_context(agent, signals, day, pf))
         entry["time"] = "midday"
         for f in entry["fills"][:len(opening)]:
             f["at_open"] = True               # last evening's orders

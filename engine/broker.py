@@ -105,7 +105,8 @@ class SimulatedBroker(BaseBroker):
             qty = min(order.quantity, pf.quantity(order.ticker))
             if qty <= 0:
                 return self._reject(order, "no position")
-            return pf.sell(date, order.ticker, qty, price, fx, order.reason)
+            return pf.sell(date, order.ticker, qty, price, fx, order.reason,
+                           decided=order.created)
 
         currency = self.market.currencies[order.ticker]
         affordable = pf.max_affordable_qty(price, fx, currency)
@@ -113,7 +114,7 @@ class SimulatedBroker(BaseBroker):
         if qty <= 0:
             return self._reject(order, "insufficient cash")
         return pf.buy(date, order.ticker, currency, qty, price, fx,
-                      order.reason)
+                      order.reason, decided=order.created)
 
     # -- persistence ---------------------------------------------------------
     def pending_to_list(self) -> list[dict]:

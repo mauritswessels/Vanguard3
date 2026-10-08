@@ -24,7 +24,7 @@ from data_manager import MarketData
 from engine.broker import SimulatedBroker
 from engine.portfolio import Portfolio
 from models import agent_key, make_agent
-from models.base_agent import BaseAgent
+from models.base_agent import Action, BaseAgent
 
 STATE_VERSION = 1
 
@@ -81,7 +81,9 @@ class Simulator:
             if acc.portfolio.cash < -1e-6:  # defence in depth
                 raise AssertionError(f"{acc.agent.name} cash went negative")
             if signals or fills:
-                acc.activity.append(_activity(date, signals, orders, fills))
+                acc.activity.append(_activity(
+                    date, signals, orders, fills,
+                    decision_context(acc.agent, signals, date, acc.portfolio)))
         self.last_date = date
 
     def add_account(self, agent: BaseAgent, since: pd.Timestamp) -> None:
@@ -144,14 +146,41 @@ class Simulator:
         return sim
 
 
-def _activity(date, signals, orders, fills) -> dict:
+def decision_context(agent, signals, date, portfolio) -> list[dict]:
+    """What the agent saw for each signal, recorded on the decision date.
+
+    ``check`` is the agent's own rule with that day's values (the same text
+    the dashboard shows as "watching"); ``details`` are agent-specific facts
+    such as the News Analyst's headlines. Display only: a failure here never
+    stops trading.
+    """
+    out = []
+    for s in signals:
+        ctx = {}
+        try:
+            if s.action is Action.BUY:
+                chk = agent.entry_check(s.ticker, date)
+                ctx["check"] = chk["note"] if chk else None
+            else:
+                ctx["check"] = agent.exit_check(s.ticker, date, portfolio)
+            ctx["details"] = agent.decision_details(s, date) or {}
+        except Exception as exc:              # pragma: no cover - defensive
+            ctx["error"] = str(exc)[:120]
+        out.append(ctx)
+    return out
+
+
+def _activity(date, signals, orders, fills, context=None) -> dict:
     ordered = {(o.ticker, o.side) for o in orders}
+    context = context or [{} for _ in signals]
     return {
         "date": date.strftime("%Y-%m-%d"),
         "signals": [{"ticker": s.ticker, "action": s.action.value,
                      "reason": s.reason,
-                     "ordered": (s.ticker, s.action.value) in ordered}
-                    for s in signals],
+                     "ordered": (s.ticker, s.action.value) in ordered,
+                     "score": round(float(s.score), 4) if s.score else None,
+                     "stop": s.stop_price, **ctx}
+                    for s, ctx in zip(signals, context)],
         "orders": [{"ticker": o.ticker, "side": o.side,
                     "quantity": o.quantity} for o in orders],
         "fills": [{"ticker": f.ticker, "side": f.side,
