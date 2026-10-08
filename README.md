@@ -43,6 +43,16 @@ practice mode (deciding and learning, but placing no orders) until
 `LEARNER_PARAMS["live_from"]` in `config.py`. Accounts added to the lineup
 after launch join automatically on the next daily run.
 
+A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
+reads free headlines (Google News RSS) on every market and on politics and
+the economy, plus the five stocks' latest quarterly results (SEC EDGAR), and
+asks Claude for target weights with a short stated reason per market. It
+needs an `ANTHROPIC_API_KEY` repository secret; without one it waits and
+the dashboard says so. It only decides for the newest session (news cannot
+be replayed honestly) and cannot be backtested, because the model already
+knows how past markets turned out. `python news.py` prints today's brief, and
+the manual "News check" workflow does the same on GitHub.
+
 The dashboard also shows what each agent is doing right now: for every
 watched market, the agent's own rule with the values from the last close
 (`entry_check` / `exit_check` in each agent; used for display only, never to

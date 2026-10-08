@@ -26,6 +26,7 @@
   --a-volatility: #2fd0a6;
   --a-benchmark: #b4bac2;
   --a-learner: #c6e45c;
+  --a-news: #e58cff;
   --f-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --f-display: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --f-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -442,6 +443,14 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     return `<p class="twin">Fixed twin holds ${list(b)}${q}.</p>`;
   }
 
+  /** The News Analyst: its status, latest view and running cost. */
+  function newsLine(d, a) {
+    const ai = a.ai;
+    const cost = ai.calls ? ` ${ai.calls} evening${ai.calls === 1 ? "" : "s"} so far, roughly $${ai.est_cost_usd.toFixed(2)} of Claude usage (estimate).` : "";
+    const view = ai.market_view ? ` Its view on ${fmtDate(ts(ai.decided))}: “${esc(ai.market_view)}”` : "";
+    return `<p class="twin">${esc(ai.status)}.${view}${cost} Reasons are the model's own stated reasons.</p>`;
+  }
+
   /** What the daily learner has learned: its own BUY weights, largest first. */
   function aiLine(d, a) {
     const ai = a.ai, shadow = d.last < ai.live_from;
@@ -476,8 +485,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       const watching = a.benchmark ? "" : `<div class="w-block"><h3>Watching · ${cands.length} markets, closest first</h3>${top || `<p class="empty">${a.watch ? "No data yet." : "The rule check appears after the next daily run."}</p>`}
         ${rest.length ? `<details><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : ""}</div>`;
       return `<div class="now-row">
-        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? "learns every day" : a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
-          <p class="now-sum">${summary(a)}</p>${a.ai ? aiLine(d, a) : twinLine(d, a)}</div>
+        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news daily" : "learns every day") : a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
+          <p class="now-sum">${summary(a)}</p>${a.ai ? (a.ai.kind === "news" ? newsLine(d, a) : aiLine(d, a)) : twinLine(d, a)}</div>
         <div class="now-what">
           ${mv.length ? `<div class="w-block"><h3>At the last close</h3>${mv.join("")}</div>` : ""}
           ${held ? `<div class="w-block"><h3>Holding, and when it sells</h3>${held}</div>` : ""}
@@ -657,6 +666,10 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
 
   function learningPanel(a) {
     if (a.benchmark) return "";
+    if (a.ai && a.ai.kind === "news") return `<div class="panel" style="display:grid;gap:6px"><h3>How it decides</h3>
+      <div class="muted" style="font-size:.88rem">Each evening it reads headlines on every market, on politics and the economy, plus the latest
+      quarterly results of the five stocks, and asks Claude for a target share of the account per market. It buys new targets, sells
+      markets set to zero and leaves the rest alone to save fees. ${esc(a.ai.status)}.</div></div>`;
     if (a.ai) {
       const ai = a.ai, W = ai.weights;
       const rows = W ? Object.keys(W.BUY).map(k => {

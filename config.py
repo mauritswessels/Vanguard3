@@ -132,3 +132,13 @@ LEARNER_PARAMS = {
     "seed": 7,
     "live_from": "2026-10-13",   # learns in shadow mode until this session
 }
+
+NEWS_PARAMS = {
+    "model": "claude-sonnet-5-5",  # Anthropic model that reads the news
+    "max_weight": 0.15,          # largest share of the account per market
+    "max_total": 0.90,           # at most this much invested, rest cash
+    "min_weight": 0.02,          # smaller targets are treated as "no"
+    # Rough cost estimate only (USD per million tokens); check your bill.
+    "usd_per_m_input": 3.0,
+    "usd_per_m_output": 15.0,
+}

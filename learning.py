@@ -132,6 +132,8 @@ def paper_lineup(market) -> list:
         agents.append(make_agent(key, name=f"{learner.name} (fixed)"))
     # Learns every day by itself (reinforcement learning, see learner_agent).
     agents.append(make_agent("learner"))
+    # Reads the news with Claude each evening (needs ANTHROPIC_API_KEY).
+    agents.append(make_agent("news"))
     if config.BENCHMARK_TICKER in market.bars:
         agents.append(make_agent("benchmark"))
     return agents
