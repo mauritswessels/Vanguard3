@@ -79,7 +79,7 @@
     const y = v => h - 3 - (v - lo) / (hi - lo) * (h - 6), x = i => i / (n - 1) * w;
     g.strokeStyle = "rgba(140,170,210,.18)"; g.setLineDash([3, 3]); g.beginPath();
     g.moveTo(0, y(V3.config.capital)); g.lineTo(w, y(V3.config.capital)); g.stroke(); g.setLineDash([]);
-    const up = eq[eq.length - 1] >= V3.config.capital, col = up ? "#3ddc97" : "#ff6b6b";
+    const up = eq[eq.length - 1] >= V3.config.capital, col = up ? "#6cc391" : "#e27466";
     const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, col + "44"); grd.addColorStop(1, col + "00");
     g.beginPath(); eq.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))));
     g.strokeStyle = col; g.lineWidth = 1.5; g.stroke();
@@ -148,7 +148,7 @@
     el.innerHTML = attr.map(a => {
       const w = Math.abs(a.contribution) / mx * 50, pos = a.contribution >= 0;
       return `<div class="ar" title="Standardised value ${f.num(a.value, 2)}"><span>${V3.esc(a.feature)}</span>` +
-        `<div class="track"><i style="left:${pos ? 50 : 50 - w}%;width:${w}%;background:${pos ? "#3ddc97" : "#ff6b6b"}"></i></div>` +
+        `<div class="track"><i style="left:${pos ? 50 : 50 - w}%;width:${w}%;background:${pos ? "#6cc391" : "#e27466"}"></i></div>` +
         `<em class="${pos ? "pos" : "neg"}">${(pos ? "+" : "") + a.contribution.toFixed(2)}</em></div>`;
     }).join("");
   }
@@ -218,8 +218,8 @@
   }
 
   // ------------------------------------------------------- pipeline strip --
-  const STAGE_COLORS = { data: "#4cc9f0", features: "#7c8cff", analyse: "#ffcf7a", decide: "#ffcf7a", risk: "#ff6b6b", exec: "#3ddc97",
-    portfolio: "#3ddc97", reward: "#c08cff", learn: "#c08cff" };
+  const STAGE_COLORS = { data: "#7fa7d9", features: "#8f97c4", analyse: "#d3a75f", decide: "#d3a75f", risk: "#e27466", exec: "#6cc391",
+    portfolio: "#6cc391", reward: "#a99bd6", learn: "#a99bd6" };
   function buildStrip() {
     $("strip").innerHTML = V3.PIPELINE.map((s, i) => `<li style="--sc:${STAGE_COLORS[s.key]}"><i>${i + 1}</i>${s.label}</li>`).join("");
   }

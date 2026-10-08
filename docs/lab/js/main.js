@@ -51,9 +51,9 @@
     if (graph) {
       V3.bus.on(E.DECISION, rec => graph.playDecision(rec));
       V3.bus.on(E.REGIME, reg => graph.setRegime(reg));
-      V3.bus.on(E.MODEL, () => { graph.pulse("learning", "#c08cff", 1.4); graph.pulse("monitor", "#5eead4", 1); graph.pulse("agent", "#ffcf7a", 1); });
-      V3.bus.on(E.EPISODE, () => graph.pulse("monitor", "#5eead4", 0.8));
-      V3.bus.on(E.RISK, e => graph.pulse("risk", e.level === "high" ? "#ff6b6b" : "#ffb454", 1.3));
+      V3.bus.on(E.MODEL, () => { graph.pulse("learning", "#a99bd6", 1.4); graph.pulse("monitor", "#74b9aa", 1); graph.pulse("agent", "#d3a75f", 1); });
+      V3.bus.on(E.EPISODE, () => graph.pulse("monitor", "#74b9aa", 0.8));
+      V3.bus.on(E.RISK, e => graph.pulse("risk", e.level === "high" ? "#e27466" : "#d9a441", 1.3));
       V3.bus.on(E.BACKTEST, () => { graph.emit("data", "backtest", { bright: true, speed: 2 }); graph.emit("learning", "backtest", { bright: true, speed: 2 });
         setTimeout(() => graph.emit("backtest", "monitor", { bright: true, speed: 2 }), 500); });
     }

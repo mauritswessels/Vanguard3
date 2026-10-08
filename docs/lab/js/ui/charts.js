@@ -44,7 +44,7 @@
   }
 
   V3.charts = {
-    line(canvas, { color = "#4cc9f0", fill = true, yFmt, label = "", zero = false, extra = [] } = {}) {
+    line(canvas, { color = "#7fa7d9", fill = true, yFmt, label = "", zero = false, extra = [] } = {}) {
       return new Chart(host(canvas), {
         type: "line",
         data: { labels: [], datasets: [{ label, data: [], borderColor: color, fill: fill ? "origin" : false,

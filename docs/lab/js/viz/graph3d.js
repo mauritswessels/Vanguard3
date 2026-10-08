@@ -19,9 +19,9 @@
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
 
-  function textSprite(text, { size = 26, color = "#cfd8e3", weight = 600, font = "Saira Semi Condensed", spacing = 3 } = {}) {
+  function textSprite(text, { size = 26, color = "#cfd8e3", weight = 500, font = "JetBrains Mono", spacing = 0 } = {}) {
     const c = document.createElement("canvas"), g = c.getContext("2d");
-    const label = text.toUpperCase();
+    const label = text;
     g.font = `${weight} ${size * 2}px "${font}", "Arial Narrow", sans-serif`;
     const w = Math.ceil(g.measureText(label).width + label.length * spacing * 2 + 24);
     c.width = w; c.height = size * 3;
@@ -52,7 +52,7 @@
       container.appendChild(r.domElement);
 
       const scene = this.scene = new THREE.Scene();
-      this.bg = new THREE.Color("#060a11");
+      this.bg = new THREE.Color("#0f1113");
       scene.background = this.bg.clone();
       scene.fog = new THREE.FogExp2(this.bg.clone(), 0.0016);
       this.camera = new THREE.PerspectiveCamera(48, 1, 1, 3000);
@@ -65,7 +65,7 @@
       key.shadow.mapSize.set(1024, 1024);
       Object.assign(key.shadow.camera, { left: -170, right: 170, top: 170, bottom: -170, near: 10, far: 500 });
       key.shadow.radius = 6; scene.add(key);
-      this.coreLight = new THREE.PointLight("#ffc56b", 60, 260, 1); scene.add(this.coreLight);
+      this.coreLight = new THREE.PointLight("#e8e4dc", 25, 260, 1); scene.add(this.coreLight);
 
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.ShadowMaterial({ opacity: 0.38 }));
       floor.rotation.x = -Math.PI / 2; floor.position.y = -78; floor.receiveShadow = true; scene.add(floor);
@@ -96,7 +96,7 @@
     buildGraph() {
       const rnd = V3.rng(5);
       this.nodes = V3.NODES.map(def => {
-        const color = new THREE.Color(def.cat === "core" ? "#ffb04a" : V3.CAT_COLORS[def.cat]);
+        const color = new THREE.Color(V3.CAT_COLORS[def.cat]);
         const core = def.cat === "core";
         const group = new THREE.Group();
         const mat = new THREE.MeshStandardMaterial({ color: color.clone().multiplyScalar(core ? 0.3 : 0.22), emissive: color,
@@ -108,18 +108,18 @@
         glow.scale.setScalar(def.size * (core ? 6.5 : 5)); group.add(glow);
         const hit = new THREE.Mesh(new THREE.SphereGeometry(def.size * 1.7, 12, 8), new THREE.MeshBasicMaterial({ visible: false }));
         group.add(hit);
-        const label = textSprite(def.name, { size: core ? 30 : 26, color: core ? "#ffe2ad" : "#b9c6d6", weight: core ? 700 : 600 });
+        const label = textSprite(def.name, { size: core ? 30 : 24, color: core ? "#e8e4dc" : "#9aa1a8", weight: 500 });
         label.position.y = -(def.size + (core ? 9 : 6.5));
         if (core) label.scale.multiplyScalar(1.45);
         group.add(label);
         const extras = [];
         if (core) {
           const ico = new THREE.Mesh(new THREE.IcosahedronGeometry(def.size * 1.35, 1),
-            new THREE.MeshBasicMaterial({ color: "#ffd89a", wireframe: true, transparent: true, opacity: 0.16 }));
+            new THREE.MeshBasicMaterial({ color: "#e8e4dc", wireframe: true, transparent: true, opacity: 0.16 }));
           group.add(ico); extras.push(ico);
           [1.9, 2.35].forEach((k, j) => {
             const ring = new THREE.Mesh(new THREE.TorusGeometry(def.size * k, 0.18, 8, 160),
-              new THREE.MeshBasicMaterial({ color: j ? "#c08cff" : "#ffcf7a", transparent: true, opacity: 0.55 }));
+              new THREE.MeshBasicMaterial({ color: j ? "#a99bd6" : "#d3a75f", transparent: true, opacity: 0.55 }));
             ring.rotation.x = Math.PI / 2 + (j ? 0.5 : -0.3); group.add(ring); extras.push(ring);
           });
         }
@@ -329,9 +329,9 @@
       this.flowBusy = true;
       const stages = V3.PIPELINE, per = this.flowDuration / stages.length;
       const action = rec.risk.action, ac = V3.ACTION_COLORS[rec.decision.name];
-      const riskColor = !rec.risk.approved ? "#ff6b6b" : rec.risk.event ? "#ffb454" : "#3ddc97";
-      const colorFor = k => ({ analyse: "#ffcf7a", decide: ac, risk: riskColor, exec: V3.ACTION_COLORS[action], portfolio: "#3ddc97",
-        reward: rec.reward >= 0 ? "#3ddc97" : "#ff6b6b", learn: "#c08cff" }[k] || "#bfe9ff");
+      const riskColor = !rec.risk.approved ? "#e27466" : rec.risk.event ? "#d9a441" : "#6cc391";
+      const colorFor = k => ({ analyse: "#d3a75f", decide: ac, risk: riskColor, exec: V3.ACTION_COLORS[action], portfolio: "#6cc391",
+        reward: rec.reward >= 0 ? "#6cc391" : "#e27466", learn: "#a99bd6" }[k] || "#c9cdd2");
       let i = 0;
       const next = () => {
         if (i >= stages.length) { this.flowBusy = false; this.onStage(-1, rec); return; }
@@ -340,7 +340,7 @@
         const col = colorFor(st.key);
         if (st.pulse) this.pulse(st.pulse, col, 1);
         if (st.key === "decide") this.showDecision(rec);
-        if (st.key === "data") this.pulse("data", "#4cc9f0", 0.8);
+        if (st.key === "data") this.pulse("data", "#7fa7d9", 0.8);
         if (!st.hops.length) { setTimeout(next, per); return; }
         let left = st.hops.length;
         st.hops.forEach(([a, b]) => this.emit(a, b, { color: col, bright: true, speed: 1000 / Math.max(per, 60),
@@ -404,7 +404,7 @@
         n.mesh.material.emissiveIntensity = (n.cat === "core" ? 0.75 : 0.6) + n.pulse * 1.2;
         n.mesh.material.emissive.copy(n.color).lerp(n.pulseColor, Math.min(1, n.pulse));
         n.glow.material.color.copy(n.mesh.material.emissive);
-        n.glow.material.opacity = (n.cat === "core" ? 0.75 : 0.55) * n.dim + n.pulse * 0.4;
+        n.glow.material.opacity = (n.cat === "core" ? 0.22 : 0.12) * n.dim + n.pulse * 0.3;
         n.mesh.material.opacity = 0.35 + 0.65 * n.dim;
         n.label.material.opacity = 0.25 + 0.75 * n.dim;
         if (n.extras.length) {
@@ -414,7 +414,7 @@
         }
       }
       this.coreLight.position.copy(this.byId.agent.group.position);
-      this.coreLight.intensity = 60 + this.byId.agent.pulse * 90;
+      this.coreLight.intensity = 25 + this.byId.agent.pulse * 40;
 
       // Links follow their nodes.
       for (const l of this.links) {
