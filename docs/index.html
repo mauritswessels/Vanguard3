@@ -93,7 +93,9 @@ canvas.spark { width: 100%; height: 28px; display: block; }
 .chart-box { position: relative; height: 300px; }
 .chart-box.short { height: 150px; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .8rem; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend span, .legend button { display: inline-flex; align-items: center; gap: 6px; }
+.legend button { font: inherit; color: inherit; background: none; border: 0; padding: 2px 0; cursor: pointer; }
+.legend button.off { opacity: .35; text-decoration: line-through; }
 .grid2 { display: grid; gap: 28px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 
 /* Allocation */
@@ -350,8 +352,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   }
 
   function legendHtml(d) {
-    return `<div class="legend">${d.agents.map(a =>
-      `<span>${sw(a)}${esc(a.name)}</span>`).join("")}</div>`;
+    return `<div class="legend">${d.agents.map((a, i) =>
+      `<button type="button" data-line="${i}" aria-pressed="true" title="Show or hide this line">${sw(a)}${esc(a.name)}</button>`).join("")}</div>`;
   }
 
   function allocation(d) {
@@ -547,14 +549,11 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
 
   function renderLive(d) {
     const days = d.agents[0].equity.length;
-    const html = [hubHtml(d), hero(d), agentsNow(d), standings(d, true), learningVsFixed(d)];
-    html.push(days < 2
-      ? `<section><div class="section-head"><h2>The race</h2></div><div class="panel placeholder">The value chart starts after the second trading day.</div></section>`
-      : raceHtml(d));
+    const html = [hubHtml(d), hero(d), raceHtml(d, true), agentsNow(d), standings(d, true), learningVsFixed(d)];
     html.push(allocation(d));
     html.push(`<section id="desk"></section>`);
     root.innerHTML = html.join("");
-    if (days >= 2) drawRace(d);
+    drawRace(d, true);
     drawSparks(d);
     pickDesk(d);
     mountHub(d);
@@ -592,8 +591,11 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     } catch (err) { console.error(err); el.remove(); }
   }
 
-  function raceHtml(d) {
-    return `<section><div class="section-head"><h2>The race</h2>${legendHtml(d)}</div>
+  function raceHtml(d, live) {
+    const note = live && d.agents[0].equity.length < 2
+      ? `<p class="notice" style="font-size:.8rem">Every account starts at ${chf.format(d.initial_capital_chf)} CHF. A new point is added after each
+         trading day, so the lines spread apart over the coming weeks and months.</p>` : "";
+    return `<section id="race"><div class="section-head"><h2>The race${live ? ": account value since launch" : ""}</h2>${legendHtml(d)}</div>${note}
       <div class="panel"><div class="chart-box"><canvas id="c-eq" aria-label="Equity curves"></canvas></div></div>
       <div class="panel"><span class="eyebrow">Drop from previous high</span>
         <div class="chart-box short"><canvas id="c-dd" aria-label="Drawdowns"></canvas></div></div></section>`;
@@ -618,10 +620,28 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     drawRace(d); drawSparks(d); pickDesk(d);
   }
 
-  function drawRace(d) {
-    lineChart($("#c-eq"), d.agents.map(a => series(a.equity, a.key, a.name, lineStyle(a))), v => chf.format(v));
-    lineChart($("#c-dd"), d.agents.map(a => series(drawdown(a.equity), a.key, a.name,
-      lineStyle(a))), v => (v * 100).toFixed(0) + "%");
+  function drawRace(d, live) {
+    // Few points yet: show them as dots and leave room for the month ahead.
+    const few = d.agents[0].equity.length < 3, dots = few ? { pointRadius: 3, pointHoverRadius: 4 } : {};
+    const eq = lineChart($("#c-eq"), d.agents.map(a => series(a.equity, a.key, a.name, { ...lineStyle(a), ...dots })), v => chf.format(v));
+    const dd = lineChart($("#c-dd"), d.agents.map(a => series(drawdown(a.equity), a.key, a.name,
+      { ...lineStyle(a), ...dots })), v => (v * 100).toFixed(0) + "%");
+    if (live && d.agents[0].equity.length < 22) {
+      const end = ts(d.start) + 31 * 864e5;
+      [eq, dd].forEach(c => { c.options.scales.x.min = ts(d.start) - 864e5 / 2; c.options.scales.x.max = end; });
+      const cap = d.initial_capital_chf;
+      eq.options.scales.y.suggestedMin = cap * 0.97; eq.options.scales.y.suggestedMax = cap * 1.03;
+      dd.options.scales.y.suggestedMin = -0.05;
+      [eq, dd].forEach(c => c.update());
+    }
+    // Click a name in the legend to hide or show its line on both charts.
+    document.querySelectorAll(".legend [data-line]").forEach(b => {
+      b.onclick = () => {
+        const i = +b.dataset.line, off = b.getAttribute("aria-pressed") === "true";
+        b.setAttribute("aria-pressed", String(!off)); b.classList.toggle("off", off);
+        [eq, dd].forEach(c => { c.setDatasetVisibility(i, !off); c.update(); });
+      };
+    });
   }
 
   // ---------- agent desk ----------
