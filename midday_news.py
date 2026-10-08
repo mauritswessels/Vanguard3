@@ -10,8 +10,9 @@ What it does, for the News Analyst's account only:
 
 1. fills last evening's orders at this morning's open (by midday they
    would have filled already),
-2. reads today's headlines with live prices (Yahoo, about 15 minutes
-   delayed),
+2. reads today's headlines with live prices (Finnhub real-time for US
+   markets when ``FINNHUB_API_KEY`` is set; Yahoo, about 15 minutes
+   delayed, for the rest and as the backup),
 3. asks Claude whether anything has changed enough to act on,
 4. trades those changes at once at the live price, with the same costs as
    every other fill. A market that is closed right now is left for the
@@ -33,6 +34,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
+import finnhub_feed
 from daily_run import last_completed_session, load_for_state
 from engine.broker import Order
 from engine.simulator import Simulator, _activity
@@ -147,7 +149,7 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
     before = ", ".join(f"{t} {v['weight']:.0%}"
                        for t, v in agent.targets.items() if v["weight"] > 0)
     note = (
-        f"MIDDAY CHECK, {now.strftime('%H:%M')} UTC. Prices are live (about "
+        f"MIDDAY CHECK, {now.strftime('%H:%M')} UTC. Prices are live (some up to "
         "15 minutes delayed). Changes in a market marked 'market open now' "
         "fill at once; the rest wait for this evening's check.\n"
         f"Your targets from the last evening check: {before or 'none'}.\n"
@@ -255,9 +257,21 @@ def main() -> None:
     try:
         quotes = intraday_quotes(market.tickers + list(fx_symbols.values()),
                                  now)
-    except Exception as exc:                  # Yahoo down: try again tomorrow
-        logger.warning("No live prices (%s): skipping the midday check", exc)
-        return
+    except Exception as exc:
+        logger.warning("Yahoo live prices failed: %s", exc)
+        quotes = {}
+    source = "Yahoo (about 15 minutes delayed)"
+    if finnhub_feed.api_key():
+        # Real-time US prices from Finnhub; Yahoo stays the backup.
+        us = [t for t in market.tickers if t in config._US_STOCKS
+              or t in config._FUNDS]
+        live_us = finnhub_feed.quotes(us, now, LIVE_MINUTES)
+        quotes.update(live_us)
+        logger.info("Finnhub real-time prices for %d of %d US markets",
+                    len(live_us), len(us))
+        if live_us:
+            source = (f"Finnhub real-time for {len(live_us)} US markets, "
+                      "Yahoo (about 15 minutes delayed) for the rest")
     if not any(q["live"] for t, q in quotes.items() if t in market.currencies):
         logger.warning("No market is trading right now: skipping")
         return
@@ -267,6 +281,7 @@ def main() -> None:
                 len(quotes), sum(q["live"] for q in quotes.values()))
 
     result = midday_check(sim, now, quotes, fx_now)
+    result["prices"] = source
     print(json.dumps(result, indent=2))
     if args.dry_run:
         logger.info("Dry run: nothing saved")

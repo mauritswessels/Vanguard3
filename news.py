@@ -29,6 +29,7 @@ import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 
 import config
+import finnhub_feed
 
 #: Single companies (funds have no quarterly results).
 STOCKS = set(config._US_STOCKS + config._SWISS_STOCKS + config._EURO_STOCKS)
@@ -157,6 +158,14 @@ def build_brief(market_lines: dict[str, str]) -> dict:
         except Exception as exc:
             brief["errors"] += 1
             logger.warning("News for %s failed: %s", t, exc)
+        if t in config._US_STOCKS and finnhub_feed.api_key():
+            try:                               # company news, if a key is set
+                seen = {h.split(" · ", 2)[-1].lower() for h in entry["news"]}
+                entry["news"] += [h for h in finnhub_feed.company_news(t)
+                                  if h.split(" · ", 2)[-1].lower() not in seen]
+            except Exception as exc:
+                brief["errors"] += 1
+                logger.warning("Finnhub news for %s failed: %s", t, exc)
         if t in STOCKS:
             try:
                 entry["results"] = quarterly(t)

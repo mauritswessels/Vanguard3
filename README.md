@@ -62,6 +62,11 @@ usual costs; a market that is closed at that moment waits for the evening.
 Only the News Analyst's account is touched. Like everything else it is a
 simulation: no broker is contacted.
 
+With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
+midday check takes real-time US prices from Finnhub instead (Yahoo stays the
+backup, and covers Swiss and European markets), and the brief adds each US
+company's latest news from Finnhub (`finnhub_feed.py`).
+
 The dashboard also shows what each agent is doing right now: for every
 watched market, the agent's own rule with the values from the last close
 (`entry_check` / `exit_check` in each agent; used for display only, never to

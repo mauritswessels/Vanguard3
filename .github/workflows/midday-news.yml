@@ -42,6 +42,7 @@ jobs:
       - name: Midday news check
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python midday_news.py ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Commit results

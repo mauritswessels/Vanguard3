@@ -462,7 +462,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     if (m) {
       const did = !m.ok ? esc(m.status) : m.trades ? `${m.trades} trade${m.trades === 1 ? "" : "s"} at live prices` : "no changes";
       const wait = m.waiting.length ? `, ${m.waiting.length} change${m.waiting.length === 1 ? "" : "s"} left for the evening because the market was closed` : "";
-      mid = ` Midday check at ${swissTime(m.time)} Swiss time: ${did}${wait}.`;
+      mid = ` Midday check at ${swissTime(m.time)} Swiss time: ${did}${wait}.${m.prices ? ` Prices: ${esc(m.prices)}.` : ""}`;
       if (m.ok && m.view) view = ` Its view at midday: “${esc(m.view)}”.`;
     }
     return `<p class="twin">${esc(ai.status)}.${mid}${view}${cost} Reasons are the model's own stated reasons.</p>`;

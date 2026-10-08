@@ -37,6 +37,7 @@ jobs:
         env:
           # Only the News Analyst uses it; without it that agent just waits.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python daily_run.py
 
       - name: Refresh 5-year backtest

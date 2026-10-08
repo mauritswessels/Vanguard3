@@ -106,5 +106,19 @@ class MiddayTest(unittest.TestCase):
         self.assertTrue(acc.agent.status.startswith("Decided"))
 
 
+class FinnhubQuoteTest(unittest.TestCase):
+    def test_parse_quote(self):
+        from finnhub_feed import parse_quote
+        now = pd.Timestamp("2026-10-08 15:00", tz="UTC")
+        t = int(pd.Timestamp("2026-10-08 14:59", tz="UTC").timestamp())
+        q = parse_quote({"c": 101.0, "o": 100.0, "pc": 99.0, "t": t}, now, 45)
+        self.assertEqual((q["open"], q["last"], q["live"]), (100.0, 101.0, True))
+        old = int(pd.Timestamp("2026-10-07 20:00", tz="UTC").timestamp())
+        q = parse_quote({"c": 99.0, "o": 98.0, "t": old}, now, 45)
+        self.assertIsNone(q["open"])
+        self.assertFalse(q["live"])
+        self.assertIsNone(parse_quote({"c": 0, "t": 0}, now, 45))
+
+
 if __name__ == "__main__":
     unittest.main()
