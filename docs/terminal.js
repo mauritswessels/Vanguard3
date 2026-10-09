@@ -73,7 +73,7 @@
     if (xs.length) { o.scales.x.min = Math.min(...xs); o.scales.x.max = Math.max(...xs); }
     if (extra.tooltip) o.plugins.tooltip.callbacks.label = extra.tooltip;
     if (extra.zoom && window.ChartZoom) {
-      o.plugins.zoom = { zoom: { drag: { enabled: true, backgroundColor: "rgba(232,228,220,.07)", borderColor: "rgba(232,228,220,.3)", borderWidth: 1 },
+      o.plugins.zoom = { zoom: { drag: { enabled: true, backgroundColor: "rgba(91,147,255,.10)", borderColor: "rgba(91,147,255,.5)", borderWidth: 1 },
         pinch: { enabled: !!window.Hammer }, mode: "x" }, limits: { x: { minRange: 2 * 864e5 } } };
     }
     if (extra.onClick) o.onClick = extra.onClick;
