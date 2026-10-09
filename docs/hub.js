@@ -23,27 +23,27 @@
     "XLK", "XLF", "XLV", "XLE", "XLI", "XLU", "VNQ"];
   const MACRO = ["TLT", "IEF", "LQD", "HYG", "GLD", "SLV", "DBC", "USO"];
   const GROUPS = {
-    us: { color: "#f17bb4", label: "US stocks" },
-    swiss: { color: "#ff9d5c", label: "Swiss stocks" },
-    euro: { color: "#7fd1ff", label: "European stocks" },
-    funds: { color: "#a58cf2", label: "index and country funds" },
-    macro: { color: "#e9c75a", label: "bonds, metals, commodities" },
+    us: { color: css("--m-us") || "#f17bb4", label: "US stocks" },
+    swiss: { color: css("--m-swiss") || "#ff9d5c", label: "Swiss stocks" },
+    euro: { color: css("--m-euro") || "#7fd1ff", label: "European stocks" },
+    funds: { color: css("--m-funds") || "#a58cf2", label: "index and country funds" },
+    macro: { color: css("--m-macro") || "#e9c75a", label: "bonds, metals, commodities" },
   };
   const groupOf = t => GROUPS[/\.SW$/.test(t) ? "swiss" : /\.(DE|PA|AS)$/.test(t) ? "euro"
     : FUNDS.includes(t) ? "funds" : MACRO.includes(t) ? "macro" : "us"];
   const LABELS = 28;          // only the busiest markets get a name tag
-  const EDGE = "#74b0ac";   // the network's thin links: the muted teal of the reference picture
-  const BG = new THREE.Color("#15181b");
+  const EDGE = css("--hub-edge") || "#74b0ac";   // the network's thin links, from the page palette
+  const BG = new THREE.Color(css("--hub-bg") || "#15181b");
 
   function label(text, color, size = 22, pill = false) {
     const c = document.createElement("canvas"), g = c.getContext("2d");
-    const font = `${pill ? 600 : 500} ${size * 2}px "JetBrains Mono", ui-monospace, monospace`;
+    const font = `${pill ? 600 : 500} ${size * 2}px ${css("--hub-font") || '"JetBrains Mono", ui-monospace, monospace'}`;
     g.font = font;
     c.width = Math.ceil(g.measureText(text).width) + (pill ? 40 : 16); c.height = size * 3;
     if (pill) {                                   // dark tag with a coloured edge, readable over the network
       const r = c.height / 2 - 4;
       g.beginPath(); g.roundRect(3, 4, c.width - 6, c.height - 8, r);
-      g.fillStyle = "rgba(12,14,16,0.86)"; g.fill(); g.lineWidth = 4; g.strokeStyle = color; g.stroke();
+      g.fillStyle = css("--hub-pill") || "rgba(12,14,16,0.86)"; g.fill(); g.lineWidth = 4; g.strokeStyle = color; g.stroke();
     }
     g.font = font; g.fillStyle = color; g.textBaseline = "middle"; g.textAlign = "center"; g.fillText(text, c.width / 2, c.height / 2 + 1);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
@@ -116,7 +116,7 @@
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(40, 1, 1, 3000);
       this.view = { theta: -Math.PI / 2, phi: 1.15, radius: 200 };
-      this.scene.add(new THREE.HemisphereLight("#e6e9ee", "#1a1d21", 1.2));
+      this.scene.add(new THREE.HemisphereLight("#e6e9ee", css("--hub-bg") || "#1a1d21", 1.2));
       const key = new THREE.DirectionalLight("#ffffff", 1.3); key.position.set(80, 140, 120); this.scene.add(key);
 
       this.world = new THREE.Group(); this.scene.add(this.world);
@@ -263,7 +263,7 @@
             const toward = home.clone().sub(tp).normalize();
             const pos = tp.clone().addScaledVector(toward, 5 + 12 * (1 - p) + 3 * r())
               .add(new THREE.Vector3(gauss(r), gauss(r), gauss(r)).multiplyScalar(2.4 + 2.5 * (1 - p)));
-            const col = g.color.clone().lerp(new THREE.Color("#7d8791"), p >= 1 ? 0 : 0.45 - 0.4 * p);
+            const col = g.color.clone().lerp(new THREE.Color(css("--hub-dim") || "#7d8791"), p >= 1 ? 0 : 0.45 - 0.4 * p);
             speck(pos, col, p >= 1 ? 0.8 : 0.45 + 0.2 * p, { kind: "scan", agent: a, ticker: t, date: d, p }, key);
             link(pos, tp, EDGE, d === date ? 0.3 : 0.05 + 0.06 * p, key);
             if (d === date) link(home, pos, EDGE, 0.1, key);
@@ -352,7 +352,7 @@
     /** Colour everything, dimming what is not part of the focused agent. */
     paint() {
       const f = this.focus, dim = (key) => f && key !== f;
-      const c = new THREE.Color(), grey = new THREE.Color("#30353b");
+      const c = new THREE.Color(), grey = new THREE.Color(css("--hub-off") || "#30353b");
       if (this.speckMesh) {
         this.specks.forEach((s, i) => this.speckMesh.setColorAt(i, dim(s.focusKey) ? grey : s.color));
         this.speckMesh.instanceColor.needsUpdate = true;

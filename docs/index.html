@@ -7,35 +7,50 @@
 <title>Vanguard3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: a quiet trading terminal. One column, sections divided by hairline
-   rules instead of boxes; numbers in a mono face; colour only for agents and
-   for gains and losses. Dark by design (single theme). */
+/* Layout: the Cobalt trading terminal. A function-key strip, the 3D network across the top,
+   then panes with dark title bars and cobalt titles. Everything in one monospace face; colour
+   only for agents, the cobalt accent, and gains and losses. Dark by design (single theme). */
 :root {
-  --bg: #0f1113;
-  --raise: #15181b;
-  --ink: #e8e4dc;
-  --muted: #8b9097;
-  --faint: #5d636a;
-  --line: #262a2f;
-  --up: #6cc391;
-  --down: #e27466;
-  --a-trend: #5b9cf5;
-  --a-reversion: #f0a93b;
-  --a-volatility: #2fd0a6;
-  --a-benchmark: #b4bac2;
-  --a-learner: #c6e45c;
-  --a-news: #e58cff;
-  --f-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
-  --f-display: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
-  --f-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --radius: 3px;
+  --bg: #111213;
+  --raise: #18191b;
+  --bar: #222427;
+  --ink: #ececee;
+  --muted: #8d9096;
+  --faint: #6b6f75;
+  --line: #2e3135;
+  --title: #5b93ff;
+  --up: #5fd39a;
+  --down: #ff6b6b;
+  --a-trend: #5b93ff;
+  --a-reversion: #ffb547;
+  --a-volatility: #3fd0c9;
+  --a-benchmark: #8d9096;
+  --a-learner: #b6e36b;
+  --a-news: #ff7ac0;
+  /* 3D network: market colours by kind of asset, and the scene itself */
+  --m-us: #e58fb6;
+  --m-swiss: #ffab6b;
+  --m-euro: #7fbfff;
+  --m-funds: #a596f2;
+  --m-macro: #e5cd6c;
+  --hub-bg: #111213;
+  --hub-glow: #1b1e24;
+  --hub-edge: #6e88b8;
+  --hub-pill: rgba(17, 18, 19, 0.9);
+  --hub-off: #26292d;
+  --hub-dim: #70747b;
+  --f-body: "Azeret Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --f-display: "Azeret Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --f-data: "Azeret Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --hub-font: "Azeret Mono", ui-monospace, monospace;
+  --radius: 2px;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body);
+body { background: var(--bg); color: var(--ink); font: 13.5px/1.55 var(--f-body);
   padding-inline: max(16px, 4vw); padding-block: 22px 56px; }
 .wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 40px; }
 h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; }
@@ -183,7 +198,7 @@ details summary { cursor: pointer; font: .76rem var(--f-data); color: var(--mute
 @media (max-width: 680px) { .now-row { grid-template-columns: 1fr; } .w-row { grid-template-columns: 3.2rem 3.5rem 1fr; gap: 8px; } }
 
 /* 3D hub */
-.hub { position: relative; height: min(62vh, 560px); min-height: 340px; background: radial-gradient(ellipse at 50% 55%, #171b1f 0, var(--bg) 70%);
+.hub { position: relative; height: min(62vh, 560px); min-height: 340px; background: radial-gradient(ellipse at 50% 55%, var(--hub-glow) 0, var(--hub-bg) 72%);
   border-bottom: 1px solid var(--line); margin-inline: calc(-1 * max(16px, 4vw)); overflow: hidden; }
 .hub canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; cursor: grab; }
 .hub-bar { position: absolute; left: max(16px, 4vw); right: max(16px, 4vw); bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
@@ -283,6 +298,21 @@ table.cmp th { white-space: normal; }
 .asset-box .eyebrow { min-width: 6.5rem; }
 .chip { font: .78rem var(--f-data); }
 
+/* Cobalt terminal: panes with title bars, function-key tabs */
+section:has(> .section-head) { background: var(--raise); border: 1px solid var(--line); padding: 0 12px 14px; }
+section:has(> .section-head) > .section-head { margin-inline: -12px; background: var(--bar); border-bottom: 1px solid var(--line); padding: 6px 12px; }
+.section-head h2 { font: 700 .74rem var(--f-display); color: var(--title); text-transform: uppercase; letter-spacing: .07em; }
+nav.views { border-bottom: 0; gap: 2px; }
+nav.views button, .live-nav button { font: 500 .76rem var(--f-data); text-transform: uppercase; letter-spacing: .04em; color: var(--ink);
+  background: var(--bar); border: 0; padding: 6px 12px; }
+nav.views button[aria-selected="true"], .live-nav button[aria-pressed="true"] { background: var(--title); color: #fff; }
+.live-nav { gap: 2px; border-bottom: 0; }
+.live-nav button .fk, nav.views button .fk { color: var(--title); margin-right: 6px; }
+nav.views button[aria-selected="true"] .fk, .live-nav button[aria-pressed="true"] .fk { color: #fff; }
+h1 svg rect { fill: var(--title); }
+.hub { margin-inline: 0; border: 1px solid var(--line); }
+.timebar button[aria-pressed="true"] { color: #fff; background: var(--title); border-color: var(--title); }
+
 footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--line); padding-top: 14px; max-width: 80ch; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -292,7 +322,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   <header class="top">
     <div style="display:grid;gap:6px">
       <span class="eyebrow">Live paper trading · 100'000 CHF each · no real money</span>
-      <h1><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M9 17 L20.5 47 L32 17 H52 L43 29.5 C49.2 29.5 53.5 33.4 53.5 38.8 C53.5 44.3 49.2 48 43.6 48 C40.4 48 37.8 46.8 36 44.8" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/></svg>Vanguard3</h1>
+      <h1><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#5b93ff"/><path d="M10 16 L21 48 L32 16 M37 16 H54 L45 30 C51 30 54 34 54 39 C54 44.5 50 48 44.5 48 C41 48 39 46.8 37.5 45" fill="none" stroke="#111213" stroke-width="6"/></svg>Vanguard3</h1>
     </div>
     <div class="status" id="status">Loading data…</div>
   </header>
@@ -644,8 +674,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
 
   function renderLive(d) {
     const sub = window.V3Terminal ? liveSub() : "overview";
-    const nav = window.V3Terminal ? `<nav class="live-nav" aria-label="Live sections">${V3Terminal.TABS.map(([k, l]) =>
-      `<button type="button" data-live="${k}" aria-pressed="${k === sub}">${l}</button>`).join("")}</nav>` : "";
+    const nav = window.V3Terminal ? `<nav class="live-nav" aria-label="Live sections">${V3Terminal.TABS.map(([k, l], i) =>
+      `<button type="button" data-live="${k}" aria-pressed="${k === sub}"><span class="fk">F${i + 1}</span>${l}</button>`).join("")}</nav>` : "";
     if (sub !== "overview") {
       root.innerHTML = nav + `<div id="term" style="display:grid;gap:28px"></div>`;
       bindLiveNav();
@@ -676,9 +706,9 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       <div class="hub-key"><span>glowing balls = agents (size = account value) · wire balls = their fixed twins</span>
         <span>specks = a day an agent came close to buying that market</span>
         <span>solid line = held now · dashed = order for the next open</span>
-        <span>markets: <i style="color:#f17bb4;font-style:normal">US stocks</i> · <i style="color:#ff9d5c;font-style:normal">Swiss</i> ·
-          <i style="color:#7fd1ff;font-style:normal">European</i> · <i style="color:#a58cf2;font-style:normal">funds</i> ·
-          <i style="color:#e9c75a;font-style:normal">bonds and raw materials</i></span></div>
+        <span>markets: <i style="color:var(--m-us);font-style:normal">US stocks</i> · <i style="color:var(--m-swiss);font-style:normal">Swiss</i> ·
+          <i style="color:var(--m-euro);font-style:normal">European</i> · <i style="color:var(--m-funds);font-style:normal">funds</i> ·
+          <i style="color:var(--m-macro);font-style:normal">bonds and raw materials</i></span></div>
       <div class="hub-tip" hidden></div>
       <div class="hub-bar"><button type="button" class="hub-play">replay</button>
         <input type="range" min="0" max="${days - 1}" value="${days - 1}" aria-label="Day since launch">
