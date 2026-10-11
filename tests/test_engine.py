@@ -268,16 +268,23 @@ class PersistenceTest(unittest.TestCase):
 class LearningTest(unittest.TestCase):
 
     def test_monthly_review_picks_a_grid_setting_and_logs_it(self):
-        from learning import GRIDS, expand, retune
+        from learning import GRIDS, SAFETY_GRID, expand, retune
         market = synthetic_market(days=1500, seed=9)
         agent = make_agent("volatility", learning=True)
         agent.prepare(market)
         entry = retune(agent, market, market.calendar[-1])
         current = {k: agent.params[k] for k in entry["new"]}
         self.assertEqual(current, entry["new"])
-        self.assertIn(entry["new"], expand(GRIDS["volatility"])
-                      + [entry["old"]])
+        core = {k: v for k, v in entry["new"].items() if k not in SAFETY_GRID}
+        safety = {k: v for k, v in entry["new"].items() if k in SAFETY_GRID}
+        old_core = {k: v for k, v in entry["old"].items()
+                    if k not in SAFETY_GRID}
+        self.assertIn(core, expand(GRIDS["volatility"]) + [old_core])
+        self.assertIn(safety, expand(SAFETY_GRID))
         self.assertEqual(agent.learning_log, [entry])
+        # Core settings plus up to 7 new mixes of safety rules.
+        self.assertLessEqual(entry["tested"],
+                             len(expand(GRIDS["volatility"])) + 8)
 
     def test_paper_lineup_has_learner_and_fixed_twin_per_strategy(self):
         from learning import paper_lineup

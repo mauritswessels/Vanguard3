@@ -32,7 +32,7 @@
   const R = v => ok(v) ? v.toFixed(2) : dash;
   const price = (v, t, d) => ok(v) ? `${v.toFixed(2)} <span class="faint">${X.esc(d.currencies[t] || "")}</span>` : dash;
   const dateS = s => s ? X.fmtDate(X.ts(s)) : "–";
-  const typeOf = a => a.key === "monkey" ? "Luck yardstick" : a.benchmark ? "Benchmark" : a.fixed_twin ? "Fixed rules" : a.ai
+  const typeOf = a => a.key === "monkey" ? "Luck yardstick" : a.team ? "Manager · backs agents" : a.benchmark ? "Benchmark" : a.fixed_twin ? "Fixed rules" : a.ai
     ? (a.ai.kind === "news" ? "AI · Claude news" : "AI · daily learner") : a.learning ? "Learning · monthly" : "Fixed rules";
   const agentCell = a => `<div class="agent-name">${X.sw(a)}<div style="min-width:0">${X.esc(a.name)}<small>${typeOf(a)}</small></div></div>`;
   const byId = (d, id) => d.agents.find(a => a.id === id);

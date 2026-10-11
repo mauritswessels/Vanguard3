@@ -48,6 +48,14 @@ GRIDS = {
     },
 }
 
+#: Safety rules tried on top of the best core settings at every review
+#: (see ``BaseAgent.guard``); 0 means off.
+SAFETY_GRID = {
+    "market_filter": [0, 200],
+    "stop_loss_pct": [0.0, 0.12],
+    "max_corr": [0.0, 0.8],
+}
+
 
 def expand(grid: dict) -> list[dict]:
     """All parameter combinations of a grid as flat dicts."""
@@ -83,18 +91,31 @@ def retune(agent, market, as_of: pd.Timestamp) -> dict:
     Uses only data up to ``as_of`` (the last completed session).
     """
     key = agent_key(agent)
-    grid = GRIDS[key]
-    candidates = expand(grid)
+    safety_now = {k: agent.params.get(k, v[0]) for k, v in SAFETY_GRID.items()}
+    # Step 1: the strategy's own settings, keeping today's safety rules.
+    candidates = [{**c, **safety_now} for c in expand(GRIDS[key])]
     current = {k: agent.params[k] for k in candidates[0]}
     if current not in candidates:
         candidates.append(current)
     start = as_of - pd.DateOffset(years=LOOKBACK_YEARS)
 
     scores = {}
-    for params in candidates:
+
+    def score(params: dict) -> None:
         sharpe, trades = evaluate(key, params, market, start, as_of)
         if trades >= MIN_TRADES and math.isfinite(sharpe):
             scores[_label(params)] = (sharpe, params)
+
+    for params in candidates:
+        score(params)
+    # Step 2: every mix of safety rules on top of the best of step 1.
+    if scores:
+        core = max(scores.values(), key=lambda s: s[0])[1]
+        for safety in expand(SAFETY_GRID):
+            params = {**core, **safety}
+            if params not in candidates:
+                candidates.append(params)
+                score(params)
 
     now = scores.get(_label(current))
     best = max(scores.values(), key=lambda s: s[0]) if scores else None
@@ -136,6 +157,8 @@ def paper_lineup(market) -> list:
     agents.append(make_agent("news"))
     if config.BENCHMARK_TICKER in market.bars:
         agents.append(make_agent("benchmark"))
+    # Backs the agents with the best recent results (goes after them).
+    agents.append(make_agent("manager"))
     # Random picks: shows how far luck alone gets you.
     agents.append(make_agent("monkey"))
     return agents

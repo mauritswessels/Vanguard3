@@ -117,6 +117,10 @@ TREND_PARAMS = {
     "adx_period": 14,
     "adx_threshold": 25.0,
     "position_pct": 0.10,        # target weight of equity per position
+    # Safety rules, off (0) unless the monthly review switches them on:
+    "market_filter": 0,          # no new buys while SPY is under its N-day average
+    "stop_loss_pct": 0.0,        # sell a holding down this much since the buy
+    "max_corr": 0.0,             # skip buys moving in step with a holding
 }
 
 REVERSION_PARAMS = {
@@ -127,6 +131,10 @@ REVERSION_PARAMS = {
     "quality_sma": 0,            # 0 = off; 200 = only buy above long trend
     "max_holding_days": 20,      # time stop if the snap-back never comes
     "position_pct": 0.10,
+    # Safety rules, off (0) unless the monthly review switches them on:
+    "market_filter": 0,          # no new buys while SPY is under its N-day average
+    "stop_loss_pct": 0.0,        # sell a holding down this much since the buy
+    "max_corr": 0.0,             # skip buys moving in step with a holding
 }
 
 VOLATILITY_PARAMS = {
@@ -136,6 +144,10 @@ VOLATILITY_PARAMS = {
     "atr_stop_mult": 3.5,        # trailing stop distance in ATRs
     "risk_per_trade_pct": 0.01,  # equity lost if the initial stop is hit
     "max_position_pct": 0.15,
+    # Safety rules, off (0) unless the monthly review switches them on:
+    "market_filter": 0,          # no new buys while SPY is under its N-day average
+    "stop_loss_pct": 0.0,        # sell a holding down this much since the buy
+    "max_corr": 0.0,             # skip buys moving in step with a holding
 }
 
 LEARNER_PARAMS = {
@@ -149,6 +161,13 @@ LEARNER_PARAMS = {
     "max_positions": 8,
     "seed": 7,
     "live_from": "2026-10-13",   # learns in shadow mode until this session
+}
+
+MANAGER_PARAMS = {
+    "min_history": 35,           # days of results before it starts choosing (from Dec 2026)
+    "lookback": 63,              # judges agents on about the last 3 months
+    "top_n": 3,                  # how many agents it backs
+    "band": 0.02,                # only trades a market this far off target
 }
 
 MONKEY_PARAMS = {

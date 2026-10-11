@@ -122,6 +122,9 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             # Daily learner only: what it has learned so far.
             "ai": acc.agent.summary() if hasattr(acc.agent, "summary")
             else None,
+            # Team Manager only: whom it backs and why.
+            "team": acc.agent.team_view() if hasattr(acc.agent, "team_view")
+            else None,
             # Daily closeness to a buy, per ticker (only the near misses).
             "scans": _scans(acc.agent, market.calendar, start, last)
             if mode == "paper" else [],

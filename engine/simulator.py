@@ -73,6 +73,8 @@ class Simulator:
                     self.tuner(acc.agent, self.market, self.last_date)
         prices_chf = self.market.close_chf(date)
         for acc in self.accounts:
+            if getattr(acc.agent, "uses_team", False):
+                acc.agent.team = self.accounts   # the Team Manager
             fills = acc.broker.process(date)
             acc.portfolio.mark_to_market(date, prices_chf)
             signals = acc.agent.calculate_signals(date, acc.portfolio)

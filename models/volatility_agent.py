@@ -75,7 +75,7 @@ class VolatilityAgent(BaseAgent):
                     ticker, Action.BUY, "Donchian breakout",
                     score=float((r.close - r.entry_upper) / r.atr),
                     stop_price=float(trail)))
-        return signals
+        return self.guard(signals, date, portfolio)
 
     def get_state(self) -> dict:
         return {"stops": dict(self.stops)}
