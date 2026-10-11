@@ -50,6 +50,8 @@ class BaseAgent(ABC):
     name: str = "Base"
     #: One-line description of the strategy family.
     style: str = ""
+    #: Yardsticks (Buy & Hold, the Monkey) are shown apart from the racers.
+    benchmark: bool = False
 
     def __init__(self, params: dict):
         self.params = dict(params)

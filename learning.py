@@ -136,4 +136,6 @@ def paper_lineup(market) -> list:
     agents.append(make_agent("news"))
     if config.BENCHMARK_TICKER in market.bars:
         agents.append(make_agent("benchmark"))
+    # Random picks: shows how far luck alone gets you.
+    agents.append(make_agent("monkey"))
     return agents

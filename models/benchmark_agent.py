@@ -18,6 +18,7 @@ from models.base_agent import Action, BaseAgent, Signal
 
 class BuyHoldAgent(BaseAgent):
     style = "Passive benchmark: buy once, never sell"
+    benchmark = True
 
     def __init__(self, ticker: str = config.BENCHMARK_TICKER):
         super().__init__({"ticker": ticker,

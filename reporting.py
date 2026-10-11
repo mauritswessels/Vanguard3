@@ -19,7 +19,7 @@ import config
 from engine.portfolio import Portfolio
 from engine import journal
 from engine.simulator import Simulator
-from models import BuyHoldAgent, agent_key
+from models import agent_key
 
 
 def scoreboard(portfolios: list[Portfolio]) -> pd.DataFrame:
@@ -101,7 +101,7 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             "learning_log": acc.agent.learning_log[-24:],
             "name": acc.agent.name,
             "style": acc.agent.style,
-            "benchmark": isinstance(acc.agent, BuyHoldAgent),
+            "benchmark": acc.agent.benchmark,
             "params": acc.agent.params,
             "stats": pf.performance(),
             "equity": [[d.strftime("%Y-%m-%d"), round(v, 2)]

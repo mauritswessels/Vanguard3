@@ -62,6 +62,16 @@ usual costs; a market that is closed at that moment waits for the evening.
 Only the News Analyst's account is touched. Like everything else it is a
 simulation: no broker is contacted.
 
+A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
+at random under the same rules as the agents (10 positions of 10%, same
+costs; each evening a holding has a 1 in 20 chance of being sold). With
+nine accounts racing, one will lead by luck alone; an agent shows skill only
+if it keeps beating the Monkey over many weeks.
+
+If a run fails, a scheduled run never starts, or the News Analyst cannot
+decide, `health_check.py` notices and the workflow opens (or adds to) a
+GitHub issue titled "Vanguard3 needs attention", which GitHub emails out.
+
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the
 backup, and covers Swiss and European markets), and the brief adds each US
@@ -105,6 +115,8 @@ To start over, delete `state/paper_state.json` and change
 | `models/volatility_agent.py` | Volatility Protected: Donchian breakout, ATR trailing stop, risk sizing |
 | `engine/simulator.py` | The daily loop shared by backtests and paper trading, with save/restore |
 | `models/benchmark_agent.py` | Buy & Hold SPY, run as an agent so it pays the same costs |
+| `models/monkey_agent.py` | The Monkey: random picks, the luck yardstick |
+| `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |

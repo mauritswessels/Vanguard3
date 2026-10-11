@@ -151,6 +151,13 @@ LEARNER_PARAMS = {
     "live_from": "2026-10-13",   # learns in shadow mode until this session
 }
 
+MONKEY_PARAMS = {
+    "position_pct": 0.10,        # same slot size as the Trend Follower
+    "max_positions": 10,
+    "avg_hold_days": 20,         # each evening a holding has a 1 in 20 sell chance
+    "seed": 11,
+}
+
 NEWS_PARAMS = {
     "model": "claude-sonnet-5-5",  # Anthropic model that reads the news
     "max_weight": 0.15,          # largest share of the account per market
