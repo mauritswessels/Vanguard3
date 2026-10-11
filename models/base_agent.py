@@ -25,6 +25,7 @@ import config
 from data_manager import MarketData
 from engine.broker import BaseBroker, Order
 from engine.portfolio import Portfolio
+from models import indicators as ind
 
 
 class Action(str, Enum):
@@ -50,6 +51,8 @@ class BaseAgent(ABC):
     name: str = "Base"
     #: One-line description of the strategy family.
     style: str = ""
+    #: Yardsticks (Buy & Hold, the Monkey) are shown apart from the racers.
+    benchmark: bool = False
 
     def __init__(self, params: dict):
         self.params = dict(params)
@@ -67,6 +70,27 @@ class BaseAgent(ABC):
         self.indicators = {t: self.compute_indicators(market.bars[t])
                            for t in market.tickers}
         self._index_rows()
+        self._weather = self._market_weather(market)
+
+    def _market_weather(self, market: MarketData) -> dict | None:
+        """Date -> True when the benchmark closes above its long average.
+
+        Only built when the ``market_filter`` setting (an SMA length) is
+        on and the benchmark is in the data; otherwise every day is fine.
+        """
+        n = self.params.get("market_filter") or 0
+        bench = config.BENCHMARK_TICKER
+        if not n or bench not in market.bars:
+            return None
+        close = market.bars[bench]["Close"]
+        avg = ind.sma(close, int(n))
+        return {d: bool(c > a) for d, c, a in zip(close.index, close, avg)
+                if a == a}
+
+    def market_ok(self, date: pd.Timestamp) -> bool:
+        """False when the market weather check says "storm": no new buys."""
+        weather = getattr(self, "_weather", None)
+        return True if not weather else weather.get(date, True)
 
     def _index_rows(self) -> None:
         """Pre-build a date -> row lookup; rows with any NaN map to None."""
@@ -118,7 +142,10 @@ class BaseAgent(ABC):
         buys = sorted((s for s in signals if s.action is Action.BUY
                        and not portfolio.has_position(s.ticker)),
                       key=lambda s: s.score, reverse=True)
+        owned = list(portfolio.positions)
         for sig in buys:
+            if self._too_similar(sig.ticker, owned, date):
+                continue
             close, fx, ccy = self._quote(sig.ticker, date)
             unit = costs.buy_price_chf(close, fx, ccy)
             qty = self.position_size(sig, date, equity, unit)
@@ -126,11 +153,49 @@ class BaseAgent(ABC):
             if qty <= 0:
                 continue
             budget -= qty * unit + costs.commission_chf
+            owned.append(sig.ticker)
             orders.append(Order(sig.ticker, "BUY", qty, date, sig.reason))
 
         for order in orders:
             broker.submit(order)
         return orders
+
+    # -- shared safety rules (each off unless its setting is above zero) ----
+    def guard(self, signals: list[Signal], date: pd.Timestamp,
+              portfolio: Portfolio) -> list[Signal]:
+        """Apply the market weather check and the stop loss to ``signals``.
+
+        * ``market_filter``: in a storm (the benchmark under its average of
+          that many days) no new positions are opened.
+        * ``stop_loss_pct``: a holding that has lost this much since it
+          was bought (in CHF, costs included) is sold.
+        """
+        stop = self.params.get("stop_loss_pct") or 0
+        selling = {s.ticker for s in signals if s.action is Action.SELL}
+        out = [s for s in signals
+               if s.action is Action.SELL or self.market_ok(date)]
+        if stop:
+            for t, pos in sorted(portfolio.positions.items()):
+                if t in selling or self.row(t, date) is None:
+                    continue
+                close, fx, _ = self._quote(t, date)
+                loss = close * fx / pos.avg_cost_chf - 1
+                if loss <= -stop:
+                    out.append(Signal(t, Action.SELL,
+                                      f"Stop loss: down {-loss:.0%} since "
+                                      f"the buy"))
+        return out
+
+    def _too_similar(self, ticker: str, owned: list[str],
+                     date: pd.Timestamp) -> bool:
+        """``max_corr`` check: does ``ticker`` move almost in step with a
+        market already owned? Uses the last 60 sessions of daily returns."""
+        limit = self.params.get("max_corr") or 0
+        if not limit or not owned:
+            return False
+        rets = self.market.close_panel.loc[:date].tail(61).pct_change()
+        mine = rets[ticker]
+        return any(mine.corr(rets[t]) > limit for t in owned if t != ticker)
 
     def position_size(self, signal: Signal, date: pd.Timestamp,
                       equity: float, unit_cost_chf: float) -> int:
@@ -170,6 +235,11 @@ class BaseAgent(ABC):
             if check is None:
                 check = {"progress": None, "ready": False,
                          "note": "Not enough price history yet"}
+            elif not self.market_ok(date):
+                check = {**check, "ready": False,
+                         "note": "Market weather is stormy (S&P 500 under "
+                                 "its long average): no new buys. "
+                                 + check["note"]}
             items.append({"ticker": t, "held": False, **check})
         items.sort(key=lambda i: (not i["held"], -(i["progress"] or 0)))
         return items

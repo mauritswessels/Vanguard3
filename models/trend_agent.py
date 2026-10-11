@@ -52,7 +52,7 @@ class TrendAgent(BaseAgent):
                 signals.append(Signal(
                     ticker, Action.BUY,
                     f"Up-trend, ADX {r.adx:.1f}", score=float(r.adx)))
-        return signals
+        return self.guard(signals, date, portfolio)
 
     def entry_check(self, ticker, date):
         r = self.row(ticker, date)

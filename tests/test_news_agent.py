@@ -58,6 +58,41 @@ class NewsAgentTest(unittest.TestCase):
         self.assertEqual(acc.broker.pending_to_list(), [])
         self.assertIn("API key", acc.agent.status)
 
+    def test_report_card_grades_trades_against_spy_and_feeds_memory(self):
+        from types import SimpleNamespace as NS
+        agent = make_agent("news")
+        agent.prepare(self.market)
+        cal, panel = self.market.calendar, self.market.close_panel
+        d0, d5, last = cal[-30], cal[-25], cal[-1]
+        t = "AAPL"
+        buy = NS(date=d0, ticker=t, side="BUY",
+                 market_price=float(panel.at[d0, t]))
+        sell = NS(date=d0, ticker=t, side="SELL",
+                  market_price=float(panel.at[d0, t]))
+        fresh = NS(date=cal[-2], ticker=t, side="BUY",
+                   market_price=float(panel.at[cal[-2], t]))
+        card = agent.report_card([buy, sell, fresh], last)
+        move = panel.at[d5, t] / panel.at[d0, t] - 1
+        spy = panel.at[d5, "SPY"] / panel.at[d0, "SPY"] - 1
+        self.assertAlmostEqual(card["calls"][0]["edge_5"], move - spy, 4)
+        self.assertAlmostEqual(card["calls"][1]["edge_5"], spy - move, 4)
+        self.assertNotIn("edge_5", card["calls"][2])     # too early to grade
+        self.assertEqual(card["graded_5"], 2)
+        self.assertEqual(card["graded_20"], 2)
+        self.assertEqual(card["hit_rate_5"], 0.5)
+
+        agent.card = card
+        seen = {}
+
+        def decide(brief, holdings, cash, model, max_w, max_total, note=""):
+            seen["note"] = note
+            return news.parse_decision('{"targets": {}}', [], max_w, max_total)
+
+        agent.build_brief, agent.decide = fake_brief, decide
+        agent.consult({t: "x"}, {}, 1.0)
+        self.assertIn("YOUR TRACK RECORD", seen["note"])
+        self.assertIn(f"bought {t}", seen["note"])
+
     def test_parse_decision_caps_total_and_ignores_unknown(self):
         text = 'Sure: {"targets": {"A": {"weight": 0.5}, "B": {"weight": 0.5},' \
                ' "EVIL": {"weight": 1}}}'

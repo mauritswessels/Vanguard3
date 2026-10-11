@@ -62,7 +62,7 @@ class ReversionAgent(BaseAgent):
                 signals.append(Signal(
                     ticker, Action.BUY, f"Oversold, RSI {r.rsi:.1f}",
                     score=float(p["rsi_entry"] - r.rsi)))
-        return signals
+        return self.guard(signals, date, portfolio)
 
     def entry_check(self, ticker, date):
         r = self.row(ticker, date)

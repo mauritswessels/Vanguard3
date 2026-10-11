@@ -29,6 +29,8 @@
   --a-benchmark: #8d9096;
   --a-learner: #b6e36b;
   --a-news: #ff7ac0;
+  --a-monkey: #c39a74;
+  --a-manager: #a98bff;
   /* 3D network: market colours by kind of asset, and the scene itself */
   --m-us: #e58fb6;
   --m-swiss: #ffab6b;
@@ -463,7 +465,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       </div>`).join("");
     return `<section>
       <div class="section-head"><h2>Standings</h2>
-        <span class="muted" style="font-size:.85rem">Account value in CHF, ranked. Ref = buy and hold SPY, the yardstick to beat.</span></div>
+        <span class="muted" style="font-size:.85rem">Account value in CHF, ranked. Ref = the yardsticks to beat: buy and hold SPY, and the Monkey picking at random.</span></div>
       <div class="panel standings">
         <div class="lane head"><span></span><span>Agent</span><span class="r">Value</span><span class="r">${live ? "Last day" : "Sharpe"}</span>
           <span class="r">Max drop</span><span class="r">Fills</span><span class="r">Wins</span><span>Path</span></div>
@@ -516,7 +518,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     return `<section class="panel hero">
       <div><span class="eyebrow">Day ${days} · started ${fmtDate(ts(d.start))}</span>
         <h2>${headline}</h2>
-        <p class="muted">${players.length} agents and a buy-and-hold yardstick, 100'000 CHF of paper money each.
+        <p class="muted">${players.length} agents and ${d.agents.length - players.length > 1 ? "two yardsticks (buy and hold SPY, and a Monkey picking at random)" : "a buy-and-hold yardstick"}, 100'000 CHF of paper money each.
         They decide after every New York close and fill at the next open.</p></div>
       <div class="hero-kpis">
         <div><span class="eyebrow">Last close used</span><b>${fmtDate(ts(d.last))}</b></div>
@@ -635,7 +637,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       const watching = a.benchmark ? "" : `<div class="w-block"><h3>Watching · ${cands.length} markets, closest first</h3>${top || `<p class="empty">${a.watch ? "No data yet." : "The rule check appears after the next daily run."}</p>`}
         ${rest.length ? `<details><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : ""}</div>`;
       return `<div class="now-row">
-        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news evening and midday" : "learns every day") : a.learning ? "learns monthly" : a.benchmark ? "yardstick" : ""}</small></div></div>
+        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news evening and midday" : "learns every day") : a.learning ? "learns monthly" : a.key === "monkey" ? "picks at random: the luck yardstick" : a.team ? "backs the best agents" : a.benchmark ? "yardstick" : ""}</small></div></div>
           <p class="now-sum">${summary(a)}</p>${a.ai ? (a.ai.kind === "news" ? newsLine(d, a) : aiLine(d, a)) : twinLine(d, a)}</div>
         <div class="now-what">
           ${mid.length ? `<div class="w-block"><h3>At midday today (live prices)</h3>${mid.join("")}</div>` : ""}
@@ -857,13 +859,36 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     if ($("#heat")) $("#heat").innerHTML = heatmap(a, d.initial_capital_chf);
   }
 
+  /** The News Analyst's report card: each trade graded against SPY after 5 and 20 trading days. */
+  function newsCard(card) {
+    const calls = ((card && card.calls) || []).slice().reverse().slice(0, 8);
+    if (!calls.length) return "";
+    const rate = h => card["graded_" + h] ? `${Math.round(card["hit_rate_" + h] * 100)}% right of ${card["graded_" + h]}` : "not graded yet";
+    const edge = v => v == null ? `<span class="faint">too early</span>` : `<span class="${cls(v)}">${(v >= 0 ? "+" : "") + (v * 100).toFixed(1)}%</span>`;
+    return `<h3 style="margin-top:8px">Report card</h3>
+      <div class="muted" style="font-size:.88rem">Each trade is graded against the S&amp;P 500: a buy is right if the market then did better
+      than SPY, a sell if it did worse. After 5 trading days: ${rate(5)}. After 20: ${rate(20)}. Claude sees this record every time it decides.</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Trade</th><th class="r">vs SPY, 5 days</th><th class="r">20 days</th></tr></thead><tbody>
+      ${calls.map(c => `<tr><td>${esc(c.date)}</td><td><span class="side ${c.side}">${c.side}</span> ${esc(c.ticker)}</td>
+        <td class="num r">${edge(c.edge_5)}</td><td class="num r">${edge(c.edge_20)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
   function learningPanel(a) {
     if (a.benchmark) return "";
+    if (a.team) {
+      const rows = Object.entries(a.team.backing || {}).sort((x, y) => y[1] - x[1])
+        .map(([n, w]) => `<tr><td>${esc(n)}</td><td class="num r">${Math.round(w * 100)}%</td></tr>`).join("");
+      return `<div class="panel" style="display:grid;gap:6px"><h3>Whom it backs</h3>
+        <div class="muted" style="font-size:.88rem">It picks agents, not markets: it owns its share of what the agents it backs own, and
+        chooses again on the first trading day of each month. ${esc(a.team.why)}.</div>
+        ${rows ? `<div class="tbl-wrap"><table><thead><tr><th>Agent</th><th class="r">Share</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}</div>`;
+    }
     if (a.ai && a.ai.kind === "news") return `<div class="panel" style="display:grid;gap:6px"><h3>How it decides</h3>
       <div class="muted" style="font-size:.88rem">Each evening it reads headlines on every market, on politics and the economy, plus the latest
       quarterly results of every stock, and asks Claude for a target share of the account per market. It buys new targets, sells
       markets set to zero and leaves the rest alone to save fees. Around midday (16:37 Swiss time in summer, 15:37 in winter) it reads the
-      news again with live prices; a change there is traded at once, in the markets that are open. ${esc(a.ai.status)}.</div></div>`;
+      news again with live prices; a change there is traded at once, in the markets that are open. ${esc(a.ai.status)}.</div>
+      ${newsCard(a.ai.report_card)}</div>`;
     if (a.ai) {
       const ai = a.ai, W = ai.weights;
       const rows = W ? Object.keys(W.BUY).map(k => {
@@ -1006,7 +1031,9 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     const tab = (k, label) => `<button type="button" data-sub="${k}" aria-pressed="${k === sub}">${label}</button>`;
     $("#view").innerHTML = `
       <div class="panel notice"><b>Research uses past prices only.</b> <span class="muted">These studies were used to choose the agents' rules
-        before launch. They are replays of history, not live money, and past results do not predict future returns.</span></div>
+        before launch. They are replays of history, not live money, and past results do not predict future returns.
+        They also flatter every agent a little: the markets were picked in 2026 because they are big today, so companies that shrank
+        or disappeared in those years are missing. Trust the live race more.</span></div>
       <div class="section-head"><div class="chips sub-nav" role="group" aria-label="Research study">${tab("backtest", "5-year replay")}${tab("walkforward", "Walk-forward check")}</div></div>
       <p class="muted" style="margin:0">${sub === "backtest"
         ? "The same rules run over the last five years, as if they had traded then. A sanity check that the rules are not broken."

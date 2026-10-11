@@ -32,7 +32,7 @@
   const R = v => ok(v) ? v.toFixed(2) : dash;
   const price = (v, t, d) => ok(v) ? `${v.toFixed(2)} <span class="faint">${X.esc(d.currencies[t] || "")}</span>` : dash;
   const dateS = s => s ? X.fmtDate(X.ts(s)) : "–";
-  const typeOf = a => a.benchmark ? "Benchmark" : a.fixed_twin ? "Fixed rules" : a.ai
+  const typeOf = a => a.key === "monkey" ? "Luck yardstick" : a.team ? "Manager · backs agents" : a.benchmark ? "Benchmark" : a.fixed_twin ? "Fixed rules" : a.ai
     ? (a.ai.kind === "news" ? "AI · Claude news" : "AI · daily learner") : a.learning ? "Learning · monthly" : "Fixed rules";
   const agentCell = a => `<div class="agent-name">${X.sw(a)}<div style="min-width:0">${X.esc(a.name)}<small>${typeOf(a)}</small></div></div>`;
   const byId = (d, id) => d.agents.find(a => a.id === id);
@@ -104,7 +104,7 @@
       ${info.map(x => X.esc(byId(d, x.id).name)).join(", ")} ${info.length === 1 ? "keeps" : "keep"} under ${M.LIMITS.lowCash * 100}% in cash. Details on the Risk tab.</div>` : ""))
       || `<p class="empty">No warnings. Every account is within the limits listed on the Risk tab.</p>`;
     return `<section class="glance"><div class="section-head"><h2>At a glance</h2>
-        <span class="muted">${S.filter(s => !byId(d, s.id).benchmark).length} agents and 1 benchmark · last close ${dateS(d.last)}</span></div>
+        <span class="muted">${S.filter(s => !byId(d, s.id).benchmark).length} agents and ${S.filter(s => byId(d, s.id).benchmark).length} yardsticks · last close ${dateS(d.last)}</span></div>
       <div class="glance-grid">
         <div><h3 class="h-sm">Latest session</h3><div class="mini">${day.map(x => `<div class="mini-row"><span class="agent-name">${X.sw(x.a)}${X.esc(x.a.name)}</span>
           <span class="num">${C(x.chg)}</span><span class="num">${P(x.pct, 2)}</span></div>`).join("")}</div></div>

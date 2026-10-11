@@ -62,6 +62,36 @@ usual costs; a market that is closed at that moment waits for the evening.
 Only the News Analyst's account is touched. Like everything else it is a
 simulation: no broker is contacted.
 
+A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
+at random under the same rules as the agents (10 positions of 10%, same
+costs; each evening a holding has a 1 in 20 chance of being sold). With
+nine accounts racing, one will lead by luck alone; an agent shows skill only
+if it keeps beating the Monkey over many weeks.
+
+The **Team Manager** (`models/manager_agent.py`) picks agents, not
+markets: it owns its share of what the agents it backs own. Until there are
+35 days of results it backs every racing agent equally; after that, on the
+first trading day of each month, it backs the 3 agents with the best return
+over the last 3 months.
+
+Three shared safety rules (`BaseAgent.guard`, off by default) can be
+switched on by the monthly review of the learning agents, which tries every
+mix of them on top of its best core settings; the fixed twins keep them off,
+so the race shows whether they help:
+
+* market weather: no new buys while SPY is under its 200-day average,
+* stop loss: sell a holding that is down 12% since the buy,
+* similar markets: skip a buy that moved almost in step (correlation above
+  0.8 over 60 days) with something already owned.
+
+The News Analyst grades its own trades against SPY after 5 and 20 trading
+days. The report card is on the dashboard, and the latest graded trades go
+in front of every brief, so Claude can learn from its record.
+
+If a run fails, a scheduled run never starts, or the News Analyst cannot
+decide, `health_check.py` notices and the workflow opens (or adds to) a
+GitHub issue titled "Vanguard3 needs attention", which GitHub emails out.
+
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the
 backup, and covers Swiss and European markets), and the brief adds each US
@@ -105,6 +135,9 @@ To start over, delete `state/paper_state.json` and change
 | `models/volatility_agent.py` | Volatility Protected: Donchian breakout, ATR trailing stop, risk sizing |
 | `engine/simulator.py` | The daily loop shared by backtests and paper trading, with save/restore |
 | `models/benchmark_agent.py` | Buy & Hold SPY, run as an agent so it pays the same costs |
+| `models/monkey_agent.py` | The Monkey: random picks, the luck yardstick |
+| `models/manager_agent.py` | Team Manager: backs the agents with the best recent results |
+| `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |

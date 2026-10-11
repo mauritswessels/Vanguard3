@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: paper-trading
@@ -56,4 +57,32 @@ jobs:
             git commit -m "Midday news check $(date -u +%F)"
             git pull --rebase origin main
             git push
+          fi
+
+      - name: Health check
+        if: always()
+        run: python health_check.py --out health.md
+
+      # Opens (or adds to) one GitHub issue; GitHub emails it to the owner.
+      - name: Alert if something went wrong
+        if: always() && (failure() || hashFiles('health.md') != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The **${{ github.workflow }}** run on $(date -u '+%a %d %b %H:%M UTC') needs a look."
+            echo
+            if [ "${{ job.status }}" != "success" ]; then
+              echo "- The run itself stopped with an error. Log: $RUN_URL"
+            fi
+            [ -f health.md ] && cat health.md
+            echo
+            echo "@Mits-Alt-F4 · automatic message. Close this issue once things are fine again."
+          } > alert.md
+          n=$(gh issue list --state open --search '"Vanguard3 needs attention" in:title' --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file alert.md
+          else
+            gh issue create --title "Vanguard3 needs attention" --body-file alert.md
           fi

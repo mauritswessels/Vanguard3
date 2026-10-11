@@ -56,6 +56,8 @@ class NewsAgent(BaseAgent):
         self.read: dict[str, dict] = {}
         #: The latest midday check: time (UTC), what happened, trades made.
         self.midday: dict | None = None
+        #: How its past trades turned out (see ``report_card``).
+        self.card: dict | None = None
         # Swappable for tests: brief(market_lines) and decide(brief, ...).
         import news
         self.build_brief = news.build_brief
@@ -89,6 +91,7 @@ class NewsAgent(BaseAgent):
         holdings = {t: p.quantity * float(prices[t]) / equity
                     for t, p in portfolio.positions.items()}
         lines = {t: self._price_line(t, date) for t in self.indicators}
+        self.card = self.report_card(portfolio.trades, date)
         if not self.consult(lines, holdings, portfolio.cash / equity):
             return []
         self.decided = date.strftime("%Y-%m-%d")
@@ -109,6 +112,7 @@ class NewsAgent(BaseAgent):
                 len(e["news"]) for e in brief["markets"].values())
             if self.headline_count == 0:
                 raise RuntimeError("no headlines could be loaded")
+            note = "\n\n".join(x for x in (self.memory_text(), note) if x)
             extra = {"note": note} if note else {}
             decision = self.decide(brief, holdings, cash_pct, p["model"],
                                    p["max_weight"], p["max_total"], **extra)
@@ -156,6 +160,74 @@ class NewsAgent(BaseAgent):
         w = self.targets.get(signal.ticker, {}).get("weight", 0.0)
         return int(math.floor(equity * w / unit_cost_chf))
 
+    # -- report card and memory ---------------------------------------------
+    HORIZONS = (5, 20)          # trading days after a trade when it is graded
+
+    def report_card(self, trades, date: pd.Timestamp) -> dict:
+        """Grade every past trade against the S&P 500 (SPY).
+
+        A buy was right if the market then beat SPY; a sell was right if it
+        then lagged SPY. Each trade is graded after 5 and after 20 trading
+        days, comparing price moves in each market's own currency from the
+        fill price. Uses only prices up to ``date``.
+        """
+        cal = self.market.calendar
+        cal = cal[cal <= date]
+        panel = self.market.close_panel
+        bench = config.BENCHMARK_TICKER
+        calls = []
+        for tr in trades:
+            if tr.date not in cal:
+                continue
+            i = cal.get_loc(tr.date)
+            call = {"date": tr.date.strftime("%Y-%m-%d"), "ticker": tr.ticker,
+                    "side": tr.side}
+            for h in self.HORIZONS:
+                if i + h >= len(cal) or bench not in panel:
+                    continue
+                later = cal[i + h]
+                move = float(panel.at[later, tr.ticker]) / tr.market_price - 1
+                spy = (float(panel.at[later, bench])
+                       / float(panel.at[tr.date, bench]) - 1)
+                edge = (move - spy) * (1 if tr.side == "BUY" else -1)
+                if math.isfinite(edge):
+                    call[f"edge_{h}"] = round(edge, 4)
+            calls.append(call)
+        card = {"calls": calls[-40:]}
+        for h in self.HORIZONS:
+            edges = [c[f"edge_{h}"] for c in calls if f"edge_{h}" in c]
+            card[f"graded_{h}"] = len(edges)
+            card[f"hit_rate_{h}"] = (round(sum(e > 0 for e in edges)
+                                           / len(edges), 3) if edges else None)
+            card[f"avg_edge_{h}"] = (round(sum(edges) / len(edges), 4)
+                                     if edges else None)
+        return card
+
+    def memory_text(self) -> str:
+        """Its own track record, put in front of every brief."""
+        card = self.card or {}
+        graded = [c for c in card.get("calls", []) if "edge_5" in c][-15:]
+        if not graded:
+            return ""
+        lines = []
+        for c in graded:
+            verb = "bought" if c["side"] == "BUY" else "sold"
+            grade = "right" if c["edge_5"] > 0 else "wrong"
+            later = (f"; after 20 days {c['edge_20']:+.1%}"
+                     if "edge_20" in c else "")
+            lines.append(f"- {c['date']} {verb} {c['ticker']}: after 5 "
+                         f"trading days {c['edge_5']:+.1%} vs SPY ({grade})"
+                         f"{later}")
+        rate = card.get("hit_rate_5")
+        head = (f"YOUR TRACK RECORD so far: {rate:.0%} of "
+                f"{card['graded_5']} graded trades were right after 5 trading "
+                "days (a buy is right if the market then beat SPY, a sell if "
+                "it lagged SPY). Your most recent graded trades:")
+        return (head + "\n" + "\n".join(lines) + "\nLearn from this: "
+                "notice which kinds of calls worked and which did not, and "
+                "adjust. Do not chase or avoid a market only because of one "
+                "past result.")
+
     # -- explaining ----------------------------------------------------------
     def watch(self, date, portfolio):
         items = []
@@ -185,14 +257,15 @@ class NewsAgent(BaseAgent):
                 "decided": self.decided, "market_view": self.view,
                 "calls": self.calls, "headlines": self.headline_count,
                 "tokens": self.tokens, "est_cost_usd": round(cost, 2),
-                "midday": self.midday}
+                "midday": self.midday, "report_card": self.card}
 
     # -- persistence ---------------------------------------------------------
     def get_state(self) -> dict:
         return {"targets": self.targets, "view": self.view,
                 "status": self.status, "decided": self.decided,
                 "calls": self.calls, "tokens": self.tokens,
-                "headlines": self.headline_count, "midday": self.midday}
+                "headlines": self.headline_count, "midday": self.midday,
+                "card": self.card}
 
     def set_state(self, state: dict) -> None:
         self.targets = state.get("targets", {})
@@ -203,3 +276,4 @@ class NewsAgent(BaseAgent):
         self.tokens = state.get("tokens", {"input": 0, "output": 0})
         self.headline_count = state.get("headlines", 0)
         self.midday = state.get("midday")
+        self.card = state.get("card")
