@@ -186,3 +186,17 @@ NEWS_PARAMS = {
     "usd_per_m_input": 3.0,
     "usd_per_m_output": 15.0,
 }
+
+# ---------------------------------------------------------------------------
+# Interactive Brokers paper account (ibkr_bridge.py, runs on your computer)
+# ---------------------------------------------------------------------------
+IBKR_PARAMS = {
+    "agent": "manager",          # dashboard id of the agent to copy
+    "host": "127.0.0.1",         # TWS on this computer
+    "port": 7497,                # TWS paper trading (IB Gateway paper: 4002)
+    "client_id": 31,             # keep fixed so a later run can cancel its orders
+    "min_trade_pct": 0.005,      # skip changes smaller than this share of the account
+    "order_ref": "Vanguard3",    # label on every order the bridge sends
+    "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
+                    "Vanguard3/main/docs/data/paper.json"),
+}
