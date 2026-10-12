@@ -1,10 +1,12 @@
 """Copy one agent's holdings into an Interactive Brokers PAPER account.
 
 Runs on your own computer, next to Trader Workstation (TWS) logged in to
-Paper Trading with the API switched on::
+Paper Trading with the API switched on, or on a cloud server next to IB
+Gateway (see ``server/setup.sh``)::
 
-    python ibkr_bridge.py            # shows the plan, sends nothing
-    python ibkr_bridge.py --send     # places the orders in the paper account
+    python ibkr_bridge.py              # shows the plan, sends nothing
+    python ibkr_bridge.py --send       # places the orders in the paper account
+    python ibkr_bridge.py --port 4002  # talks to IB Gateway instead of TWS
 
 What it does:
 
@@ -298,6 +300,19 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
     return result
 
 
+def not_reachable(port: int, exc: Exception) -> str:
+    """What to check when nothing answers on the API port. Its last line is
+    what the morning run's notification shows."""
+    why = str(exc) or type(exc).__name__
+    if port in (4001, 4002):      # IB Gateway, as on the cloud server
+        return (f"Could not reach IB Gateway on port {port} ({why}).\n"
+                "Is IB Gateway running and logged in? Its log: "
+                "docker logs --tail 30 ib-gateway")
+    return (f"Could not reach TWS on port {port} ({why}).\nIs TWS open and "
+            "logged in to Paper Trading, with 'Enable ActiveX and Socket "
+            "Clients' ticked in the API settings?")
+
+
 def write_log(result: dict) -> Path:
     """Append this run to ``ibkr_logs/<today>.json``."""
     LOG_DIR.mkdir(exist_ok=True)
@@ -318,7 +333,8 @@ def main() -> None:
                         help="agent to copy, e.g. manager, trend, news "
                              f"(default {p['agent']})")
     parser.add_argument("--port", type=int, default=p["port"],
-                        help=f"TWS API port (default {p['port']})")
+                        help=f"API port (default {p['port']}, TWS; "
+                             "IB Gateway: 4002)")
     parser.add_argument("--results", default=p["results_url"],
                         help="URL or file of paper.json")
     args = parser.parse_args()
@@ -339,10 +355,7 @@ def main() -> None:
     try:
         ib.connect(p["host"], p["port"], clientId=p["client_id"], timeout=15)
     except Exception as exc:
-        raise SystemExit(
-            f"Could not reach TWS on port {p['port']} ({exc}).\nIs TWS open "
-            "and logged in to Paper Trading, with 'Enable ActiveX and Socket "
-            "Clients' ticked in the API settings?")
+        raise SystemExit(not_reachable(p["port"], exc))
     try:
         result = run(ib, api, payload, p, send=args.send)
     finally:

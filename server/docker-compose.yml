@@ -1,0 +1,29 @@
+# IBKR's trading app for servers (IB Gateway), logged in to the paper
+# account, for the bridge's weekday-morning runs on a cloud server.
+# server/setup.sh writes the login next to this file (.env and
+# ib_password.txt); neither file ever goes to GitHub.
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    container_name: ib-gateway
+    restart: always
+    environment:
+      TWS_USERID: ${TWS_USERID:?run server/setup.sh first}
+      TWS_PASSWORD_FILE: /run/secrets/ib_password
+      TRADING_MODE: paper
+      READ_ONLY_API: "no"           # the bridge places orders
+      BYPASS_WARNING: "yes"         # no pop-ups that would hold orders back
+      ALLOW_BLIND_TRADING: "yes"    # orders without paid price data
+      EXISTING_SESSION_DETECTED_ACTION: primary  # keep the login
+      AUTO_RESTART_TIME: "11:45 PM" # IBKR wants a restart every day
+      TWS_COLD_RESTART: "07:05"     # and a fresh login every Sunday
+      TIME_ZONE: Europe/Zurich
+      TZ: Europe/Zurich
+    secrets:
+      - ib_password
+    ports:
+      - "127.0.0.1:4002:4004"       # only programs on this server get in
+
+secrets:
+  ib_password:
+    file: ./ib_password.txt
