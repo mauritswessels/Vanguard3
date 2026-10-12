@@ -167,7 +167,8 @@ class BridgeTest(unittest.TestCase):
         ib = FakeIB(positions=[position("AAPL", "USD", 400),
                                position("XYZ", "USD", 7)],
                     open_orders=[old, manual])
-        out = bridge.run(ib, api, p, PARAMS, send=True, say=lambda *_: None)
+        said = []
+        out = bridge.run(ib, api, p, PARAMS, send=True, say=said.append)
         self.assertEqual(ib.cancelled, [old.order])      # only its own
         sent = {c.symbol: (o.action, o.totalQuantity, o.tif, o.orderRef)
                 for c, o in ib.placed}
@@ -176,12 +177,25 @@ class BridgeTest(unittest.TestCase):
         self.assertNotIn("XYZ", sent)                    # not on watchlist
         sap = next(s for s in out["sent"] if s["ticker"] == "SAP.DE")
         self.assertIn("No trading permission", sap["note"])
+        self.assertEqual(said[-1], "Done: 1 of 2 orders placed; "
+                                   "not accepted: SAP.DE.")
+
+    def test_nothing_to_do(self):
+        ib = FakeIB(positions=[position("AAPL", "USD", 400),
+                               position("NESN", "CHF", 1000)])
+        said = []
+        bridge.run(ib, api, payload(), PARAMS, send=True, say=said.append)
+        self.assertEqual(ib.placed, [])
+        self.assertEqual(said[-1], "Done: no orders needed.")
 
     def test_unknown_market_is_skipped(self):
         ib = FakeIB(unknown={"NESN"})
+        said = []
         out = bridge.run(ib, api, payload(), PARAMS, send=True,
-                         say=lambda *_: None)
+                         say=said.append)
         self.assertEqual([c.symbol for c, _ in ib.placed], ["AAPL"])
+        self.assertEqual(said[-1], "Done: 1 of 2 orders placed; "
+                                   "not accepted: NESN.SW.")
         self.assertIn({"ticker": "NESN.SW", "status": "unknown market"},
                       [{k: s[k] for k in ("ticker", "status")}
                        for s in out["sent"]])

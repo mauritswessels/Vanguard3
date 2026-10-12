@@ -138,6 +138,7 @@ To start over, delete `state/paper_state.json` and change
 | `models/monkey_agent.py` | The Monkey: random picks, the luck yardstick |
 | `models/manager_agent.py` | Team Manager: backs the agents with the best recent results |
 | `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS (runs on your computer) |
+| `ibkr_schedule.py`, `ibkr_morning.sh` | Run the bridge by itself every weekday morning (Mac) |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
@@ -222,8 +223,22 @@ Each run is logged in `ibkr_logs/`.
 
 Known differences from the simulator: IBKR may refuse some markets (for
 example US funds for European customers, or regions without trading
-permission), and buying CHF or EUR shares in a USD account borrows that
-currency instead of converting it.
+permission), and buying shares in another currency than the account's
+borrows that currency instead of converting it.
+
+### Every weekday morning by itself (Mac)
+
+    .venv/bin/python ibkr_schedule.py              # every weekday at 08:30
+    .venv/bin/python ibkr_schedule.py --time 08:15
+    .venv/bin/python ibkr_schedule.py --remove     # stop
+
+Each morning run (`ibkr_morning.sh`) updates this folder from GitHub, runs
+`ibkr_bridge.py --send` (up to three tries, two minutes apart) and shows a
+notification with the result; details go to `ibkr_logs/morning.log`. The
+Mac has to be on: if it is asleep at that time, the run starts as soon as
+it wakes up. TWS has to stay logged in to Paper Trading: under Global
+Configuration > Lock and Exit choose "Auto restart", and log in again when
+IBKR asks (about once a week).
 
 ## Going live with Interactive Brokers
 
