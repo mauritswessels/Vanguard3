@@ -274,7 +274,8 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         found = ib.qualifyContracts(contract)
         if not found or found[0] is None:
             say(f"  {o['ticker']}: IBKR does not know this market, skipped")
-            result["sent"].append({**o, "status": "unknown market"})
+            result["sent"].append({**o, "status": "unknown market",
+                                   "note": "not accepted: unknown market"})
             continue
         order = api.MarketOrder(o["side"], o["quantity"], tif="DAY",
                                 orderRef=p["order_ref"], account=account)
@@ -285,6 +286,14 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         say(f"  {o['side']} {o['quantity']} {o['ticker']}: {text}")
         result["sent"].append({**o, "status": trade.orderStatus.status,
                                "note": text})
+    refused = [s["ticker"] for s in result["sent"]
+               if s["note"].startswith("not accepted")]
+    if not plan:
+        say("Done: no orders needed.")
+    else:
+        say(f"Done: {len(plan) - len(refused)} of {len(plan)} orders placed"
+            + (f"; not accepted: {', '.join(refused)}" if refused else "")
+            + ".")
     result["status"] = "sent"
     return result
 
