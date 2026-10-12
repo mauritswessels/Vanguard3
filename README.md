@@ -137,6 +137,7 @@ To start over, delete `state/paper_state.json` and change
 | `models/benchmark_agent.py` | Buy & Hold SPY, run as an agent so it pays the same costs |
 | `models/monkey_agent.py` | The Monkey: random picks, the luck yardstick |
 | `models/manager_agent.py` | Team Manager: backs the agents with the best recent results |
+| `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS (runs on your computer) |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
@@ -190,6 +191,39 @@ at the **open of day t+1** with 5 bp adverse slippage, a 2 bp CHF/USD
 conversion spread and a flat 2 CHF commission. Buys are scaled down to
 available cash; cash can never go negative. Positions are marked at the
 close in CHF using the daily USDCHF rate.
+
+## Interactive Brokers paper account (`ibkr_bridge.py`)
+
+The agents keep running in the cloud. `ibkr_bridge.py` runs on your own
+computer next to Trader Workstation (TWS) and copies **one** agent into an
+IBKR paper account (`IBKR_PARAMS["agent"]` in `config.py`, default the Team
+Manager; `--agent trend` etc. to try another).
+
+Set up TWS once: log in with **Paper Trading** selected, then in File (or
+Edit) > Global Configuration > API > Settings tick "Enable ActiveX and Socket
+Clients", untick "Read-Only API" and check the port is 7497; under API >
+Precautions tick "Bypass Order Precautions for API Orders".
+
+Then, in this folder:
+
+    python3 -m venv .venv
+    .venv/bin/pip install -r requirements-ibkr.txt
+    .venv/bin/python ibkr_bridge.py           # shows the plan only
+    .venv/bin/python ibkr_bridge.py --send    # places the orders
+
+Run it each weekday morning before 09:00 Swiss time (before the Swiss,
+European and US opens). It downloads the latest results from GitHub, works
+out what the agent holds once its pending orders fill (as a share of its
+account), and sends market orders so the paper account holds the same
+shares scaled to its own size; orders wait for each market's open. It only
+trades paper accounts (IDs starting with "D"), only touches watchlist
+markets, and cancels its own unfilled orders from an earlier run first.
+Each run is logged in `ibkr_logs/`.
+
+Known differences from the simulator: IBKR may refuse some markets (for
+example US funds for European customers, or regions without trading
+permission), and buying CHF or EUR shares in a USD account borrows that
+currency instead of converting it.
 
 ## Going live with Interactive Brokers
 
