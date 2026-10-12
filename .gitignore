@@ -7,3 +7,6 @@ results/
 health.md
 alert.md
 ibkr_logs/
+ibkr_morning.env
+server/.env
+server/ib_password.txt

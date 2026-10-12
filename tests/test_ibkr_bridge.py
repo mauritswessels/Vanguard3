@@ -213,6 +213,16 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(ib.placed, [])
 
 
+class ConnectHelpTest(unittest.TestCase):
+    def test_says_what_to_check_for_each_app(self):
+        tws = bridge.not_reachable(7497, ConnectionRefusedError("refused"))
+        self.assertIn("Could not reach TWS on port 7497 (refused)", tws)
+        self.assertIn("Enable ActiveX", tws.splitlines()[-1])
+        gateway = bridge.not_reachable(4002, TimeoutError())
+        self.assertIn("IB Gateway on port 4002 (TimeoutError)", gateway)
+        self.assertIn("docker logs", gateway.splitlines()[-1])
+
+
 class DownloadTest(unittest.TestCase):
     def failure(self, error):
         """What the bridge says when the download fails with ``error``."""

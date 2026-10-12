@@ -137,8 +137,9 @@ To start over, delete `state/paper_state.json` and change
 | `models/benchmark_agent.py` | Buy & Hold SPY, run as an agent so it pays the same costs |
 | `models/monkey_agent.py` | The Monkey: random picks, the luck yardstick |
 | `models/manager_agent.py` | Team Manager: backs the agents with the best recent results |
-| `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS (runs on your computer) |
-| `ibkr_schedule.py`, `ibkr_morning.sh` | Run the bridge by itself every weekday morning (Mac) |
+| `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS or IB Gateway |
+| `ibkr_schedule.py`, `ibkr_morning.sh` | Run the bridge by itself every weekday morning (Mac or cloud server) |
+| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`) |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
@@ -196,8 +197,9 @@ close in CHF using the daily USDCHF rate.
 ## Interactive Brokers paper account (`ibkr_bridge.py`)
 
 The agents keep running in the cloud. `ibkr_bridge.py` runs on your own
-computer next to Trader Workstation (TWS) and copies **one** agent into an
-IBKR paper account (`IBKR_PARAMS["agent"]` in `config.py`, default the Team
+computer next to Trader Workstation (TWS), or on a small cloud server next
+to IB Gateway (see below), and copies **one** agent into an IBKR paper
+account (`IBKR_PARAMS["agent"]` in `config.py`, default the Team
 Manager; `--agent trend` etc. to try another).
 
 Set up TWS once: log in with **Paper Trading** selected, then in File (or
@@ -239,6 +241,41 @@ Mac has to be on: if it is asleep at that time, the run starts as soon as
 it wakes up. TWS has to stay logged in to Paper Trading: under Global
 Configuration > Lock and Exit choose "Auto restart", and log in again when
 IBKR asks (about once a week).
+
+### Every weekday morning on a cloud server
+
+A small cloud server (for example at Hetzner, about 5 euros a month) runs
+IB Gateway, IBKR's trading app for servers, next to the bridge, so your
+own computer can stay off.
+
+1. Create a server with Ubuntu 24.04, about 4 GB of memory and a public
+   IPv4 address, and add your SSH key.
+2. On the Mac, stop the Mac schedule (`ibkr_schedule.py --remove`) and
+   quit TWS: IBKR allows one login at a time, and from now on the
+   server keeps it.
+3. Log in to the server as root (`ssh root@<server address>`) and run:
+
+       git clone https://github.com/mauritswessels/Vanguard3.git /opt/Vanguard3
+       bash /opt/Vanguard3/server/setup.sh
+
+   It installs Docker and Python, asks once for the IBKR **paper**
+   username and password (IBKR website: person icon > Settings > Paper
+   Trading Account), starts IB Gateway (`server/docker-compose.yml`), plans the
+   runs for 08:30 Swiss time every weekday and ends with a dry run.
+4. For a message on your phone after every run, install the free ntfy
+   app and subscribe to the topic the setup prints (it is kept in
+   `ibkr_morning.env`).
+
+IB Gateway restarts itself every night and logs in afresh on Sundays,
+and the server updates it every Saturday. The login stays on the server
+(`server/.env`, `server/ib_password.txt`) and never goes into git.
+Useful commands on the server:
+
+    systemctl start vanguard3-bridge          # run it now
+    systemctl list-timers 'vanguard3*'        # when it runs next
+    tail -n 40 /opt/Vanguard3/ibkr_logs/morning.log
+    docker logs --tail 30 ib-gateway          # what IB Gateway is doing
+    bash /opt/Vanguard3/server/setup.sh --login   # type a new login
 
 ## Going live with Interactive Brokers
 

@@ -63,8 +63,9 @@ def main() -> None:
                         help="stop the morning runs")
     args = parser.parse_args()
     if sys.platform != "darwin":
-        raise SystemExit("This sets up the Mac's scheduler. On another "
-                         "computer, run ibkr_morning.sh with its own "
+        raise SystemExit("This sets up the Mac's scheduler. On a cloud "
+                         "server, run server/setup.sh instead; on another "
+                         "computer, start ibkr_morning.sh with its own "
                          "scheduler (for example cron).")
     try:
         hour, minute = parse_time(args.time)

@@ -1,4 +1,5 @@
-"""The bridge's weekday-morning run: the macOS job and ibkr_morning.sh."""
+"""The bridge's weekday-morning run: the macOS job and ibkr_morning.sh
+(the same script runs on the cloud server)."""
 
 import os
 import plistlib
@@ -32,6 +33,10 @@ exit "$code"
 FAKE_OSASCRIPT = """#!/bin/bash
 for last; do :; done
 printf '%s' "$last" > "$NOTIFIED"
+"""
+
+FAKE_CURL = """#!/bin/bash
+printf '%s\\n' "$@" > "$CURLED"
 """
 
 
@@ -76,28 +81,37 @@ class JobTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
 class MorningScriptTest(unittest.TestCase):
-    def run_script(self, codes):
+    def run_script(self, codes, settings=None):
         """Run ibkr_morning.sh with fake tools; the bridge exits with
-        ``codes`` on its attempts. Returns (notification, calls, log)."""
+        ``codes`` on its attempts. ``settings`` is the text of
+        ibkr_morning.env, if any. Returns (notification, calls, log); the
+        ntfy request, if one was sent, is in ``self.curled``."""
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         repo, tools = tmp / "Vanguard3", tmp / "bin"
         (repo / ".venv" / "bin").mkdir(parents=True)
         tools.mkdir()
         shutil.copy(ROOT / "ibkr_morning.sh", repo)
+        if settings is not None:
+            (repo / "ibkr_morning.env").write_text(settings)
         fakes = {repo / ".venv" / "bin" / "python": FAKE_PYTHON,
                  repo / ".venv" / "bin" / "pip": "#!/bin/bash\n",
                  tools / "git": "#!/bin/bash\n",
                  tools / "sleep": "#!/bin/bash\n",
-                 tools / "osascript": FAKE_OSASCRIPT}
+                 tools / "osascript": FAKE_OSASCRIPT,
+                 tools / "curl": FAKE_CURL}
         for path, text in fakes.items():
             path.write_text(text)
             path.chmod(0o755)
         env = {**os.environ, "PATH": f"{tools}:/usr/bin:/bin",
                "CALLS": str(tmp / "calls"), "NOTIFIED": str(tmp / "notified"),
+               "CURLED": str(tmp / "curled"),
                "FAKE_CODES": ",".join(map(str, codes))}
         done = subprocess.run(["bash", str(repo / "ibkr_morning.sh")],
                               env=env, timeout=30)
         self.assertEqual(done.returncode, codes[-1])
+        curled = tmp / "curled"
+        self.curled = (curled.read_text().splitlines() if curled.exists()
+                       else None)
         return ((tmp / "notified").read_text(),
                 (tmp / "calls").read_text().splitlines(),
                 (repo / "ibkr_logs" / "morning.log").read_text())
@@ -120,6 +134,26 @@ class MorningScriptTest(unittest.TestCase):
         self.assertEqual(note, "Morning run failed: Is TWS open and "
                                "logged in to Paper Trading?")
         self.assertEqual(log.count("Could not reach TWS"), 3)
+
+    def test_without_settings_no_phone_message(self):
+        self.run_script([0])
+        self.assertIsNone(self.curled)
+
+    def test_server_settings(self):
+        settings = ('BRIDGE_ARGS="--port 4002"\n'
+                    "NTFY_TOPIC=vanguard3-test\n")
+        _, calls, _ = self.run_script([0], settings)
+        self.assertEqual(calls, ["ibkr_bridge.py --send --port 4002"])
+        self.assertEqual(self.curled[-1], "https://ntfy.sh/vanguard3-test")
+        self.assertIn("Done: 2 of 3 orders placed; not accepted: EWZ.",
+                      self.curled)
+        self.assertIn("Priority: default", self.curled)
+
+    def test_failure_rings_the_phone(self):
+        self.run_script([1, 1, 1], "NTFY_TOPIC=vanguard3-test\n")
+        self.assertIn("Priority: high", self.curled)
+        self.assertIn("Morning run failed: Is TWS open and logged in to "
+                      "Paper Trading?", self.curled)
 
 
 if __name__ == "__main__":
