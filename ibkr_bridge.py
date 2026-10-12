@@ -24,7 +24,8 @@ Safety:
 * Its own unfilled orders from an earlier run are cancelled first, so
   running it twice does not double the orders.
 
-Needs ``pip install -r requirements-ibkr.txt`` (the ``ib_async`` library).
+Needs ``pip install -r requirements-ibkr.txt`` (the ``ib_async`` library,
+and ``certifi`` for checking GitHub's security certificate).
 Every run is written to ``ibkr_logs/``.
 """
 
@@ -32,6 +33,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import ssl
+import urllib.error
 import urllib.request
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -62,12 +65,39 @@ def universe_index() -> dict[tuple[str, str], str]:
     return {ib_symbol(t)[:2]: t for t in config.WATCHLIST}
 
 
+def https_context() -> ssl.SSLContext:
+    """The computer's certificates plus certifi's, when installed. Python
+    from python.org on a Mac has none of its own until its 'Install
+    Certificates' step has run."""
+    context = ssl.create_default_context()
+    try:
+        import certifi
+    except ImportError:
+        return context
+    context.load_verify_locations(cafile=certifi.where())
+    return context
+
+
 def load_results(source: str) -> dict:
     """The dashboard results, from a URL or a local file."""
-    if source.startswith("http"):
-        with urllib.request.urlopen(source, timeout=30) as r:
+    if not source.startswith("http"):
+        return json.loads(Path(source).read_text())
+    try:
+        with urllib.request.urlopen(source, timeout=30,
+                                    context=https_context()) as r:
             return json.loads(r.read())
-    return json.loads(Path(source).read_text())
+    except OSError as exc:
+        # URLError wraps the real cause; HTTPError says it best itself.
+        cause = exc.reason if type(exc) is urllib.error.URLError else exc
+        if isinstance(cause, ssl.SSLCertVerificationError):
+            raise SystemExit(
+                "Could not download the agents' results: Python could not "
+                "check GitHub's security certificate. Fix it once with\n"
+                "  .venv/bin/pip install -r requirements-ibkr.txt\n"
+                "and run the bridge again.")
+        raise SystemExit("Could not download the agents' results from "
+                         f"GitHub ({cause}). Check the internet connection "
+                         "and try again.")
 
 
 def chf_per_unit(payload: dict, currency: str) -> float | None:

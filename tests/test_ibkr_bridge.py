@@ -1,7 +1,14 @@
 """The IBKR bridge: planning and order flow, with a fake TWS (no network)."""
 
+import importlib.util
+import json
+import ssl
+import tempfile
 import unittest
+import urllib.error
+from pathlib import Path
 from types import SimpleNamespace as NS
+from unittest import mock
 
 import ibkr_bridge as bridge
 
@@ -190,6 +197,50 @@ class BridgeTest(unittest.TestCase):
                          send=True, say=lambda *_: None)
         self.assertEqual(out["status"], "no agent")
         self.assertEqual(ib.placed, [])
+
+
+class DownloadTest(unittest.TestCase):
+    def failure(self, error):
+        """What the bridge says when the download fails with ``error``."""
+        def urlopen(*args, **kwargs):
+            raise error
+        with mock.patch.object(bridge.urllib.request, "urlopen", urlopen):
+            with self.assertRaises(SystemExit) as ctx:
+                bridge.load_results("https://example.com/paper.json")
+        return str(ctx.exception)
+
+    def test_certificate_problem_is_explained(self):
+        text = self.failure(urllib.error.URLError(ssl.SSLCertVerificationError(
+            1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")))
+        self.assertIn("security certificate", text)
+        self.assertIn("pip install -r requirements-ibkr.txt", text)
+
+    def test_other_problems_name_the_cause(self):
+        text = self.failure(urllib.error.URLError(
+            OSError("nodename nor servname provided")))
+        self.assertIn("(nodename nor servname provided)", text)
+        self.assertIn("internet connection", text)
+        text = self.failure(urllib.error.HTTPError(
+            "https://example.com", 404, "Not Found", {}, None))
+        self.assertIn("(HTTP Error 404: Not Found)", text)
+        self.assertIn("read timed out", self.failure(
+            TimeoutError("read timed out")))
+
+    def test_local_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "paper.json"
+            path.write_text(json.dumps(payload()))
+            self.assertEqual(bridge.load_results(str(path))["last"],
+                             "2026-10-09")
+
+    @unittest.skipUnless(importlib.util.find_spec("certifi"), "needs certifi")
+    def test_brings_its_own_certificates(self):
+        # Like Python from python.org on a Mac: no certificates of its own.
+        def bare():
+            return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        with mock.patch.object(bridge.ssl, "create_default_context", bare):
+            stats = bridge.https_context().cert_store_stats()
+        self.assertGreater(stats["x509_ca"], 0)
 
 
 if __name__ == "__main__":
