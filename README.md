@@ -277,7 +277,9 @@ own computer can stay off.
    runs for 08:30 Swiss time every weekday and ends with a dry run.
 4. For a message on your phone after every run, install the free ntfy
    app and subscribe to the topic the setup prints (it is kept in
-   `ibkr_morning.env`).
+   `ibkr_morning.env`). Prefer Telegram? Make a bot with @BotFather in
+   Telegram, then run `bash /opt/Vanguard3/server/telegram.sh` on the
+   server and paste the bot's token.
 
 IB Gateway restarts itself every night and logs in afresh on Sundays,
 and the server updates it every Saturday. The login stays on the server

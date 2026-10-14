@@ -9,6 +9,8 @@
 # writes it on a server):
 #   BRIDGE_ARGS="--port 4002"   more options for ibkr_bridge.py
 #   NTFY_TOPIC=...              also send the result to the ntfy phone app
+#   TELEGRAM_TOKEN=... and TELEGRAM_CHAT_ID=...
+#                               or to Telegram (server/telegram.sh sets these)
 
 cd "$(dirname "$0")" || exit 1
 mkdir -p ibkr_logs
@@ -17,6 +19,8 @@ echo "== $(date '+%Y-%m-%d %H:%M')"
 
 BRIDGE_ARGS=""
 NTFY_TOPIC=""
+TELEGRAM_TOKEN=""
+TELEGRAM_CHAT_ID=""
 if [ -f ibkr_morning.env ]; then
     . ./ibkr_morning.env
 fi
@@ -26,6 +30,12 @@ notify() {  # message [ntfy priority]
         curl -fsS -m 30 -H "Title: Vanguard3" -H "Priority: ${2:-default}" \
             -d "$1" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null ||
             echo "Could not send the phone notification."
+    fi
+    if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+        curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=Vanguard3: $1" \
+            "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
+            > /dev/null || echo "Could not send the Telegram message."
     fi
     if command -v osascript > /dev/null; then
         osascript -e 'on run argv' \
