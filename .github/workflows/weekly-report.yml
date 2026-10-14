@@ -1,0 +1,59 @@
+# Every Saturday morning Claude explains the week in plain words. The report
+# goes on the dashboard and arrives by email as a (closed) GitHub issue.
+name: Weekly report
+
+on:
+  schedule:
+    # 07:00 UTC = 09:00 Swiss time in summer (08:00 in winter).
+    - cron: "0 7 * * 6"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: paper-trading
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write the report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python weekly_report.py --issue report.md
+
+      - name: Commit the report
+        run: |
+          git config user.name "vanguard3-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/weekly.json
+          if git diff --cached --quiet; then
+            echo "No report this week"
+          else
+            git commit -m "Weekly report $(date -u +%F)"
+            git pull --rebase origin main
+            git push
+          fi
+
+      # GitHub emails new issues to the owner; closing it keeps the list tidy.
+      - name: Email the report
+        if: hashFiles('report.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh issue create --title "Weekly report: week to $(date -u +%d\ %b)" --body-file report.md)
+          gh issue close "$url"

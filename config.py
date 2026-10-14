@@ -187,6 +187,15 @@ NEWS_PARAMS = {
     "usd_per_m_output": 15.0,
 }
 
+# The same News Analyst on a stronger (and pricier) model, racing the first
+# one to show whether a smarter model trades better. About 0.13 USD a look.
+NEWS_OPUS_PARAMS = {
+    **NEWS_PARAMS,
+    "model": "claude-opus-5-5",
+    "usd_per_m_input": 4.0,
+    "usd_per_m_output": 20.0,
+}
+
 # ---------------------------------------------------------------------------
 # Interactive Brokers paper account (ibkr_bridge.py, runs on your computer)
 # ---------------------------------------------------------------------------

@@ -53,13 +53,18 @@ be replayed honestly) and cannot be backtested, because the model already
 knows how past markets turned out. `python news.py` prints today's brief, and
 the manual "News check" workflow does the same on GitHub.
 
+Its twin, the **News Analyst (Opus)**, reads the same news under the same
+rules and limits but asks Claude Opus, a stronger and pricier model
+(`NEWS_OPUS_PARAMS` in `config.py`, about 0.13 USD a look against 0.07). The
+race between the two shows whether a smarter model trades better.
+
 It also checks once around midday (`midday_news.py`, workflow "Midday news
 check", weekdays 14:37 UTC, while New York and Europe are both open). That
 run first fills last evening's orders at the morning's open, reads the news
 again with live Yahoo prices (about 15 minutes delayed) and asks Claude
 whether anything changed. Changes fill at once at the live price, with the
 usual costs; a market that is closed at that moment waits for the evening.
-Only the News Analyst's account is touched. Like everything else it is a
+Only the two news agents' accounts are touched. Like everything else it is a
 simulation: no broker is contacted.
 
 A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
@@ -88,7 +93,14 @@ The News Analyst grades its own trades against SPY after 5 and 20 trading
 days. The report card is on the dashboard, and the latest graded trades go
 in front of every brief, so Claude can learn from its record.
 
-If a run fails, a scheduled run never starts, or the News Analyst cannot
+Every Saturday morning `weekly_report.py` (workflow "Weekly report") hands
+Claude the facts of the week (each account's return, trades and stated
+reasons, holdings) and asks for a short report in plain words. It goes on
+the dashboard ("The week in plain words", from `docs/data/weekly.json`) and
+arrives by email as a closed GitHub issue. Claude only describes the facts;
+it decides nothing.
+
+If a run fails, a scheduled run never starts, or a news agent cannot
 decide, `health_check.py` notices and the workflow opens (or adds to) a
 GitHub issue titled "Vanguard3 needs attention", which GitHub emails out.
 
@@ -147,7 +159,8 @@ To start over, delete `state/paper_state.json` and change
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
 | `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
 | `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
-| `midday_news.py` | News Analyst midday check: live prices, trades fill at once |
+| `midday_news.py` | News agents' midday check: live prices, trades fill at once |
+| `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
 | `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |

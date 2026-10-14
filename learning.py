@@ -155,6 +155,8 @@ def paper_lineup(market) -> list:
     agents.append(make_agent("learner"))
     # Reads the news with Claude each evening (needs ANTHROPIC_API_KEY).
     agents.append(make_agent("news"))
+    # The same, on a stronger model: is a smarter AI a better trader?
+    agents.append(make_agent("news_opus"))
     if config.BENCHMARK_TICKER in market.bars:
         agents.append(make_agent("benchmark"))
     # Backs the agents with the best recent results (goes after them).

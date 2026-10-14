@@ -24,6 +24,7 @@ import pandas as pd
 
 import config
 from daily_run import last_completed_session
+from models import NEWS_KEYS
 
 logger = logging.getLogger("vanguard3.health")
 
@@ -69,11 +70,11 @@ def problems(state: dict | None, expected: pd.Timestamp) -> list[str]:
                    "The evening run failed or did not start; the next "
                    "successful run catches up on the missed days.")
     for acc in state["accounts"]:
-        if acc["agent"] != "news":
+        if acc["agent"] not in NEWS_KEYS:
             continue
         s = acc["agent_state"]
         if s.get("decided") != state["last_date"]:
-            out.append(f"The News Analyst made no decision for "
+            out.append(f"The {acc.get('name', 'News Analyst')} made no decision for "
                        f"{last:%a %d %b}: {s.get('status', 'no reason given')}")
     return out
 
