@@ -155,6 +155,14 @@ class MorningScriptTest(unittest.TestCase):
         self.assertIn("Morning run failed: Is TWS open and logged in to "
                       "Paper Trading?", self.curled)
 
+    def test_telegram(self):
+        self.run_script([0], "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n")
+        self.assertEqual(self.curled[-1],
+                         "https://api.telegram.org/bot123:abc/sendMessage")
+        self.assertIn("chat_id=42", self.curled)
+        self.assertIn("text=Vanguard3: Done: 2 of 3 orders placed; "
+                      "not accepted: EWZ.", self.curled)
+
 
 if __name__ == "__main__":
     unittest.main()

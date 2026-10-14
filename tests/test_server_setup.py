@@ -1,6 +1,7 @@
 """The cloud server setup (server/setup.sh and IB Gateway's settings), run
 with fake system tools: nothing is installed and no server is touched."""
 
+import json
 import os
 import re
 import shutil
@@ -209,6 +210,69 @@ class SetupScriptTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("run this as root", out)
         self.assertEqual(calls, [])
+
+
+# Telegram's API as the helper sees it; every call is recorded.
+FAKE_TELEGRAM_CURL = """#!/bin/bash
+echo "curl $*" >> "$CALLS"
+case "$*" in
+  *getMe*) [ "${FAKE_TOKEN_OK:-1}" = 1 ] || exit 22; echo '{"ok":true}' ;;
+  *getUpdates*) echo "${FAKE_UPDATES}" ;;
+esac
+"""
+
+
+@unittest.skipUnless(shutil.which("bash"), "needs bash")
+class TelegramTest(unittest.TestCase):
+    def setUp(self):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.repo, tools = tmp / "Vanguard3", tmp / "bin"
+        (self.repo / "server").mkdir(parents=True)
+        tools.mkdir()
+        shutil.copy(ROOT / "server" / "telegram.sh", self.repo / "server")
+        (tools / "curl").write_text(FAKE_TELEGRAM_CURL)
+        (tools / "curl").chmod(0o755)
+        self.calls = tmp / "calls"
+        self.env = {**os.environ, "PATH": f"{tools}:/usr/bin:/bin",
+                    "CALLS": str(self.calls),
+                    "FAKE_UPDATES": json.dumps({"result": [
+                        {"message": {"chat": {"id": 7}}},
+                        {"message": {"chat": {"id": 4242}}}]})}
+        self.settings = self.repo / "ibkr_morning.env"
+
+    def run_helper(self, answers, **env):
+        done = subprocess.run(
+            ["bash", str(self.repo / "server" / "telegram.sh")],
+            input=answers, capture_output=True, text=True, timeout=30,
+            env={**self.env, **env})
+        return done.returncode, done.stdout + done.stderr
+
+    def test_connects_and_keeps_other_settings(self):
+        self.settings.write_text('BRIDGE_ARGS="--port 4002"\n'
+                                 "TELEGRAM_CHAT_ID=1\n")
+        code, out = self.run_helper("123:abc-DEF\n\n")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.settings.read_text(),
+                         'BRIDGE_ARGS="--port 4002"\n'
+                         "TELEGRAM_TOKEN=123:abc-DEF\nTELEGRAM_CHAT_ID=4242\n")
+        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn("abc-DEF", out)
+        self.assertIn("sendMessage", self.calls.read_text().splitlines()[-1])
+
+    def test_refuses_a_bad_token(self):
+        code, out = self.run_helper("not a token\n\n")
+        self.assertEqual(code, 1)
+        self.assertIn("doesn't look like a bot token", out)
+        code, out = self.run_helper("123:abc\n\n", FAKE_TOKEN_OK="0")
+        self.assertEqual(code, 1)
+        self.assertIn("did not accept", out)
+        self.assertFalse(self.settings.exists())
+
+    def test_needs_a_message_to_the_bot(self):
+        code, out = self.run_helper("123:abc\n\n",
+                                    FAKE_UPDATES='{"result": []}')
+        self.assertEqual(code, 1)
+        self.assertIn("No message reached the bot", out)
 
 
 if __name__ == "__main__":
