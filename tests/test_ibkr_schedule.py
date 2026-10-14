@@ -15,7 +15,12 @@ import ibkr_schedule as schedule
 ROOT = Path(__file__).resolve().parent.parent
 
 FAKE_PYTHON = """#!/bin/bash
-# Stands in for ".venv/bin/python ibkr_bridge.py --send".
+# Stands in for ".venv/bin/python ibkr_bridge.py --send" (and the chart).
+if [ "$1" = telegram_chart.py ]; then
+    echo png > "$2"
+    echo "The race, day 5"
+    exit 0
+fi
 echo "$@" >> "$CALLS"
 n=$(wc -l < "$CALLS" | tr -d ' ')
 code=$(echo "$FAKE_CODES" | cut -d, -f"$n")
@@ -37,6 +42,7 @@ printf '%s' "$last" > "$NOTIFIED"
 
 FAKE_CURL = """#!/bin/bash
 printf '%s\\n' "$@" > "$CURLED"
+printf '%s\\n' "$@" >> "$CURLED.all"
 """
 
 
@@ -112,6 +118,8 @@ class MorningScriptTest(unittest.TestCase):
         curled = tmp / "curled"
         self.curled = (curled.read_text().splitlines() if curled.exists()
                        else None)
+        every = tmp / "curled.all"
+        self.all_curled = every.read_text() if every.exists() else ""
         return ((tmp / "notified").read_text(),
                 (tmp / "calls").read_text().splitlines(),
                 (repo / "ibkr_logs" / "morning.log").read_text())
@@ -157,11 +165,16 @@ class MorningScriptTest(unittest.TestCase):
 
     def test_telegram(self):
         self.run_script([0], "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n")
-        self.assertEqual(self.curled[-1],
-                         "https://api.telegram.org/bot123:abc/sendMessage")
-        self.assertIn("chat_id=42", self.curled)
+        sent = self.all_curled
+        self.assertIn("https://api.telegram.org/bot123:abc/sendMessage", sent)
         self.assertIn("text=Vanguard3: Done: 2 of 3 orders placed; "
-                      "not accepted: EWZ.", self.curled)
+                      "not accepted: EWZ.", sent)
+        # Then the race chart, with its caption.
+        self.assertEqual(self.curled[-1],
+                         "https://api.telegram.org/bot123:abc/sendPhoto")
+        self.assertIn("chat_id=42", self.curled)
+        self.assertIn("photo=@ibkr_logs/race.png", self.curled)
+        self.assertIn("caption=The race, day 5", self.curled)
 
 
 if __name__ == "__main__":

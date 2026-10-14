@@ -65,4 +65,15 @@ if [ "$status" -eq 0 ]; then
 else
     notify "Morning run failed: $last" high
 fi
+
+# On Telegram, the race chart follows (telegram_chart.py).
+if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    .venv/bin/pip install --quiet --disable-pip-version-check matplotlib &&
+    chart="ibkr_logs/race.png" &&
+    caption=$(.venv/bin/python telegram_chart.py "$chart") &&
+    curl -fsS -m 60 -F "chat_id=$TELEGRAM_CHAT_ID" -F "photo=@$chart" \
+        -F "caption=$caption" \
+        "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendPhoto" > /dev/null ||
+        echo "Could not send the race chart to Telegram."
+fi
 exit "$status"
