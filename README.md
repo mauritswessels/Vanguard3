@@ -160,6 +160,7 @@ To start over, delete `state/paper_state.json` and change
 | `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
 | `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
 | `midday_news.py` | News agents' midday check: live prices, trades fill at once |
+| `telegram_chart.py` | Race chart and top three for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
@@ -279,7 +280,9 @@ own computer can stay off.
    app and subscribe to the topic the setup prints (it is kept in
    `ibkr_morning.env`). Prefer Telegram? Make a bot with @BotFather in
    Telegram, then run `bash /opt/Vanguard3/server/telegram.sh` on the
-   server and paste the bot's token.
+   server and paste the bot's token. Telegram then also gets the race
+   chart (`telegram_chart.py`: every account's return since launch, the
+   top three and the yardsticks) after each run.
 
 IB Gateway restarts itself every night and logs in afresh on Sundays,
 and the server updates it every Saturday. The login stays on the server
