@@ -26,6 +26,15 @@ class HealthTest(unittest.TestCase):
         self.assertIn("Thu 08 Oct", found[0])
         self.assertIn("No decision today", found[1])
 
+    def test_opus_twin_failure_is_reported_by_name(self):
+        s = state("2026-10-09", "2026-10-09")
+        s["accounts"].append({"agent": "news_opus", "name": "News Analyst (Opus)",
+                              "agent_state": {"decided": None,
+                                              "status": "No decision today: y"}})
+        found = problems(s, pd.Timestamp("2026-10-09"))
+        self.assertEqual(len(found), 1)
+        self.assertIn("News Analyst (Opus) made no decision", found[0])
+
     def test_latest_session(self):
         before_close = pd.Timestamp("2026-10-12 15:00", tz="UTC")  # Monday
         self.assertEqual(latest_session(before_close),

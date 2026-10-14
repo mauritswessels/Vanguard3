@@ -29,6 +29,7 @@
   --a-benchmark: #8d9096;
   --a-learner: #b6e36b;
   --a-news: #ff7ac0;
+  --a-news_opus: #ff8f6b;
   --a-monkey: #c39a74;
   --a-manager: #a98bff;
   /* 3D network: market colours by kind of asset, and the scene itself */
@@ -84,6 +85,8 @@ section { display: grid; gap: 12px; min-width: 0; }
   border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .section-head .muted { font-size: .8rem !important; }
 .panel { min-width: 0; }
+.weekly-text { display: grid; gap: 10px; max-width: 80ch; padding-top: 10px; }
+.weekly-text p { margin: 0; }
 .notice { color: var(--muted); font-size: .9rem; max-width: 75ch; }
 .notice b { color: var(--ink); font-weight: 600; }
 
@@ -684,16 +687,30 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       V3Terminal.render(sub, $("#term"), d);
       return;
     }
-    const html = [nav, hubHtml(d), hero(d), window.V3Terminal ? V3Terminal.overviewHtml(d) : "", raceHtml(d, true), agentsNow(d),
+    const html = [nav, hubHtml(d), hero(d), `<section id="weekly" hidden></section>`,
+      window.V3Terminal ? V3Terminal.overviewHtml(d) : "", raceHtml(d, true), agentsNow(d),
       standings(d, true), learningVsFixed(d)];
     html.push(allocation(d));
     html.push(`<section id="desk"></section>`);
     root.innerHTML = html.join("");
     bindLiveNav();
+    showWeekly();
     drawRace(d, true);
     drawSparks(d);
     pickDesk(d);
     mountHub(d);
+  }
+
+  /** The latest weekly report: Claude explains the week in plain words. */
+  async function showWeekly() {
+    const w = DATA.weekly || (DATA.weekly = await load("weekly"));
+    const box = $("#weekly"), r = w && w.reports && w.reports[0];
+    if (!box || !r) return;
+    const paras = r.text.split(/\n\s*\n/).map(p => `<p>${esc(p.trim())}</p>`).join("");
+    box.innerHTML = `<div class="section-head"><h2>The week in plain words</h2>
+      <span class="muted">${fmtDate(ts(r.week_start))} to ${fmtDate(ts(r.week_end))} · written by Claude</span></div>
+      <div class="weekly-text">${paras}</div>`;
+    box.hidden = false;
   }
 
   function bindLiveNav() {

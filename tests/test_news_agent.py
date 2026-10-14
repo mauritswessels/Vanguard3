@@ -101,5 +101,24 @@ class NewsAgentTest(unittest.TestCase):
         self.assertAlmostEqual(sum(v["weight"] for v in d["targets"].values()), 0.6)
 
 
+class OpusTwinTest(unittest.TestCase):
+    def test_same_rules_stronger_model(self):
+        from models import agent_key, make_agent
+        base, opus = make_agent("news"), make_agent("news_opus")
+        self.assertEqual(agent_key(opus), "news_opus")
+        self.assertEqual(opus.name, "News Analyst (Opus)")
+        self.assertNotEqual(opus.params["model"], base.params["model"])
+        self.assertIn("opus", opus.params["model"])
+        for k in ("max_weight", "max_total", "min_weight"):
+            self.assertEqual(opus.params[k], base.params[k])
+        self.assertEqual(opus.summary()["kind"], "news")
+
+    def test_in_the_live_lineup(self):
+        from learning import paper_lineup
+        from types import SimpleNamespace
+        names = [a.name for a in paper_lineup(SimpleNamespace(bars={}))]
+        self.assertIn("News Analyst (Opus)", names)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-"""Midday news check: the News Analyst reads the news again during the day.
+"""Midday news check: the news agents read the news again during the day.
 
 Runs on weekdays at 14:37 UTC (GitHub Actions, see
 ``.github/workflows/midday-news.yml``), when New York has been open for a
@@ -6,7 +6,8 @@ while and the European exchanges are still open::
 
     python midday_news.py            # add --dry-run to save nothing
 
-What it does, for the News Analyst's account only:
+What it does, for each news agent's account (the News Analyst and its Opus
+twin) only:
 
 1. fills last evening's orders at this morning's open (by midday they
    would have filled already),
@@ -39,7 +40,7 @@ from daily_run import last_completed_session, load_for_state
 from engine.broker import Order
 from engine.simulator import Simulator, _activity, decision_context
 from main import setup_logging
-from models import agent_key
+from models import NEWS_KEYS, agent_key
 from models.base_agent import Action
 from reporting import dashboard_payload, write_json
 
@@ -96,16 +97,16 @@ def _line(agent, t: str, last: pd.Timestamp, q: dict | None) -> str:
 
 
 def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
-                 fx_now: dict[str, float]) -> dict:
-    """Run the News Analyst's midday check on a restored simulator.
+                 fx_now: dict[str, float], key: str = "news") -> dict:
+    """Run one news agent's midday check on a restored simulator.
 
     ``quotes`` comes from :func:`intraday_quotes`; ``fx_now`` maps a
-    currency to the CHF value of one unit right now.
+    currency to the CHF value of one unit right now; ``key`` picks the
+    agent (``"news"`` or ``"news_opus"``).
     """
-    acc = next((a for a in sim.accounts if agent_key(a.agent) == "news"),
-               None)
+    acc = next((a for a in sim.accounts if agent_key(a.agent) == key), None)
     if acc is None:
-        return {"ok": False, "status": "No News Analyst account yet"}
+        return {"ok": False, "status": f"No {key} account yet"}
     agent, pf, broker = acc.agent, acc.portfolio, acc.broker
     market, last = sim.market, sim.last_date
     day = now.tz_convert("UTC").tz_localize(None).normalize()
@@ -281,9 +282,10 @@ def main() -> None:
     logger.info("Live quotes for %d markets, %d trading now",
                 len(quotes), sum(q["live"] for q in quotes.values()))
 
-    result = midday_check(sim, now, quotes, fx_now)
-    result["prices"] = source
-    print(json.dumps(result, indent=2))
+    for key in NEWS_KEYS:
+        result = midday_check(sim, now, quotes, fx_now, key)
+        result["prices"] = source
+        print(key, json.dumps(result, indent=2))
     if args.dry_run:
         logger.info("Dry run: nothing saved")
         return

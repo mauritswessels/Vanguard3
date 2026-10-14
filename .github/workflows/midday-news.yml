@@ -1,5 +1,5 @@
-# The News Analyst's second look at the news, during the trading day.
-# Only that account is touched; fills are simulated at live Yahoo prices.
+# The news agents' second look at the news, during the trading day.
+# Only their accounts are touched; fills are simulated at live prices.
 name: Midday news check
 
 on:

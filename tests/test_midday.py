@@ -106,6 +106,26 @@ class MiddayTest(unittest.TestCase):
         self.assertTrue(acc.agent.status.startswith("Decided"))
 
 
+    def test_each_news_agent_checks_its_own_account(self):
+        notes = []
+        news_agent = make_agent("news")
+        opus = make_agent("news_opus")
+        for agent, targets in ((news_agent, {"SPY": 0.12}),
+                               (opus, {"QQQ": 0.10})):
+            agent.build_brief = fake_brief
+            agent.decide = decider(targets, notes)
+        sim = Simulator(self.before,
+                        build_accounts(self.before, [news_agent, opus]))
+        sim.run(self.before.calendar[-3:])
+        now = pd.Timestamp(self.today).tz_localize("UTC") + pd.Timedelta(hours=15)
+        for key in ("news", "news_opus"):
+            self.assertTrue(midday_check(sim, now, self.quotes(),
+                                         {"USD": 0.8}, key)["ok"])
+        held = [set(a.portfolio.positions) for a in sim.accounts]
+        self.assertEqual(held, [{"SPY"}, {"QQQ"}])
+        self.assertIsNotNone(opus.midday)
+
+
 class FinnhubQuoteTest(unittest.TestCase):
     def test_parse_quote(self):
         from finnhub_feed import parse_quote

@@ -42,8 +42,10 @@ class NewsAgent(BaseAgent):
     style = ("Claude reads headlines, politics and quarterly results each "
              "evening, and again at midday")
 
+    defaults = config.NEWS_PARAMS
+
     def __init__(self, params: dict | None = None):
-        super().__init__({**config.NEWS_PARAMS, **(params or {})})
+        super().__init__({**self.defaults, **(params or {})})
         self.targets: dict[str, dict] = {}
         self.view = ""
         self.status = "Waiting for its first evening"
@@ -277,3 +279,13 @@ class NewsAgent(BaseAgent):
         self.headline_count = state.get("headlines", 0)
         self.midday = state.get("midday")
         self.card = state.get("card")
+
+
+class OpusNewsAgent(NewsAgent):
+    """The News Analyst on Claude Opus: same news, rules and limits, only the
+    model differs, so the race shows what a stronger model is worth."""
+
+    name = "News Analyst (Opus)"
+    style = ("The News Analyst's twin on Claude Opus, a stronger model: "
+             "same news, same rules")
+    defaults = config.NEWS_OPUS_PARAMS
