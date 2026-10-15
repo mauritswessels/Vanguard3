@@ -34,7 +34,10 @@ Every run is written to ``ibkr_logs/``.
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
 import json
+import signal
 import ssl
 import urllib.error
 import urllib.request
@@ -313,6 +316,37 @@ def not_reachable(port: int, exc: Exception) -> str:
             "Clients' ticked in the API settings?")
 
 
+def not_answering(port: int, seconds: int) -> str:
+    """What to say when the app is connected but stays silent: it is most
+    likely logged out of IBKR. One line, for the morning notification."""
+    if port in (4001, 4002):
+        return (f"IB Gateway stopped answering for {seconds} seconds: it is "
+                "probably logged out of IBKR (its log: docker logs --tail 30 "
+                "ib-gateway)")
+    return (f"TWS stopped answering for {seconds} seconds: is it still "
+            "logged in to Paper Trading?")
+
+
+@contextlib.contextmanager
+def time_limit(seconds: int):
+    """Raise ``TimeoutError`` if the block runs longer than ``seconds``
+    (where the system has alarms: macOS and Linux)."""
+    if not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def stop(*_):
+        raise TimeoutError
+
+    old = signal.signal(signal.SIGALRM, stop)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 def write_log(result: dict) -> Path:
     """Append this run to ``ibkr_logs/<today>.json``."""
     LOG_DIR.mkdir(exist_ok=True)
@@ -352,12 +386,18 @@ def main() -> None:
               "Check that the evening runs are working.")
 
     ib = api.IB()
+    # A logged-out TWS or IB Gateway still accepts the connection but never
+    # answers; without a limit the run would wait forever.
+    ib.RequestTimeout = p["answer_seconds"]
     try:
         ib.connect(p["host"], p["port"], clientId=p["client_id"], timeout=15)
     except Exception as exc:
         raise SystemExit(not_reachable(p["port"], exc))
     try:
-        result = run(ib, api, payload, p, send=args.send)
+        with time_limit(p["max_minutes"] * 60):
+            result = run(ib, api, payload, p, send=args.send)
+    except (TimeoutError, asyncio.TimeoutError):
+        raise SystemExit(not_answering(p["port"], p["answer_seconds"]))
     finally:
         ib.disconnect()
     print(f"Saved to {write_log(result)}")

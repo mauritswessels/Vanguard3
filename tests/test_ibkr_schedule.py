@@ -29,8 +29,8 @@ if [ "$code" = 0 ]; then
     echo "Done: 2 of 3 orders placed; not accepted: EWZ."
     echo "Saved to ibkr_logs/2026-10-13.json"
 else
-    echo "Could not reach TWS on port 7497."
-    echo "Is TWS open and logged in to Paper Trading?"
+    echo "${FAKE_FAILURE:-Could not reach TWS on port 7497.
+Is TWS open and logged in to Paper Trading?}"
 fi
 exit "$code"
 """
@@ -38,6 +38,10 @@ exit "$code"
 FAKE_OSASCRIPT = """#!/bin/bash
 for last; do :; done
 printf '%s' "$last" > "$NOTIFIED"
+"""
+
+FAKE_DOCKER = """#!/bin/bash
+echo "$@" >> "$DOCKER"
 """
 
 FAKE_CURL = """#!/bin/bash
@@ -87,11 +91,13 @@ class JobTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
 class MorningScriptTest(unittest.TestCase):
-    def run_script(self, codes, settings=None):
+    def run_script(self, codes, settings=None, failure=None, docker=False):
         """Run ibkr_morning.sh with fake tools; the bridge exits with
         ``codes`` on its attempts. ``settings`` is the text of
         ibkr_morning.env, if any. Returns (notification, calls, log); the
-        ntfy request, if one was sent, is in ``self.curled``."""
+        ntfy request, if one was sent, is in ``self.curled``. ``failure``
+        replaces the bridge's error text; with ``docker`` the IB Gateway
+        container exists and its commands land in ``self.docker``."""
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         repo, tools = tmp / "Vanguard3", tmp / "bin"
         (repo / ".venv" / "bin").mkdir(parents=True)
@@ -105,19 +111,25 @@ class MorningScriptTest(unittest.TestCase):
                  tools / "sleep": "#!/bin/bash\n",
                  tools / "osascript": FAKE_OSASCRIPT,
                  tools / "curl": FAKE_CURL}
+        if docker:
+            fakes[tools / "docker"] = FAKE_DOCKER
         for path, text in fakes.items():
             path.write_text(text)
             path.chmod(0o755)
         env = {**os.environ, "PATH": f"{tools}:/usr/bin:/bin",
                "CALLS": str(tmp / "calls"), "NOTIFIED": str(tmp / "notified"),
-               "CURLED": str(tmp / "curled"),
+               "CURLED": str(tmp / "curled"), "DOCKER": str(tmp / "docker"),
                "FAKE_CODES": ",".join(map(str, codes))}
+        if failure:
+            env["FAKE_FAILURE"] = failure
         done = subprocess.run(["bash", str(repo / "ibkr_morning.sh")],
                               env=env, timeout=30)
         self.assertEqual(done.returncode, codes[-1])
         curled = tmp / "curled"
         self.curled = (curled.read_text().splitlines() if curled.exists()
                        else None)
+        dock = tmp / "docker"
+        self.docker = dock.read_text().splitlines() if dock.exists() else []
         every = tmp / "curled.all"
         self.all_curled = every.read_text() if every.exists() else ""
         return ((tmp / "notified").read_text(),
@@ -142,6 +154,22 @@ class MorningScriptTest(unittest.TestCase):
         self.assertEqual(note, "Morning run failed: Is TWS open and "
                                "logged in to Paper Trading?")
         self.assertEqual(log.count("Could not reach TWS"), 3)
+
+    def test_restarts_a_silent_ib_gateway(self):
+        silent = ("IB Gateway stopped answering for 60 seconds: it is "
+                  "probably logged out of IBKR")
+        note, calls, log = self.run_script([1, 1, 1], failure=silent,
+                                           docker=True)
+        self.assertEqual(len(calls), 3)
+        # Restarted before each new try, not after the last one.
+        self.assertEqual(self.docker, ["inspect ib-gateway",
+                                       "restart ib-gateway"] * 2)
+        self.assertEqual(note, f"Morning run failed: {silent}")
+        self.assertIn("Restarting IB Gateway", log)
+
+    def test_leaves_docker_alone_for_other_problems(self):
+        self.run_script([1, 0], docker=True)
+        self.assertEqual(self.docker, [])
 
     def test_without_settings_no_phone_message(self):
         self.run_script([0])

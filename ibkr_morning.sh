@@ -56,7 +56,15 @@ for attempt in 1 2 3; do
     status=$?
     echo "$output"
     [ "$status" -eq 0 ] && break
-    [ "$attempt" -lt 3 ] && sleep 120
+    [ "$attempt" -lt 3 ] || break
+    # On the cloud server, a fresh start logs IB Gateway in again (IBKR
+    # sometimes refuses its early-morning re-login).
+    if echo "$output" | grep -q "IB Gateway" && command -v docker > /dev/null &&
+            docker inspect ib-gateway > /dev/null 2>&1; then
+        echo "Restarting IB Gateway before the next try."
+        docker restart ib-gateway > /dev/null
+    fi
+    sleep 120
 done
 
 last=$(echo "$output" | grep -v '^Saved to' | tail -n 1)
