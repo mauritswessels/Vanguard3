@@ -153,6 +153,8 @@ def paper_lineup(market) -> list:
         agents.append(make_agent(key, name=f"{learner.name} (fixed)"))
     # Learns every day by itself (reinforcement learning, see learner_agent).
     agents.append(make_agent("learner"))
+    # The same learner, with Claude Opus approving its picks each evening.
+    agents.append(make_agent("learner_opus"))
     # Reads the news with Claude each evening (needs ANTHROPIC_API_KEY).
     agents.append(make_agent("news"))
     # The same, on a stronger model: is a smarter AI a better trader?

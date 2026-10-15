@@ -15,6 +15,7 @@
     reversion: ["RSI points below its entry level", v => v.toFixed(1)],
     volatility: ["ATRs above the breakout level", v => v.toFixed(2)],
     learner: ["model score, BUY minus HOLD", v => (v >= 0 ? "+" : "") + v.toFixed(3)],
+    learner_opus: ["model score, BUY minus HOLD", v => (v >= 0 ? "+" : "") + v.toFixed(3)],
     news: ["target weight Claude chose", v => (v * 100).toFixed(1) + "%"],
   };
 
@@ -33,7 +34,7 @@
   const price = (v, t, d) => ok(v) ? `${v.toFixed(2)} <span class="faint">${X.esc(d.currencies[t] || "")}</span>` : dash;
   const dateS = s => s ? X.fmtDate(X.ts(s)) : "–";
   const typeOf = a => a.key === "monkey" ? "Luck yardstick" : a.team ? "Manager · backs agents" : a.benchmark ? "Benchmark" : a.fixed_twin ? "Fixed rules" : a.ai
-    ? (a.ai.kind === "news" ? "AI · Claude news" : "AI · daily learner") : a.learning ? "Learning · monthly" : "Fixed rules";
+    ? (a.ai.kind === "news" ? "AI · Claude news" : a.ai.kind === "learner_review" ? "AI · learner + Opus" : "AI · daily learner") : a.learning ? "Learning · monthly" : "Fixed rules";
   const agentCell = a => `<div class="agent-name">${X.sw(a)}<div style="min-width:0">${X.esc(a.name)}<small>${typeOf(a)}</small></div></div>`;
   const byId = (d, id) => d.agents.find(a => a.id === id);
 

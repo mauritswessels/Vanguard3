@@ -58,8 +58,10 @@ class LearnerAgent(BaseAgent):
     name = "AI Learner"
     style = "Reinforcement learning that updates itself after every close"
 
+    defaults = config.LEARNER_PARAMS
+
     def __init__(self, params: dict | None = None):
-        super().__init__({**config.LEARNER_PARAMS, **(params or {})})
+        super().__init__({**self.defaults, **(params or {})})
         self.w: np.ndarray | None = None      # (3, DIM) weights
         self.epsilon = self.params["epsilon"]
         self.updates = 0

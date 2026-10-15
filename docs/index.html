@@ -30,6 +30,7 @@
   --a-learner: #b6e36b;
   --a-news: #ff7ac0;
   --a-news_opus: #ff8f6b;
+  --a-learner_opus: #5fd6a0;
   --a-monkey: #c39a74;
   --a-manager: #a98bff;
   /* 3D network: market colours by kind of asset, and the scene itself */
@@ -620,7 +621,26 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       likes = ` Buys more readily on high ${esc(rel[0][0])} and ${esc(rel[1][0])}; less on high ${esc(rel[rel.length - 1][0])}.`;
     }
     return `<p class="twin">${head}${pre} Learned from ${ai.days_learned} new day${ai.days_learned === 1 ? "" : "s"} so far.${likes}
-      These come from the model's own weights, a simplified view of how it scores.</p>`;
+      These come from the model's own weights, a simplified view of how it scores.${reviewLine(ai)}</p>`;
+  }
+
+  /** The Opus Learner only: what Opus made of the model's latest picks. */
+  function reviewLine(ai) {
+    if (ai.kind !== "learner_review") return "";
+    const r = ai.review;
+    if (!r) return ` <b>Opus check:</b> ${esc(ai.status)}.`;
+    const yes = r.picks.filter(p => p.approve).length;
+    return ` <b>Opus check, ${fmtDate(ts(r.date))}:</b> approved ${yes} of ${r.picks.length} picks. ${esc(r.view)}`;
+  }
+
+  /** Table of Opus's verdicts on the model's latest picks. */
+  function reviewTable(ai) {
+    const r = ai.review;
+    if (!r) return "";
+    return `<div class="tbl-wrap"><table><thead><tr><th>Market</th><th>Model wants</th><th>Opus</th><th>Why</th></tr></thead><tbody>
+      ${r.picks.map(p => `<tr><td class="tick">${esc(p.ticker)}</td><td>${p.action === "BUY" ? "Buy" : "Sell"}</td>
+        <td class="${p.approve ? "up" : "down"}">${p.approve ? "Approved" : "Turned down"}</td><td>${esc(p.reason)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="muted" style="font-size:.8rem">Opus's own stated reasons, from the evening of ${fmtDate(ts(r.date))}. Estimated Claude cost so far: about ${ai.est_cost_usd.toFixed(2)} USD.</div>`;
   }
 
   function agentsNow(d) {
@@ -640,7 +660,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       const watching = a.benchmark ? "" : `<div class="w-block"><h3>Watching · ${cands.length} markets, closest first</h3>${top || `<p class="empty">${a.watch ? "No data yet." : "The rule check appears after the next daily run."}</p>`}
         ${rest.length ? `<details><summary>${rest.length} more</summary>${rest.map(row).join("")}</details>` : ""}</div>`;
       return `<div class="now-row">
-        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news evening and midday" : "learns every day") : a.learning ? "learns monthly" : a.key === "monkey" ? "picks at random: the luck yardstick" : a.team ? "backs the best agents" : a.benchmark ? "yardstick" : ""}</small></div></div>
+        <div class="now-who"><div class="agent-name">${sw(a)}<div style="min-width:0">${esc(a.name)}<small>${a.ai ? (a.ai.kind === "news" ? "reads the news evening and midday" : a.ai.kind === "learner_review" ? "learns every day, Opus checks its picks" : "learns every day") : a.learning ? "learns monthly" : a.key === "monkey" ? "picks at random: the luck yardstick" : a.team ? "backs the best agents" : a.benchmark ? "yardstick" : ""}</small></div></div>
           <p class="now-sum">${summary(a)}</p>${a.ai ? (a.ai.kind === "news" ? newsLine(d, a) : aiLine(d, a)) : twinLine(d, a)}</div>
         <div class="now-what">
           ${mid.length ? `<div class="w-block"><h3>At midday today (live prices)</h3>${mid.join("")}</div>` : ""}
@@ -913,7 +933,11 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
         return [k, lean];
       }).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num ${cls(v)}">${(v >= 0 ? "+" : "") + v.toFixed(3)}</td></tr>`).join("") : "";
       const surprise = (ai.td_recent || []).map(v => v.toFixed(2)).join(" · ");
-      return `<div class="panel" style="display:grid;gap:10px"><h3>Learning</h3>
+      const opus = ai.kind === "learner_review" ? `<h3>Opus check</h3>
+        <div class="muted" style="font-size:.88rem">The same learning model as the AI Learner picks trades. Each evening Claude Opus reads its picks
+        with recent price moves and a few headlines per market, and approves or turns down each one; only approved trades are placed.
+        ${esc(ai.status)}.</div>${reviewTable(ai)}` : "";
+      return `<div class="panel" style="display:grid;gap:10px">${opus}<h3>Learning</h3>
         <div class="muted" style="font-size:.88rem">After every close it checks what its last decisions earned and nudges its weights
         (Q-learning). ${ai.days_learned} day${ai.days_learned === 1 ? "" : "s"} learned live, ${ai.updates.toLocaleString("en")} updates in total,
         ${Math.round(ai.epsilon * 100)}% of decisions random so it keeps exploring.${surprise ? ` Recent surprise per day (falls as it learns): ${surprise}.` : ""}</div>

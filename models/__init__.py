@@ -7,12 +7,13 @@ from models.learner_agent import LearnerAgent
 from models.manager_agent import ManagerAgent
 from models.monkey_agent import MonkeyAgent
 from models.news_agent import NewsAgent, OpusNewsAgent
+from models.opus_learner_agent import OpusLearnerAgent
 from models.reversion_agent import ReversionAgent
 from models.trend_agent import TrendAgent
 from models.volatility_agent import VolatilityAgent
 
-__all__ = ["AGENT_TYPES", "BuyHoldAgent", "LearnerAgent", "ManagerAgent", "MonkeyAgent", "NewsAgent", "OpusNewsAgent", "ReversionAgent", "TrendAgent",
-           "VolatilityAgent", "NEWS_KEYS", "agent_key", "make_agent"]
+__all__ = ["AGENT_TYPES", "BuyHoldAgent", "LearnerAgent", "ManagerAgent", "MonkeyAgent", "NewsAgent", "OpusNewsAgent", "OpusLearnerAgent", "ReversionAgent", "TrendAgent",
+           "VolatilityAgent", "NEWS_KEYS", "CLAUDE_KEYS", "agent_key", "make_agent"]
 
 #: Registry used to rebuild agents from saved state and config.
 AGENT_TYPES = {
@@ -21,6 +22,7 @@ AGENT_TYPES = {
     "volatility": VolatilityAgent,
     "benchmark": BuyHoldAgent,
     "learner": LearnerAgent,
+    "learner_opus": OpusLearnerAgent,
     "news": NewsAgent,
     "news_opus": OpusNewsAgent,
     "monkey": MonkeyAgent,
@@ -30,6 +32,9 @@ AGENT_TYPES = {
 
 #: Agents that read the news with Claude (evening and midday).
 NEWS_KEYS = ("news", "news_opus")
+
+#: Every agent that asks Claude each evening (the health check watches them).
+CLAUDE_KEYS = NEWS_KEYS + ("learner_opus",)
 
 
 def agent_key(agent) -> str:

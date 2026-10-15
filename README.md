@@ -43,6 +43,16 @@ practice mode (deciding and learning, but placing no orders) until
 `LEARNER_PARAMS["live_from"]` in `config.py`. Accounts added to the lineup
 after launch join automatically on the next daily run.
 
+Its twin, the **Opus Learner** (`models/opus_learner_agent.py`), runs the
+same learning model but lets Claude Opus check its picks: once per evening it
+reads the model's proposed sells and its best proposed buys, with recent
+price moves and a few headlines each, and approves or turns down every one.
+Only approved trades are placed, so the race against the AI Learner shows
+whether an AI reviewer improves a simple learning model. One Opus call per
+evening at most, about 0.05 USD (`LEARNER_OPUS_PARAMS` in `config.py`); like
+the News Analyst it needs the `ANTHROPIC_API_KEY` secret and only trades on
+the newest session.
+
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and
 the economy, plus each stock's latest quarterly results (Yahoo Finance), and
