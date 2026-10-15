@@ -10,7 +10,8 @@ the repository owner. It looks for:
 
 * accounts that are behind the latest finished trading session (a run that
   failed, or a scheduled run GitHub never started),
-* a News Analyst that could not make its latest decision.
+* a News Analyst or the Opus Learner that could not make its latest
+  decision.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import pandas as pd
 
 import config
 from daily_run import last_completed_session
-from models import NEWS_KEYS
+from models import CLAUDE_KEYS
 
 logger = logging.getLogger("vanguard3.health")
 
@@ -70,7 +71,7 @@ def problems(state: dict | None, expected: pd.Timestamp) -> list[str]:
                    "The evening run failed or did not start; the next "
                    "successful run catches up on the missed days.")
     for acc in state["accounts"]:
-        if acc["agent"] not in NEWS_KEYS:
+        if acc["agent"] not in CLAUDE_KEYS:
             continue
         s = acc["agent_state"]
         if s.get("decided") != state["last_date"]:

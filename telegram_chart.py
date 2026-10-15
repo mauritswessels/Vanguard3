@@ -22,6 +22,7 @@ from ibkr_bridge import load_results
 COLORS = {"trend": "#5b93ff", "reversion": "#ffb547",
           "volatility": "#3fd0c9", "benchmark": "#8d9096",
           "learner": "#b6e36b", "news": "#ff7ac0", "news_opus": "#ff8f6b",
+          "learner_opus": "#5fd6a0",
           "monkey": "#c39a74", "manager": "#a98bff"}
 BG, PANEL, INK, MUTED, LINE = "#111213", "#17191c", "#e8e9eb", "#8d9096", "#2a2d31"
 

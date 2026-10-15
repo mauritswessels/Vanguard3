@@ -163,6 +163,20 @@ LEARNER_PARAMS = {
     "live_from": "2026-10-13",   # learns in shadow mode until this session
 }
 
+# The AI Learner with Claude Opus as a reviewer: the same learning model
+# proposes trades, and once per evening Opus reads a short brief on its best
+# picks (prices, the model's scores, a few headlines) and approves or turns
+# down each one. Only approved trades are placed. About 0.05 USD an evening.
+LEARNER_OPUS_PARAMS = {
+    **LEARNER_PARAMS,
+    "model": "claude-opus-5-5",
+    "effort": "medium",          # how hard Opus thinks (low/medium/high)
+    "max_review": 12,            # at most this many buy picks shown to Opus
+    "headlines": 3,              # recent headlines per pick (free, Google News)
+    "usd_per_m_input": 4.0,      # rough cost estimate only; check your bill
+    "usd_per_m_output": 20.0,
+}
+
 MANAGER_PARAMS = {
     "min_history": 35,           # days of results before it starts choosing (from Dec 2026)
     "lookback": 63,              # judges agents on about the last 3 months
