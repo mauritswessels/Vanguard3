@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 import config
@@ -64,7 +65,6 @@ def draw(payload: dict, path: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import pandas as pd
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
     fig.patch.set_facecolor(BG)
@@ -93,7 +93,7 @@ def draw(payload: dict, path: Path) -> None:
                     annotation_clip=False)
     step = max(1, len(days) // 8)
     ax.set_xticks(x[::step])
-    ax.set_xticklabels([pd.Timestamp(d).strftime("%d %b")
+    ax.set_xticklabels([date.fromisoformat(d).strftime("%d %b")
                         for d in days[::step]])
     ax.set_xlim(-0.3, x[-1] + max(1.5, len(days) * 0.45))
     ax.set_title(f"The race since launch, {payload['start']} to "

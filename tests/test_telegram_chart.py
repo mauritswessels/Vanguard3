@@ -4,6 +4,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import telegram_chart as chart
 
@@ -46,7 +47,9 @@ class ChartTest(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"),
                          "needs matplotlib")
     def test_draws_a_png(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        # The server only has requirements-ibkr.txt and matplotlib: no pandas.
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict("sys.modules", {"pandas": None}):
             path = Path(tmp) / "race.png"
             chart.draw(payload(), path)
             self.assertEqual(path.read_bytes()[:4], b"\x89PNG")
