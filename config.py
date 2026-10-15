@@ -206,6 +206,8 @@ IBKR_PARAMS = {
     "client_id": 31,             # keep fixed so a later run can cancel its orders
     "min_trade_pct": 0.005,      # skip changes smaller than this share of the account
     "order_ref": "Vanguard3",    # label on every order the bridge sends
+    "answer_seconds": 60,        # give up when TWS / IB Gateway stays silent
+    "max_minutes": 10,           # and on any run that takes longer than this
     "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
                     "Vanguard3/main/docs/data/paper.json"),
 }

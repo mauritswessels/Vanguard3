@@ -285,7 +285,11 @@ own computer can stay off.
    top three and the yardsticks) after each run.
 
 IB Gateway restarts itself every night and logs in afresh on Sundays,
-and the server updates it every Saturday. The login stays on the server
+and the server updates it every Saturday. If it stops answering (IBKR
+sometimes refuses its early-morning re-login), the bridge gives up after
+60 seconds instead of waiting forever, and the morning run restarts IB
+Gateway before its next try; a run that still fails sends a "Morning run
+failed" message. The login stays on the server
 (`server/.env`, `server/ib_password.txt`) and never goes into git.
 Useful commands on the server:
 

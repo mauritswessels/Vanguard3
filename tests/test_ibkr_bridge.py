@@ -1,6 +1,8 @@
 """The IBKR bridge: planning and order flow, with a fake TWS (no network)."""
 
+import contextlib
 import importlib.util
+import io
 import json
 import ssl
 import tempfile
@@ -221,6 +223,49 @@ class ConnectHelpTest(unittest.TestCase):
         gateway = bridge.not_reachable(4002, TimeoutError())
         self.assertIn("IB Gateway on port 4002 (TimeoutError)", gateway)
         self.assertIn("docker logs", gateway.splitlines()[-1])
+
+
+class SilenceTest(unittest.TestCase):
+    def test_says_it_is_probably_logged_out(self):
+        gateway = bridge.not_answering(4002, 60)
+        self.assertEqual(len(gateway.splitlines()), 1)
+        self.assertIn("IB Gateway stopped answering for 60 seconds", gateway)
+        self.assertIn("logged out", gateway)
+        self.assertIn("still logged in", bridge.not_answering(7497, 60))
+
+    @unittest.skipUnless(hasattr(bridge.signal, "SIGALRM"), "needs alarms")
+    def test_time_limit_stops_a_stuck_run(self):
+        import time
+        with self.assertRaises(TimeoutError):
+            with bridge.time_limit(1):
+                time.sleep(5)
+        with bridge.time_limit(1):        # a quick block is left alone
+            pass
+        time.sleep(1.2)                   # and the alarm was switched off
+
+    def test_a_silent_app_ends_the_run(self):
+        """The real ``main``: connected, then the app never answers."""
+        ib = FakeIB()
+        ib.connect = lambda *a, **kw: None
+        ib.disconnect = mock.Mock()
+
+        def silent():
+            raise TimeoutError
+        ib.reqAllOpenOrders = silent
+        fake_api = NS(IB=lambda: ib, Stock=api.Stock,
+                      MarketOrder=api.MarketOrder)
+        with mock.patch.dict("sys.modules", {"ib_async": fake_api}), \
+                mock.patch.object(bridge, "load_results",
+                                  lambda _: {**payload(), "last": str(
+                                      bridge.date.today())}), \
+                mock.patch("sys.argv", ["ibkr_bridge.py", "--send",
+                                        "--agent", "trend", "--port", "4002"]):
+            with self.assertRaises(SystemExit) as ctx, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                bridge.main()
+        self.assertIn("IB Gateway stopped answering", str(ctx.exception))
+        self.assertEqual(ib.RequestTimeout, 60)
+        ib.disconnect.assert_called_once()
 
 
 class DownloadTest(unittest.TestCase):
