@@ -293,3 +293,48 @@ export interface WalkForwardData {
   }[];
   benchmark: { name: string; return: number; sharpe: number; max_drawdown: number; equity: Point[] };
 }
+
+/* data/skill.json (luck_study.py): is each account's lead skill or luck? */
+export type Verdict = "skill" | "can't tell yet" | "looks like luck";
+
+export interface SkillPart {
+  from: string;
+  to: string;
+  days: number;
+  return: number;
+  spy_return: number;
+  monkey_median_return: number;
+  percentile_vs_monkeys: number;
+  verdict: Verdict;
+  verdict_vs_spy: Verdict;
+  excess_vs_monkey: number;
+  excess_vs_monkey_low: number;
+  excess_vs_monkey_high: number;
+  excess_vs_spy: number;
+  excess_vs_spy_low: number;
+  excess_vs_spy_high: number;
+  p_vs_monkeys: number;
+  p_vs_monkeys_adjusted: number;
+  p_vs_spy: number;
+  p_vs_spy_adjusted: number;
+  weeks_needed: number | null;
+  weeks_needed_vs_spy: number | null;
+}
+
+export interface SkillData {
+  generated_utc: string;
+  as_of: string;
+  data_source: string;
+  method: string;
+  verdict_meanings: Record<Verdict, string>;
+  settings: { monkeys: number; years: number; edge: number; alpha: number; min_days: number; [k: string]: number };
+  past: { from: string; to: string; years: number; days: number; monkeys: number; agents_tested: number; monkey_returns: number[] } | null;
+  live: { from: string; to: string; monkeys: number; agents_tested: number } | null;
+  accounts: {
+    id: string; key: string; name: string; fixed_twin: boolean; yardstick: boolean;
+    verdict: Verdict | null; verdict_from: "live" | "past prices" | null;
+    summary: string[];
+    past: SkillPart | null;
+    live: SkillPart | null;
+  }[];
+}

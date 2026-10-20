@@ -28,8 +28,8 @@ run and saves everything (cash, positions, pending orders, trailing stops) to
 York close and midnight in Zurich (after midnight Yahoo leaves out the
 European markets' day), commits the new state, and refreshes `docs/data/`
 (the 5-year backtest only on Fridays: it is 4 MB and barely moves in a day).
-GitHub Pages serves `docs/index.html` as the dashboard, so nothing needs to
-run on your own computer.
+GitHub Pages serves the platform in `docs/` (built from `web/`, see below),
+so nothing needs to run on your own computer.
 
 Live, each strategy runs twice: a **learning** agent that reviews its own
 settings on the first trading day of every month (`learning.py`: it replays
@@ -136,24 +136,56 @@ midday check takes real-time US prices from Finnhub instead (Yahoo stays the
 backup, and covers Swiss and European markets), and the brief adds each US
 company's latest news from Finnhub (`finnhub_feed.py`).
 
-The dashboard also shows what each agent is doing right now: for every
-watched market, the agent's own rule with the values from the last close
-(`entry_check` / `exit_check` in each agent; used for display only, never to
-trade) and a rough closeness score to its buy rule. The 3D network at the top
-(`docs/hub.js`) adds a small point every day an agent comes close to buying
-a market, so it gets denser the longer the accounts run.
+The platform (https://mauritswessels.github.io/Vanguard3/) has these pages:
 
-The live page has six sections: **Overview** (the 3D network, what each
-agent is doing, standings, warnings and latest trades), **Leaderboard**,
-**Agent analysis** (any two accounts side by side, with a summary written
-only from the numbers), **Trades** (every position from entry to exit, with
-the reasons, rule values and scores the agent recorded when it decided,
-and for the last 90 days also the headlines and other details it read), **Risk** (drawdowns, volatility, concentration, exposure and
-warnings) and **Performance** (all equity curves, zoomable, in CHF, % or
-P&L). A time range (today, 7 days, 30 days, all time or custom) applies to
-all of them. Every number is computed once, in `docs/metrics.js`, from the
-fills and closing values the simulation saved (`engine/journal.py` groups
-fills into positions); for "all time" it matches the Python scoreboard.
+* **Live race**: a 3D network of every account and market (agents on the
+  inner ring, sized by their place in the race; markets in five sectors
+  around them; arcs for each position held, dashed for orders queued for
+  the next open; a speck for every day an agent came close to buying a
+  market; a slider replays it since launch), the headline numbers, the race
+  chart, the standings, the weekly report, the latest moves, learning
+  agents against their fixed twins and where each account's money is.
+* **Agents** and a profile per agent: how it thinks, its result against
+  SPY, the Monkey and its twin, its holdings and queued orders, how it
+  learns (monthly reviews, the learner's weights, Opus's verdicts, the News
+  Analyst's view and report card, the Team Manager's backing), its trades
+  on a price chart, every position from entry to exit and its decisions day
+  by day.
+* **Trades**: every position of every agent, with the reasons, rule values
+  and scores it recorded when it bought and sold (for the last 90 days also
+  the headlines and other details it read).
+* **Analytics**: performance, risk (warnings, concentration, exposure) and
+  any two agents compared in plain sentences, over today, 7 days, 30 days or
+  all time.
+* **Research**: skill or luck (`docs/data/skill.json`), the 5-year replay,
+  the walk-forward check and the 3D research lab.
+* **Methodology**, **Journal** (`web/src/content/journal.ts`) and
+  **About** (`web/src/content/about.ts`).
+
+Every number is computed once, in `web/src/lib/metrics.ts`, from the fills
+and closing values the simulation saved (`engine/journal.py` groups fills
+into positions); for "all time" it matches the Python scoreboard, which
+`web/src/lib/metrics.test.ts` checks on the real data.
+
+## The platform (`web/`)
+
+React, TypeScript, Three.js and TradingView Lightweight Charts, built with
+Vite into `docs/` (only `docs/index.html`, `docs/favicon.svg` and
+`docs/app/` are build output; `docs/data/` and `docs/lab/` are untouched).
+It reads the same `docs/data/*.json` the bots write, so a daily run updates
+the site without a rebuild. Node 24:
+
+```bash
+cd web
+npm ci
+npm run dev          # http://localhost:5173, reading ../docs/data
+npm test             # metrics against the Python scoreboard
+npm run typecheck
+npm run build        # writes ../docs; commit docs/ with the change
+```
+
+The "Tests" workflow fails a pull request whose `docs/` does not match a
+fresh build of `web/`.
 
 To start over, delete `state/paper_state.json` and change
 `PAPER_START_DATE` in `config.py`.
@@ -184,14 +216,15 @@ To start over, delete `state/paper_state.json` and change
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
-| `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
-| `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
 | `midday_news.py` | News agents' midday check: live prices, trades fill at once |
 | `telegram_chart.py` | Race chart and top three for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
-| `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
+| `web/` | The platform's source (React + TypeScript); `npm run build` writes `docs/` |
+| `web/src/lib/metrics.ts` | The platform's single source for performance and risk numbers |
+| `web/src/components/network/Network3D.tsx` | The 3D network of accounts and markets on the live page |
+| `docs/index.html`, `docs/app/` | The built platform (GitHub Pages) reading `docs/data/*.json` |
 | `docs/lab/` | 3D AI research lab: a browser-only reinforcement-learning simulation (see below) |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |
 

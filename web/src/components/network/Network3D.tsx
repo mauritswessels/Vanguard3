@@ -275,20 +275,19 @@ function Dust({ node, marketAt, upto, dim }: { node: Node; marketAt: Map<string,
 
 /** On wide screens the scene sits right of centre, leaving room for the
  *  headline; the camera still orbits the scene's own middle. */
-function Offset({ shift }: { shift: number }) {
+function Offset({ shift, lift }: { shift: number; lift: number }) {
   const { camera, size } = useThree();
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
-    if (shift) cam.setViewOffset(size.width, size.height, -size.width * shift, -size.height * 0.06, size.width, size.height);
-    else cam.clearViewOffset();
+    cam.setViewOffset(size.width, size.height, -size.width * shift, size.height * lift, size.width, size.height);
     cam.updateProjectionMatrix();
-  }, [camera, size, shift]);
+  }, [camera, size, shift, lift]);
   return null;
 }
 
-function Scene({ d, day, focus, setFocus, onSelect, motion }: {
+function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
   d: RunData; day: number; focus: string | null; setFocus: (id: string | null) => void;
-  onSelect?: (a: Agent) => void; motion: boolean;
+  onSelect?: (a: Agent) => void; motion: boolean; labels: boolean;
 }) {
   const { markets, marketAt, sectors, nodes } = useLayout(d);
   const dates = d.agents[0]?.equity.map((p) => p[0]) || [d.last];
@@ -373,7 +372,7 @@ function Scene({ d, day, focus, setFocus, onSelect, motion }: {
           onClick={() => onSelect?.(n.agent)}
         />
       ))}
-      {nodes.map((n) => {
+      {labels && nodes.map((n) => {
         const r = state.ret.get(n.agent.id)!;
         const on = focus === n.agent.id;
         return (
@@ -385,7 +384,7 @@ function Scene({ d, day, focus, setFocus, onSelect, motion }: {
           </Html>
         );
       })}
-      {markets.filter((m) => state.heldCount.has(m.ticker) || hoverMarket === m.ticker).map((m) => (
+      {labels && markets.filter((m) => state.heldCount.has(m.ticker) || hoverMarket === m.ticker).map((m) => (
         <Html key={m.ticker} position={[m.pos.x, m.pos.y + 0.45, m.pos.z]} center zIndexRange={[10, 0]} style={{ pointerEvents: "none" }}>
           <div className={`v3-mk ${hoverMarket === m.ticker ? "on" : ""} ${labelled.has(m.ticker) ? "" : "off"}`}>
             {m.ticker}
@@ -393,7 +392,7 @@ function Scene({ d, day, focus, setFocus, onSelect, motion }: {
           </div>
         </Html>
       ))}
-      {sectors.map((s) => (
+      {labels && sectors.map((s) => (
         <Html key={s.name} position={s.pos} center zIndexRange={[5, 0]} style={{ pointerEvents: "none" }}>
           <div className="v3-sector">{s.name}</div>
         </Html>
@@ -430,8 +429,8 @@ export default function Network3D({ data, day, focus, setFocus, onSelect }: {
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         onPointerMissed={() => setFocus(null)}
       >
-        <Offset shift={wide ? 0.17 : 0} />
-        <Scene d={data} day={day} focus={focus} setFocus={setFocus} onSelect={onSelect} motion={motion} />
+        <Offset shift={wide ? 0.17 : 0} lift={wide ? -0.06 : 0.24} />
+        <Scene d={data} day={day} focus={focus} setFocus={setFocus} onSelect={onSelect} motion={motion} labels={wide} />
         <OrbitControls
           enableZoom={false}
           enablePan={false}

@@ -148,7 +148,7 @@ function Footer() {
       </Container>
       <Container className="flex flex-col gap-2 border-t border-line py-6 text-[12px] text-faint sm:flex-row sm:justify-between">
         <span>{d ? `Prices to the ${dateShort(d.last)} close · ${d.data_source} · updated every weekday after the New York close` : "Updated every weekday after the New York close"}</span>
-        <span>Not affiliated with The Vanguard Group.</span>
+        <span>Charts by <a className="link-underline hover:text-ink-2" href="https://www.tradingview.com/">TradingView</a> · Not affiliated with The Vanguard Group.</span>
       </Container>
     </footer>
   );

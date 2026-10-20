@@ -4,8 +4,32 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "web", "run", "dev", "--", "--port", "5180", "--strictPort"],
+      "runtimeArgs": [
+        "--prefix",
+        "web",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5180",
+        "--strictPort"
+      ],
       "port": 5180
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "web",
+        "run",
+        "preview",
+        "--",
+        "--port",
+        "5181",
+        "--strictPort"
+      ],
+      "port": 5181
     }
   ]
 }

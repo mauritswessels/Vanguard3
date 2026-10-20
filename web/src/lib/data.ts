@@ -32,10 +32,12 @@ export function loadJSON<T>(name: string, fresh = false): Promise<T | null> {
   return memo.get(name) as Promise<T | null>;
 }
 
-/** A data file for one page; undefined while loading, null when missing. */
-export function useJSON<T>(name: string): T | null | undefined {
+/** A data file for one page; undefined while loading (or while name is
+ *  null, for a file only loaded on request), null when missing. */
+export function useJSON<T>(name: string | null): T | null | undefined {
   const [v, setV] = useState<T | null | undefined>(undefined);
   useEffect(() => {
+    if (!name) { setV(undefined); return; }
     let live = true;
     loadJSON<T>(name).then((j) => { if (live) setV(j); });
     return () => { live = false; };

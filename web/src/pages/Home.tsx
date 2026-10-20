@@ -51,7 +51,7 @@ export default function Home() {
 
 function HeroShell({ children }: { children?: React.ReactNode }) {
   return (
-    <section data-theme="dark" className="relative isolate -mt-16 overflow-hidden bg-bg text-ink" style={{ height: "max(640px, min(94vh, 900px))" }}>
+    <section data-theme="dark" className="relative isolate -mt-16 flex min-h-[900px] flex-col overflow-hidden bg-bg text-ink lg:block lg:h-[max(640px,min(94vh,900px))] lg:min-h-0">
       <div className="pointer-events-none absolute inset-0 -z-10" style={{
         background: "radial-gradient(60% 55% at 62% 46%, rgba(212,178,106,0.16), transparent 70%), radial-gradient(40% 40% at 20% 90%, rgba(212,178,106,0.06), transparent 70%)",
       }} />
@@ -86,10 +86,13 @@ function Hero({ d }: { d: RunData }) {
       <Suspense fallback={<div className="absolute inset-0 grid place-items-center"><div className="size-40 animate-pulse rounded-full bg-gold/10 blur-2xl" /></div>}>
         <Network3D data={d} day={day} focus={focus} setFocus={setFocus} onSelect={(a) => navigate(`/agents/${a.id}`)} />
       </Suspense>
-      <div className="pointer-events-none absolute inset-0" style={{
+      <div className="pointer-events-none absolute inset-0 hidden lg:block" style={{
         background: "linear-gradient(90deg, rgba(11,10,8,0.92) 0%, rgba(11,10,8,0.55) 34%, rgba(11,10,8,0) 58%), linear-gradient(0deg, rgba(11,10,8,1) 0%, rgba(11,10,8,0) 30%), linear-gradient(180deg, rgba(11,10,8,0.85) 0%, rgba(11,10,8,0) 18%)",
       }} />
-      <Container className="pointer-events-none relative flex h-full flex-col justify-end pb-10 pt-28">
+      <div className="pointer-events-none absolute inset-0 lg:hidden" style={{
+        background: "linear-gradient(0deg, rgba(11,10,8,1) 0%, rgba(11,10,8,0.94) 46%, rgba(11,10,8,0) 72%), linear-gradient(180deg, rgba(11,10,8,0.8) 0%, rgba(11,10,8,0) 14%)",
+      }} />
+      <Container className="pointer-events-none relative flex flex-1 flex-col justify-end pb-10 pt-[400px] lg:h-full lg:pt-28">
         <div className="pointer-events-auto max-w-[620px]">
           <div className="eyebrow mb-5 flex items-center gap-3 text-gold">
             <span className="h-px w-8 bg-gold/60" /> Live experiment · day {days} · since {date(d.start)}
