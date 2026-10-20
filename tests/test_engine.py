@@ -403,6 +403,26 @@ class PersistenceTest(unittest.TestCase):
                          pd.Timestamp("2026-10-07"))
 
 
+class StandInPriceTest(unittest.TestCase):
+
+    def test_the_evening_run_publishes_the_ibkr_fund_prices(self):
+        class Provider:
+            def fetch(self, symbol, start, end):
+                if symbol == "IDBZ.L":
+                    raise RuntimeError("no data")
+                if symbol == "IDTL.L":
+                    return pd.DataFrame({"Close": []})
+                return pd.DataFrame({"Close": [1.0, 2.0]}, index=pd.to_datetime(
+                    ["2026-10-08", "2026-10-09"]))
+        out = daily_run.stand_in_prices(pd.Timestamp("2026-10-09"), Provider())
+        self.assertEqual(out["SPY"], {"symbol": "CSPX", "exchange": "LSEETF",
+                                      "currency": "USD", "price": 2.0,
+                                      "date": "2026-10-09"})
+        self.assertNotIn("EWZ", out)
+        self.assertNotIn("TLT", out)
+        self.assertEqual(len(out), len(config.IBKR_STAND_INS) - 2)
+
+
 class LearningTest(unittest.TestCase):
 
     def test_monthly_review_picks_a_grid_setting_and_logs_it(self):

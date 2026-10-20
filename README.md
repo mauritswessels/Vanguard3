@@ -26,8 +26,10 @@ run and saves everything (cash, positions, pending orders, trailing stops) to
 `state/paper_state.json`. The GitHub Actions workflow in
 `.github/workflows/daily.yml` runs it every weekday evening between the New
 York close and midnight in Zurich (after midnight Yahoo leaves out the
-European markets' day), commits the new state, and refreshes `docs/data/`. GitHub Pages serves `docs/index.html`
-as the dashboard, so nothing needs to run on your own computer.
+European markets' day), commits the new state, and refreshes `docs/data/`
+(the 5-year backtest only on Fridays: it is 4 MB and barely moves in a day).
+GitHub Pages serves `docs/index.html` as the dashboard, so nothing needs to
+run on your own computer.
 
 Live, each strategy runs twice: a **learning** agent that reviews its own
 settings on the first trading day of every month (`learning.py`: it replays
@@ -64,8 +66,8 @@ be replayed honestly) and cannot be backtested, because the model already
 knows how past markets turned out. `python news.py` prints today's brief, and
 the manual "News check" workflow does the same on GitHub.
 
-Its twin, the **News Analyst (Opus)**, reads the same news under the same
-rules and limits but asks Claude Opus, a stronger and pricier model
+Its twin, the **News Analyst (Opus)**, reads the same news (downloaded
+once and handed to both) under the same rules and limits but asks Claude Opus, a stronger and pricier model
 (`NEWS_OPUS_PARAMS` in `config.py`, about 0.13 USD a look against 0.07). The
 race between the two shows whether a smarter model trades better.
 
@@ -117,6 +119,18 @@ open for a week), `health_check.py` notices and the workflow opens (or adds
 to) a GitHub issue titled "Vanguard3 needs attention", which GitHub emails
 out. Every pull request runs the tests first (workflow "Tests").
 
+That issue needs a run to notice the problem. For a run that never starts
+at all, add a free watchdog at [healthchecks.io](https://healthchecks.io):
+make a check with the schedule `40 21 * * 1-5` (time zone UTC, grace time 3
+hours) and save its ping address as the repository secret
+`HEALTHCHECK_URL`. Every evening run then tells it "all fine" once the
+accounts are up to date (also on market holidays) or "failed" when the run
+broke, and healthchecks.io emails you when neither arrives. The server's
+morning run does the same with its own check (schedule `30 8 * * 1-5`, time
+zone Europe/Zurich, grace time 1 hour): put
+`HEALTHCHECK_URL=<that check's ping address>` in
+`/opt/Vanguard3/ibkr_morning.env`.
+
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the
 backup, and covers Swiss and European markets), and the brief adds each US
@@ -133,8 +147,8 @@ The live page has six sections: **Overview** (the 3D network, what each
 agent is doing, standings, warnings and latest trades), **Leaderboard**,
 **Agent analysis** (any two accounts side by side, with a summary written
 only from the numbers), **Trades** (every position from entry to exit, with
-the reasons, rule values, scores and headlines the agent recorded when it
-decided), **Risk** (drawdowns, volatility, concentration, exposure and
+the reasons, rule values and scores the agent recorded when it decided,
+and for the last 90 days also the headlines and other details it read), **Risk** (drawdowns, volatility, concentration, exposure and
 warnings) and **Performance** (all equity curves, zoomable, in CHF, % or
 P&L). A time range (today, 7 days, 30 days, all time or custom) applies to
 all of them. Every number is computed once, in `docs/metrics.js`, from the
@@ -221,6 +235,13 @@ conversion spread and a flat 2 CHF commission. Buys are scaled down to
 available cash; cash can never go negative. Positions are marked at the
 close in CHF using the daily USDCHF rate.
 
+Backtests use Yahoo's dividend- and split-adjusted prices. The live paper
+accounts are paid each dividend in cash on its ex-date, after the tax a
+Swiss investor cannot reclaim (`DIVIDEND_TAX` in `config.py`: 15% on US and
+European dividends, none on Swiss ones), and a share split restates the
+holding, its pending orders and stops before the next session is
+simulated. Both show up in the agents' activity on the dashboard.
+
 ## Interactive Brokers paper account (`ibkr_bridge.py`)
 
 The agents keep running in the cloud. `ibkr_bridge.py` runs on your own
@@ -250,10 +271,23 @@ trades paper accounts (IDs starting with "D"), only touches watchlist
 markets, and cancels its own unfilled orders from an earlier run first.
 Each run is logged in `ibkr_logs/`.
 
-Known differences from the simulator: IBKR may refuse some markets (for
-example US funds for European customers, or regions without trading
-permission), and buying shares in another currency than the account's
-borrows that currency instead of converting it.
+European customers may not buy US-listed funds (EU rules), so for each of
+the 26 US funds the bridge holds its closest European (UCITS) version
+instead, listed in `IBKR_STAND_INS` in `config.py`: for example CSPX on the
+London Stock Exchange for SPY. Most trade in US dollars, follow the same
+index and differ only a little in price moves (and in how they pay
+dividends: several keep them inside the fund). The evening run looks up their prices
+on Yahoo, so the bridge can size the orders; the logs show them as
+"SPY (as CSPX)".
+
+Before the stock orders, the bridge changes currency (`change_currency`
+in `IBKR_PARAMS`): it works out how many US dollars, euros or francs the
+new holdings need, compares that with the cash the account holds in each
+currency, and places currency orders for the difference (with a 1% margin),
+so a buy in another currency than the account's no longer borrows it.
+
+IBKR may still refuse some markets (regions without trading permission);
+the bridge then remembers that and keeps their share in cash.
 
 ### Every weekday morning by itself (Mac)
 

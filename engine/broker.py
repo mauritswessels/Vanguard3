@@ -144,6 +144,13 @@ class SimulatedBroker(BaseBroker):
         return pf.buy(date, order.ticker, currency, qty, price, fx,
                       order.reason, decided=order.created)
 
+    def split(self, ticker: str, ratio: float) -> None:
+        """Restate waiting orders on ``ticker`` in post-split shares."""
+        self.pending = [
+            Order(o.ticker, o.side, max(1, int(round(o.quantity * ratio))),
+                  o.created, o.reason) if o.ticker == ticker else o
+            for o in self.pending]
+
     # -- persistence ---------------------------------------------------------
     def pending_to_list(self) -> list[dict]:
         return [{"ticker": o.ticker, "side": o.side, "quantity": o.quantity,

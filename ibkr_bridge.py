@@ -17,6 +17,14 @@ What it does:
 4. sends market orders so the paper account holds the same shares, scaled
    to its own size. Orders sent while a market is closed wait for its next
    open, just like the simulator's fills.
+5. first changes francs into the dollars and euros those buys need (and
+   what is left over from sells back into francs), so the account never
+   borrows a currency, just like the simulator, which pays in francs.
+
+IBKR does not sell US-listed funds to Swiss and EU private investors, so a
+US fund the agent holds is bought as its European version listed in
+``config.IBKR_STAND_INS`` (e.g. CSPX in London for SPY). The evening run
+publishes those funds' prices with the results.
 
 Safety:
 
@@ -31,10 +39,10 @@ Safety:
   that list is empty while the account says it holds positions (just after
   a restart, the list can still be loading; it would then buy everything a
   second time).
-* Funds IBKR refuses to sell to this account (US funds have no "KID", the
-  key information sheet European and Swiss private investors must get) are
-  remembered in ``ibkr_logs/blocked.json`` and left in cash from then on.
-  Delete that file to try them again.
+* Markets IBKR refuses to sell to this account (a fund without a "KID",
+  the key information sheet European and Swiss private investors must get)
+  are remembered in ``ibkr_logs/blocked.json`` and left in cash from then
+  on. Delete that file to try them again.
 
 Needs ``pip install -r requirements-ibkr.txt`` (the ``ib_async`` library,
 and ``certifi`` for checking GitHub's security certificate).
@@ -47,6 +55,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import math
 import signal
 import ssl
 import urllib.error
@@ -71,10 +80,18 @@ BLOCKED_HINTS = ("KID", "key information", "PRIIP")
 #: Exit code when the bridge refuses to trade: trying again won't help.
 REFUSED = 3
 
+#: IBKR names a currency pair with the earlier of its two currencies here
+#: first (EUR.USD, USD.CHF, ...).
+PAIR_ORDER = ["EUR", "GBP", "AUD", "NZD", "USD", "CAD", "CHF", "JPY"]
+
 
 # -- what the agent holds ------------------------------------------------------
 def ib_symbol(ticker: str) -> tuple[str, str, str]:
-    """IBKR ``(symbol, currency, primary exchange)`` of a watchlist ticker."""
+    """IBKR ``(symbol, currency, primary exchange)`` of a watchlist ticker;
+    a US fund maps to its European version (``config.IBKR_STAND_INS``)."""
+    if ticker in config.IBKR_STAND_INS:
+        symbol, exchange, currency, _ = config.IBKR_STAND_INS[ticker]
+        return symbol, currency, exchange
     for suffix, (exchange, currency) in EXCHANGES.items():
         if ticker.endswith(suffix):
             return ticker[:-len(suffix)], currency, exchange
@@ -84,6 +101,13 @@ def ib_symbol(ticker: str) -> tuple[str, str, str]:
 def universe_index() -> dict[tuple[str, str], str]:
     """``(IBKR symbol, currency) -> watchlist ticker``."""
     return {ib_symbol(t)[:2]: t for t in config.WATCHLIST}
+
+
+def label(ticker: str) -> str:
+    """The ticker, plus what IBKR holds for it when that is a stand-in."""
+    if ticker in config.IBKR_STAND_INS:
+        return f"{ticker} (as {ib_symbol(ticker)[0]})"
+    return ticker
 
 
 def https_context() -> ssl.SSLContext:
@@ -136,6 +160,17 @@ def price_chf(payload: dict, ticker: str) -> float | None:
     return float(series[-1][1]) * rate if series and rate else None
 
 
+def ib_price(payload: dict, ticker: str) -> tuple[float, str] | None:
+    """Last close of what the IBKR account holds for ``ticker`` (its
+    European version for a US fund), and the currency of that price."""
+    if ticker in config.IBKR_STAND_INS:
+        s = payload.get("stand_ins", {}).get(ticker)
+        return (float(s["price"]), s["currency"]) if s else None
+    series = payload["prices"].get(ticker)
+    currency = payload["currencies"].get(ticker)
+    return (float(series[-1][1]), currency) if series and currency else None
+
+
 def agent_weights(payload: dict, agent_id: str
                   ) -> tuple[dict | None, dict[str, float]]:
     """Share of the agent's account in each market once its pending orders
@@ -176,10 +211,12 @@ def plan_orders(weights: dict[str, float], held: dict[str, int],
                          "works with accounts in CHF, USD or EUR")
     orders = []
     for t in sorted(set(weights) | set(held)):
-        price = price_chf(payload, t)
-        if not price:
+        quote = ib_price(payload, t)
+        to_chf = chf_per_unit(payload, quote[1]) if quote else None
+        if not to_chf:
             continue
-        unit = price / rate                    # one share, account currency
+        price, currency = quote
+        unit = price * to_chf / rate           # one share, account currency
         target = int(weights.get(t, 0.0) * net_liq // unit)
         now = held.get(t, 0)
         diff = target - now
@@ -188,10 +225,56 @@ def plan_orders(weights: dict[str, float], held: dict[str, int],
             continue
         orders.append({"ticker": t, "side": "BUY" if diff > 0 else "SELL",
                        "quantity": abs(diff), "now": now, "target": target,
-                       "value": round(abs(diff) * unit, 2)})
+                       "value": round(abs(diff) * unit, 2),
+                       "currency": currency, "price": price})
     # Sells first so their money is there for the buys.
     orders.sort(key=lambda o: (o["side"] != "SELL", -o["value"]))
     return orders
+
+
+def currency_plan(plan: list[dict], cash: dict[str, float], base: str,
+                  payload: dict, min_value: float) -> list[dict]:
+    """Currency to change so that, once the orders fill, no foreign
+    currency is borrowed and none is left over: dollars and euros for the
+    buys (plus any already borrowed) are bought with the account's own
+    currency, what sells and earlier trades leave over is changed back.
+    ``cash`` is the cash per currency now; changes worth less than
+    ``min_value`` (account currency) are skipped."""
+    flow: dict[str, float] = {}
+    for o in plan:
+        if o["currency"] != base:
+            value = o["quantity"] * o["price"]
+            flow[o["currency"]] = flow.get(o["currency"], 0.0) + (
+                value if o["side"] == "BUY" else -value)
+    to_base = chf_per_unit(payload, base)
+    out = []
+    for ccy in sorted((set(flow) | set(cash)) - {base}):
+        rate = chf_per_unit(payload, ccy)
+        if not rate or not to_base or ccy not in PAIR_ORDER:
+            continue
+        after = cash.get(ccy, 0.0) - flow.get(ccy, 0.0)
+        value = abs(after) * rate / to_base
+        if value < min_value:
+            continue
+        # A little extra when buying, a little kept when selling: prices
+        # move before the orders fill.
+        amount = (math.ceil(-after * 1.01) if after < 0
+                  else math.floor(after * 0.99))
+        out.append({"currency": ccy, "side": "BUY" if after < 0 else "SELL",
+                    "amount": amount, "value": round(value, 2)})
+    return out
+
+
+def forex_order(currency: str, base: str, side: str, amount: int,
+                payload: dict) -> tuple[str, str, int]:
+    """IBKR pair, action and quantity that buy (or sell) ``amount`` of
+    ``currency`` for the account's ``base`` currency."""
+    if PAIR_ORDER.index(currency) < PAIR_ORDER.index(base):
+        return currency + base, side, amount
+    # The pair is quoted the other way round: trade the base currency.
+    per_unit = chf_per_unit(payload, currency) / chf_per_unit(payload, base)
+    return (base + currency, "SELL" if side == "BUY" else "BUY",
+            math.ceil(amount * per_unit))
 
 
 # -- checks ------------------------------------------------------------------
@@ -227,7 +310,8 @@ def too_much(weights: dict[str, float], limit: float) -> str | None:
 
 
 def blocked_markets(path: Path | None = None) -> dict[str, str]:
-    """Markets IBKR refused to sell to this account: ``ticker -> reason``."""
+    """Markets IBKR refused to sell to this account: ``IBKR symbol ->
+    reason``."""
     path = path or LOG_DIR / "blocked.json"
     return json.loads(path.read_text()) if path.exists() else {}
 
@@ -240,11 +324,11 @@ def remember_blocked(sent: list[dict], path: Path | None = None) -> list[str]:
     new = [s["ticker"] for s in sent
            if s["note"].startswith("not accepted")
            and any(h.lower() in s["note"].lower() for h in BLOCKED_HINTS)
-           and s["ticker"] not in blocked]
+           and ib_symbol(s["ticker"])[0] not in blocked]
     if new:
         for s in sent:
             if s["ticker"] in new:
-                blocked[s["ticker"]] = s["note"]
+                blocked[ib_symbol(s["ticker"])[0]] = s["note"]
         path.parent.mkdir(exist_ok=True)
         path.write_text(json.dumps(blocked, indent=1))
     return new
@@ -285,6 +369,12 @@ def account_value(ib, account: str) -> tuple[float, str, float]:
     gross = tags.get("GrossPositionValue")
     return (float(net.value), net.currency,
             float(gross.value) if gross else 0.0)
+
+
+def cash_balances(ib, account: str) -> dict[str, float]:
+    """Cash in each currency of ``account`` (below zero: borrowed)."""
+    return {v.currency: float(v.value) for v in ib.accountValues(account)
+            if v.tag == "CashBalance" and v.currency not in ("", "BASE")}
 
 
 def ib_holdings(ib, account: str) -> tuple[dict[str, int], int]:
@@ -339,8 +429,11 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         say(wrong)
         raise SystemExit(REFUSED)
     blocked = blocked_markets(p.get("blocked_file"))
-    kept = sorted(t for t in weights if t in blocked)
-    weights = {t: w for t, w in weights.items() if t not in blocked}
+    kept = sorted(t for t in weights if ib_symbol(t)[0] in blocked)
+    unpriced = sorted(t for t in weights
+                      if t not in kept and ib_price(payload, t) is None)
+    weights = {t: w for t, w in weights.items()
+               if t not in kept and t not in unpriced}
 
     accounts = [a for a in ib.managedAccounts() if a.startswith("D")]
     if not accounts:
@@ -357,6 +450,9 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         raise SystemExit(REFUSED)
     plan = plan_orders(weights, held, net_liq, base, payload,
                        p["min_trade_pct"])
+    fx = (currency_plan(plan, cash_balances(ib, account), base, payload,
+                        p["min_trade_pct"] * net_liq)
+          if p.get("change_currency") else [])
 
     say(f"Copying {agent['name']}: {len(weights)} markets, results of the "
         f"{payload['last']} close.")
@@ -365,10 +461,18 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
     if kept:
         say(f"Kept in cash: {', '.join(kept)} (IBKR does not sell these to "
             "this account; see ibkr_logs/blocked.json).")
+    if unpriced:
+        say(f"Kept in cash: {', '.join(unpriced)} (no price in the results "
+            "for what IBKR holds instead; see the evening run's log).")
+    for c in fx:
+        why = ("for the buys, so nothing is borrowed" if c["side"] == "BUY"
+               else f"left over, back into {base}")
+        say(f"  {'Buy' if c['side'] == 'BUY' else 'Sell'} {c['amount']:,} "
+            f"{c['currency']} (about {c['value']:,.0f} {base}): {why}")
     if not plan:
         say("Already matches the agent. No orders needed.")
     for o in plan:
-        say(f"  {o['side']:<4} {o['quantity']:>6} {o['ticker']:<8} "
+        say(f"  {o['side']:<4} {o['quantity']:>6} {label(o['ticker']):<8} "
             f"(holds {o['now']}, target {o['target']}, "
             f"about {o['value']:,.0f} {base})")
     since, before = last_sent(today, p.get("log_dir"))
@@ -379,7 +483,7 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
     result = {"account": account, "base": base, "net_liq": net_liq,
               "agent": p["agent"], "results_of": payload["last"],
               "plan": plan, "sent": [], "kept_in_cash": kept,
-              "not_filled": unfilled}
+              "no_price": unpriced, "currency": fx, "not_filled": unfilled}
 
     ours = [t for t in ib.reqAllOpenOrders()
             if t.order.orderRef == p["order_ref"] and not t.isDone()]
@@ -407,6 +511,19 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
             errors.setdefault(req_id, []).append(f"{message} (code {code})")
 
     ib.errorEvent += on_error
+    # Currency first, so the buys find their dollars and euros.
+    changes = []
+    for c in fx:
+        pair, action, qty = forex_order(c["currency"], base, c["side"],
+                                        c["amount"], payload)
+        contract = api.Forex(pair)
+        found = ib.qualifyContracts(contract)
+        if not found or found[0] is None:
+            c["note"] = "not accepted: unknown currency pair"
+            continue
+        order = api.MarketOrder(action, qty, tif="DAY",
+                                orderRef=p["order_ref"], account=account)
+        changes.append((c, ib.placeOrder(contract, order)))
     sent = []
     for o in plan:
         symbol, currency, exchange = ib_symbol(o["ticker"])
@@ -422,9 +539,13 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
                                 orderRef=p["order_ref"], account=account)
         sent.append((o, ib.placeOrder(contract, order)))
     ib.sleep(3)
+    for c, trade in changes:
+        c["note"] = status_text(trade, errors.get(trade.order.orderId, []))
+        say(f"  {'Buy' if c['side'] == 'BUY' else 'Sell'} {c['amount']:,} "
+            f"{c['currency']}: {c['note']}")
     for o, trade in sent:
         text = status_text(trade, errors.get(trade.order.orderId, []))
-        say(f"  {o['side']} {o['quantity']} {o['ticker']}: {text}")
+        say(f"  {o['side']} {o['quantity']} {label(o['ticker'])}: {text}")
         result["sent"].append({**o, "status": trade.orderStatus.status,
                                "note": text})
     refused = [s["ticker"] for s in result["sent"]
@@ -436,9 +557,16 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         done = (f"Done: {len(plan) - len(refused)} of {len(plan)} orders "
                 "placed"
                 + (f"; not accepted: {', '.join(refused)}" if refused else ""))
+    changed = [f"{'bought' if c['side'] == 'BUY' else 'sold'} "
+               f"{c['amount']:,} {c['currency']}" for c in fx
+               if not c.get("note", "").startswith("not accepted")]
+    if changed:
+        done += "; currency: " + ", ".join(changed)
     if kept:
         done += (f"; kept in cash: {', '.join(sorted(kept))} (IBKR does not "
                  "sell these to this account)")
+    if unpriced:
+        done += f"; no price for: {', '.join(unpriced)}"
     say(done + ".")
     result["kept_in_cash"] = sorted(kept)
     result["status"] = "sent"

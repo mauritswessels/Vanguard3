@@ -276,6 +276,10 @@ class BaseAgent(ABC):
         """Strategy memory that must survive between daily runs."""
         return {}
 
+    def on_split(self, ticker: str, ratio: float) -> None:
+        """A share split: restate any price levels kept for ``ticker``
+        (``ratio`` new shares per old one)."""
+
     def set_state(self, state: dict) -> None:
         """Restore memory saved by ``get_state``."""
 

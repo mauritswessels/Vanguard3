@@ -31,6 +31,12 @@ FX_CONVERSION_BPS = 2.0          # spread paid when converting CHF <-> foreign
 CASH_BUFFER_PCT = 0.005          # cash kept back when sizing to absorb gaps
 MIN_ORDER_CHF = 500.0            # smaller buys are skipped: the fee would eat them,
                                  # and a 1-share order often cannot be paid at the open
+# Dividends are paid into cash on the day the share goes ex-dividend, minus
+# the tax the share's home country keeps and a Swiss investor cannot get
+# back: 15% for US and euro-area shares (after the tax treaty); Swiss
+# dividends count in full, as the 35% Swiss tax comes back with the tax
+# return. (Paper trading only: the backtests' prices include dividends.)
+DIVIDEND_TAX = {"USD": 0.15, "EUR": 0.15, "CHF": 0.0}
 
 # ---------------------------------------------------------------------------
 # Watchlist: ticker (Yahoo Finance symbol) -> trading currency.
@@ -225,6 +231,42 @@ IBKR_PARAMS = {
     "answer_seconds": 60,        # give up when TWS / IB Gateway stays silent
     "max_minutes": 10,           # and on any run that takes longer than this
     "max_invested": 1.05,        # send nothing if the targets add up to more
+    "change_currency": True,     # change francs into dollars/euros, don't borrow
     "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
                     "Vanguard3/main/docs/data/paper.json"),
+}
+
+# IBKR does not sell US-listed funds to Swiss and EU private investors (they
+# have no KID, the key information sheet). The IBKR copy holds a European
+# version of the same fund instead; the agents keep trading the US funds.
+# Watchlist ticker -> (IBKR symbol, IBKR exchange, currency, Yahoo ticker
+# for its price). All are the same index as the US fund, except where noted.
+# Listings checked on justetf.com (20 Oct 2026).
+IBKR_STAND_INS = {
+    "SPY": ("CSPX", "LSEETF", "USD", "CSPX.L"),    # iShares Core S&P 500
+    "QQQ": ("CNDX", "LSEETF", "USD", "CNDX.L"),    # iShares Nasdaq 100
+    "IWM": ("R2US", "LSEETF", "USD", "R2US.L"),    # SPDR Russell 2000
+    "DIA": ("CIND", "LSEETF", "USD", "CIND.L"),    # iShares Dow Jones
+    "EWL": ("CHSPI", "EBS", "CHF", "CHSPI.SW"),    # iShares Core SPI: all Swiss shares
+    "VGK": ("VEUD", "LSEETF", "USD", "VEUD.L"),    # Vanguard FTSE Developed Europe
+    "EWJ": ("IJPU", "LSEETF", "USD", "IJPU.L"),    # iShares MSCI Japan
+    "EEM": ("IDEM", "LSEETF", "USD", "IDEM.L"),    # iShares MSCI EM
+    "FXI": ("IDFX", "LSEETF", "USD", "IDFX.L"),    # iShares China Large Cap
+    "INDA": ("NDIA", "LSEETF", "USD", "NDIA.L"),   # iShares MSCI India
+    "EWZ": ("IDBZ", "LSEETF", "USD", "IDBZ.L"),    # iShares MSCI Brazil
+    "XLK": ("SXLK", "LSEETF", "USD", "SXLK.L"),    # SPDR S&P US sector funds
+    "XLF": ("SXLF", "LSEETF", "USD", "SXLF.L"),
+    "XLV": ("SXLV", "LSEETF", "USD", "SXLV.L"),
+    "XLE": ("SXLE", "LSEETF", "USD", "SXLE.L"),
+    "XLI": ("SXLI", "LSEETF", "USD", "SXLI.L"),
+    "XLU": ("SXLU", "LSEETF", "USD", "SXLU.L"),
+    "VNQ": ("IDUP", "LSEETF", "USD", "IDUP.L"),    # iShares US Property Yield: US REITs
+    "TLT": ("IDTL", "LSEETF", "USD", "IDTL.L"),    # iShares $ Treasury 20+yr
+    "IEF": ("IDTM", "LSEETF", "USD", "IDTM.L"),    # iShares $ Treasury 7-10yr
+    "LQD": ("LQDE", "LSEETF", "USD", "LQDE.L"),    # iShares $ Corp Bond
+    "HYG": ("IHYU", "LSEETF", "USD", "IHYU.L"),    # iShares $ High Yield Corp Bond
+    "GLD": ("IGLN", "LSEETF", "USD", "IGLN.L"),    # iShares Physical Gold
+    "SLV": ("ISLN", "LSEETF", "USD", "ISLN.L"),    # iShares Physical Silver
+    "DBC": ("ICOM", "LSEETF", "USD", "ICOM.L"),    # iShares Bloomberg Commodity: a similar basket
+    "USO": ("CRUD", "LSEETF", "USD", "CRUD.L"),    # WisdomTree WTI Crude Oil
 }

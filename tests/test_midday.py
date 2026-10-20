@@ -105,6 +105,21 @@ class MiddayTest(unittest.TestCase):
         self.assertIn("overloaded", out["status"])
         self.assertTrue(acc.agent.status.startswith("Decided"))
 
+    def test_a_split_like_jump_is_left_for_the_evening(self):
+        """A price a quarter of last night's is most likely a 4-for-1
+        split: the evening run restates the holdings first."""
+        notes = []
+        sim = self.evening_sim(notes)
+        acc = sim.accounts[0]
+        quotes = self.quotes()
+        quotes["SPY"] = {**quotes["SPY"], "open": quotes["SPY"]["open"] / 4,
+                         "last": quotes["SPY"]["last"] / 4}
+        now = pd.Timestamp(self.today).tz_localize("UTC") + pd.Timedelta(hours=15)
+        out = midday_check(sim, now, quotes, {"USD": 0.8})
+        self.assertEqual(out["opening_fills"], 0)
+        self.assertEqual([o.ticker for o in acc.broker.pending], ["SPY"])
+        self.assertEqual(acc.portfolio.trades, [])
+
 
     def test_each_news_agent_checks_its_own_account(self):
         notes = []

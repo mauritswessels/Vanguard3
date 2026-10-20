@@ -74,11 +74,30 @@ def fills(portfolio, activity: list[dict]) -> list[dict]:
 
 def round_trips(rows: list[dict], equity: pd.Series, positions: dict,
                 prices_chf: pd.Series, initial: float,
-                last: pd.Timestamp) -> list[dict]:
+                last: pd.Timestamp, splits: list[dict] | None = None
+                ) -> list[dict]:
     """Group fills into positions: opened by a buy from zero, closed when
-    the holding is back to zero. Partial and repeated fills are combined."""
+    the holding is back to zero. Partial and repeated fills are combined.
+    ``splits`` (the portfolio's split events) restate an open position in
+    post-split shares from the day of the split."""
     open_, trips = {}, []
     eq = equity.sort_index()
+    pending = sorted(splits or [], key=lambda e: e["date"])
+
+    def split_until(day: str | None) -> None:
+        while pending and (day is None or pending[0]["date"] <= day):
+            e = pending.pop(0)
+            trip = open_.get(e["ticker"])
+            if trip is None:
+                continue
+            r = e["ratio"]
+            trip["qty"] = e["shares"]
+            for k in ("max_qty", "bought_qty", "sold_qty"):
+                trip[k] *= r
+            if trip["qty"] <= 0:              # a reverse split paid it out
+                trip["proceeds_chf"] += e["chf"]
+                trip["exit_date"] = e["date"]
+                trips.append(open_.pop(e["ticker"]))
 
     def equity_at(day: str | None) -> float:
         if not day:
@@ -87,6 +106,7 @@ def round_trips(rows: list[dict], equity: pd.Series, positions: dict,
         return float(before.iloc[-1]) if len(before) else initial
 
     for r in rows:
+        split_until(r["date"])
         t = r["ticker"]
         if r["side"] == "BUY":
             trip = open_.get(t)
@@ -118,6 +138,7 @@ def round_trips(rows: list[dict], equity: pd.Series, positions: dict,
                 trip["exit_date"] = r["date"]
                 trips.append(open_.pop(t))
         trip["fills"].append(r["id"])
+    split_until(None)
     trips += list(open_.values())
 
     out = []
@@ -128,7 +149,7 @@ def round_trips(rows: list[dict], equity: pd.Series, positions: dict,
             "id": i, "ticker": tr["ticker"],
             "status": "closed" if closed else "open",
             "entry_date": tr["entry_date"], "exit_date": tr["exit_date"],
-            "quantity": tr["max_qty"],
+            "quantity": int(round(tr["max_qty"])),
             "entry_price": tr["buy_value"] / tr["bought_qty"],
             "exit_price": tr["sell_value"] / tr["sold_qty"]
             if tr["sold_qty"] else None,

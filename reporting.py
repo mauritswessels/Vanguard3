@@ -93,6 +93,10 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
         key = agent_key(acc.agent)
         twin = "(fixed)" in acc.agent.name
         rows = journal.fills(pf, acc.activity)
+        trips = journal.round_trips(
+            rows, pf.equity_curve, pf.positions, prices_chf, pf.initial_cash,
+            last, [e for e in pf.events if e["kind"] == "split"]
+        ) if mode == "paper" else []
         agents.append({
             "id": key + ("-fixed" if twin else ""),
             "key": key,
@@ -110,12 +114,13 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             "positions": positions,
             # Every fill with the decision behind it (journal.py); the
             # 5-year replay keeps the latest 300 to stay small.
-            "trades": rows if mode == "paper" else rows[-300:],
+            "trades": _slim_trades(rows, last) if mode == "paper"
+            else rows[-300:],
             # Positions from first buy to last sell (paper only).
-            "trips": journal.round_trips(rows, pf.equity_curve, pf.positions,
-                                         prices_chf, pf.initial_cash, last)
-            if mode == "paper" else [],
-            "activity": acc.activity[-120:],
+            "trips": [_by_reference(t, rows) for t in trips],
+            # Dividends received and share splits.
+            "events": pf.events,
+            "activity": [_slim_day(day) for day in acc.activity[-ACTIVITY_DAYS:]],
             "pending_orders": acc.broker.pending_to_list(),
             # What each rule is waiting for at the last close.
             "watch": acc.agent.watch(last, pf),
@@ -158,6 +163,42 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
     if extra:
         payload.update(extra)
     return payload
+
+
+# The dashboard file grows with every run; these keep it small. The full
+# history stays in the saved state (state/paper_state.json).
+
+#: Latest days of each agent's activity in the dashboard file (the agent
+#: desk shows 40).
+ACTIVITY_DAYS = 60
+#: Trades older than this many days keep their decision without the
+#: details (headlines, model scores); the reason and rule check stay.
+DETAIL_DAYS = 90
+
+
+def _slim_day(day: dict) -> dict:
+    """An activity day with only what the dashboard's feed shows of each
+    signal (the full decision is in the trades)."""
+    keep = ("ticker", "action", "reason", "ordered", "note")
+    return {**day, "signals": [{k: s[k] for k in keep if k in s}
+                               for s in day.get("signals", [])]}
+
+
+def _slim_trades(rows: list[dict], last: pd.Timestamp) -> list[dict]:
+    old = (last - pd.Timedelta(days=DETAIL_DAYS)).strftime("%Y-%m-%d")
+    return [{**r, "decision": {k: v for k, v in r["decision"].items()
+                               if k != "details"}}
+            if r["decision"] and r["date"] < old else r for r in rows]
+
+
+def _by_reference(trip: dict, rows: list[dict]) -> dict:
+    """A round trip naming the fills whose decisions opened and closed it
+    instead of repeating them (the dashboard looks them up)."""
+    sells = [i for i in trip["fills"] if rows[i]["side"] == "SELL"]
+    out = {k: v for k, v in trip.items() if k not in ("entry", "exit")}
+    out["entry_fill"] = trip["fills"][0]
+    out["exit_fill"] = sells[-1] if sells else None
+    return out
 
 
 def _scans(agent, calendar, start, last, floor: float = 0.75,

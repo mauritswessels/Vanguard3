@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from unittest import mock
 
 import pandas as pd
 
@@ -136,6 +137,46 @@ class OpusTwinTest(unittest.TestCase):
         from types import SimpleNamespace
         names = [a.name for a in paper_lineup(SimpleNamespace(bars={}))]
         self.assertIn("News Analyst (Opus)", names)
+
+
+class SharedBriefTest(unittest.TestCase):
+    """Both News Analysts read the same news: it is downloaded once."""
+
+    def setUp(self):
+        news._last_brief = None
+        self.addCleanup(setattr, news, "_last_brief", None)
+
+    def test_the_second_analyst_reuses_the_download(self):
+        calls = []
+
+        def fake_headlines(query, limit=6, days=2):
+            calls.append(query)
+            return [f"20 Oct · Feed · {query}"]
+
+        lines = {"SPY": "close 600.00 USD", "GLD": "close 300.00 USD"}
+        with mock.patch.object(news, "headlines", fake_headlines), \
+                mock.patch.object(news.time, "sleep", lambda s: None), \
+                mock.patch.object(news.finnhub_feed, "api_key", lambda: None):
+            first = news.build_brief(lines)
+            n = len(calls)
+            second = news.build_brief(lines)
+            self.assertEqual(len(calls), n)              # nothing downloaded
+            self.assertEqual(first, second)
+            second["macro"].clear()                      # a copy each
+            self.assertTrue(news.build_brief(lines)["macro"])
+            news.build_brief({**lines, "SPY": "close 610.00 USD"})
+            self.assertGreater(len(calls), n)            # new prices: new news
+
+    def test_an_empty_download_is_tried_again(self):
+        def failing(query, limit=6, days=2):
+            raise OSError("feed down")
+
+        lines = {"SPY": "close 600.00 USD"}
+        with mock.patch.object(news, "headlines", failing), \
+                mock.patch.object(news.time, "sleep", lambda s: None), \
+                mock.patch.object(news.finnhub_feed, "api_key", lambda: None):
+            news.build_brief(lines)
+        self.assertIsNone(news._last_brief)
 
 
 class ClaudeApiTest(unittest.TestCase):

@@ -107,10 +107,11 @@
   }
 
   /** Share of the account invested at each close: cash at a close is the
-   *  starting cash plus every fill up to that day (fills happen before the
-   *  close), the rest of the equity is positions. */
+   *  starting cash plus every fill and dividend up to that day (fills
+   *  happen before the close), the rest of the equity is positions. */
   function exposureSeries(a, d, r) {
-    const fills = a.trades.slice().sort((x, y) => x.date < y.date ? -1 : 1);
+    const fills = a.trades.concat((a.events || []).map(e => ({ date: e.date, cash_flow_chf: e.chf || 0 })))
+      .sort((x, y) => x.date < y.date ? -1 : 1);
     let i = 0, cash = d.initial_capital_chf;
     return a.equity.filter(p => !r.to || p[0] <= r.to).map(([date, eq]) => {
       while (i < fills.length && fills[i].date <= date) cash += fills[i++].cash_flow_chf;

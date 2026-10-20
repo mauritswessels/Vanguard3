@@ -83,6 +83,10 @@ class VolatilityAgent(BaseAgent):
     def set_state(self, state: dict) -> None:
         self.stops = {t: float(s) for t, s in state.get("stops", {}).items()}
 
+    def on_split(self, ticker: str, ratio: float) -> None:
+        if ticker in self.stops:
+            self.stops[ticker] /= ratio
+
     def position_size(self, signal: Signal, date: pd.Timestamp,
                       equity: float, unit_cost_chf: float) -> int:
         """Risk a fixed fraction of equity on the distance to the stop."""

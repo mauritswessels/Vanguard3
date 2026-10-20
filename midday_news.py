@@ -49,6 +49,11 @@ logger = logging.getLogger("vanguard3.midday")
 #: A market whose newest quote is older than this is treated as closed now.
 LIVE_MINUTES = 45
 
+#: A price this far from the last close (as a ratio) most likely means a
+#: share split today: that market is left for the evening run, which
+#: restates the holdings in post-split shares first.
+SPLIT_LIKE = (0.6, 1.6)
+
 
 def intraday_quotes(symbols: list[str], now: pd.Timestamp) -> dict:
     """Today's open and latest price per symbol, from 5-minute Yahoo bars.
@@ -119,11 +124,16 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
             return 1.0
         return fx_now.get(ccy) or market.fx_rate(t, last, "Close")
 
+    def jumped(t: str) -> bool:
+        q, close = quotes.get(t) or {}, market.close_panel.at[last, t]
+        move = (q.get("last") or math.nan) / close
+        return math.isfinite(move) and not SPLIT_LIKE[0] <= move <= SPLIT_LIKE[1]
+
     def opened(t: str) -> bool:
-        return (quotes.get(t) or {}).get("open") is not None
+        return (quotes.get(t) or {}).get("open") is not None and not jumped(t)
 
     def live(t: str) -> bool:
-        return bool((quotes.get(t) or {}).get("live"))
+        return bool((quotes.get(t) or {}).get("live")) and not jumped(t)
 
     # 1. Last evening's orders filled at this morning's open (minus any
     #    replaced by a newer one or waiting too long, as in the evening).
@@ -141,7 +151,7 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
     # 2. The account at live prices.
     def price(t: str) -> float:
         q = quotes.get(t)
-        if q and q.get("open") is not None and math.isfinite(q["last"]):
+        if opened(t) and math.isfinite(q["last"]):
             return q["last"]
         return float(market.close_panel.at[last, t])
 
@@ -295,8 +305,11 @@ def main() -> None:
         logger.info("Dry run: nothing saved")
         return
     write_json(sim.to_dict(), args.state)
-    write_json(dashboard_payload(sim, "paper", start, {"status": "live"}),
-               args.dashboard)
+    # The evening run's prices of the IBKR stand-in funds stay.
+    old = json.loads(args.dashboard.read_text()) if args.dashboard.exists() else {}
+    write_json(dashboard_payload(sim, "paper", start, {
+        "status": "live", "stand_ins": old.get("stand_ins", {})}),
+        args.dashboard)
 
 
 if __name__ == "__main__":

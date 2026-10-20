@@ -12,7 +12,7 @@ What it does:
    from ``state/paper_state.json``,
 3. simulates every *completed* session since the last run, exactly like a
    backtest day (yesterday's orders fill at today's open, then new
-   decisions at today's close),
+   decisions at today's close), plus dividends and share splits,
 4. saves the state and refreshes ``docs/data/paper.json`` for the dashboard.
 
 If a run is missed, the next one catches up on all skipped sessions.
@@ -30,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
-from data_manager import load_market_data
+from data_manager import YFinanceProvider, load_market_data
 from engine.simulator import Simulator, build_accounts
 from learning import LOOKBACK_YEARS, paper_lineup, retune
 from models import agent_key
@@ -121,6 +121,12 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
         sim = Simulator(market, build_accounts(market, paper_lineup(market)),
                         tuner=retune)
 
+    # Dividends are paid and splits applied in live paper trading only.
+    sim.corporate_actions = True
+    for split in sim.apply_splits():
+        logger.info("Share split: %s, %g new shares per old one (%s)",
+                    split["ticker"], split["ratio"], split["date"])
+
     cal = market.calendar
     new = cal[(cal >= paper_start) & (cal <= cutoff)]
     if sim.last_date is not None:
@@ -130,6 +136,24 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
     if sim.last_date is not None:
         write_json(sim.to_dict(), state_path)
     return (sim if sim.last_date is not None else None), len(new)
+
+
+def stand_in_prices(last: pd.Timestamp, provider=None) -> dict:
+    """Last close of each European fund the IBKR copy holds instead of a
+    US fund (``config.IBKR_STAND_INS``), for the IBKR bridge. One that
+    fails to download is left out (the bridge keeps that fund in cash)."""
+    provider = provider or YFinanceProvider(retries=2)
+    out = {}
+    for us, (symbol, exchange, ccy, yahoo) in config.IBKR_STAND_INS.items():
+        try:
+            bars = provider.fetch(yahoo, last - pd.Timedelta(days=10), last)
+            out[us] = {"symbol": symbol, "exchange": exchange,
+                       "currency": ccy, "price": float(bars["Close"].iloc[-1]),
+                       "date": bars.index[-1].strftime("%Y-%m-%d")}
+        except Exception as exc:
+            logger.warning("No price for %s (the IBKR version of %s): %s",
+                           yahoo, us, exc)
+    return out
 
 
 def main() -> None:
@@ -166,8 +190,10 @@ def main() -> None:
     logger.info("Simulated %d new session(s); state is at %s", n_new,
                 sim.last_date.date())
     print_scoreboard(sim, "VANGUARD3 PAPER TRADING")
-    write_json(dashboard_payload(sim, "paper", start,
-                                 {"status": "live"}), args.dashboard)
+    payload = dashboard_payload(sim, "paper", start, {"status": "live"})
+    if args.source == "yfinance":
+        payload["stand_ins"] = stand_in_prices(sim.last_date)
+    write_json(payload, args.dashboard)
 
 
 if __name__ == "__main__":

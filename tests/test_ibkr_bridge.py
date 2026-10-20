@@ -61,8 +61,9 @@ class FakeIB:
     """Just enough of ``ib_async.IB`` for the bridge."""
 
     def __init__(self, account="DU123", net_liq=1_000_000.0, base="USD",
-                 positions=(), open_orders=(), unknown=()):
+                 positions=(), open_orders=(), unknown=(), cash=None):
         self.account, self.net_liq, self.base = account, net_liq, base
+        self.cash = cash or {}
         self._positions = list(positions)
         self._open = list(open_orders)
         self.unknown = set(unknown)
@@ -83,6 +84,11 @@ class FakeIB:
 
     def reqPositions(self):
         return self._positions
+
+    def accountValues(self, account):
+        return [NS(tag="CashBalance", value=str(v), currency=c)
+                for c, v in self.cash.items()] + [
+            NS(tag="CashBalance", value="1", currency="BASE")]
 
     def reqAllOpenOrders(self):
         return self._open
@@ -114,6 +120,8 @@ class FakeIB:
 api = NS(Stock=lambda symbol, exchange, currency, primaryExchange="":
          NS(symbol=symbol, exchange=exchange, currency=currency,
             primaryExchange=primaryExchange),
+         Forex=lambda pair: NS(symbol=pair[:3], currency=pair[3:], pair=pair,
+                               exchange="IDEALPRO"),
          MarketOrder=lambda action, qty, **kw: NS(action=action,
                                                   totalQuantity=qty, **kw))
 
@@ -292,7 +300,7 @@ class SafetyTest(unittest.TestCase):
         out = bridge.run(ib, api, p, params, send=True, say=said.append)
         self.assertEqual(out["kept_in_cash"], ["SAP.DE"])
         self.assertIn("kept in cash: SAP.DE", said[-1])
-        self.assertIn("SAP.DE", json.loads(params["blocked_file"].read_text()))
+        self.assertIn("SAP", json.loads(params["blocked_file"].read_text()))
         # The next morning it is not sent again.
         ib2 = FakeIB(positions=[position("AAPL", "USD", 400),
                                 position("NESN", "CHF", 1000)])
@@ -343,6 +351,91 @@ class SafetyTest(unittest.TestCase):
                                                     "the exchange until "
                                                     "09:30 (code 399)"]),
                          "waiting for the market to open")
+
+
+class StandInTest(unittest.TestCase):
+    """US funds are held as their European versions; currency is changed
+    instead of borrowed."""
+
+    def params(self, **extra):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        return {**PARAMS, "log_dir": tmp, "blocked_file": tmp / "blocked.json",
+                **extra}
+
+    @staticmethod
+    def fund_payload(stand_in=True):
+        p = payload()
+        p["currencies"]["SPY"] = "USD"
+        p["prices"]["SPY"] = [["2026-10-09", 600.0]]
+        # 25 SPY x 600 USD x 0.8 = 12'000 CHF = 12% of the account
+        p["agents"][0]["positions"].append({"ticker": "SPY", "quantity": 25})
+        if stand_in:
+            p["stand_ins"] = {"SPY": {"symbol": "CSPX", "exchange": "LSEETF",
+                                      "currency": "USD", "price": 750.0,
+                                      "date": "2026-10-09"}}
+        return p
+
+    def test_symbols(self):
+        self.assertEqual(bridge.ib_symbol("SPY"), ("CSPX", "USD", "LSEETF"))
+        self.assertEqual(bridge.ib_symbol("EWL"), ("CHSPI", "CHF", "EBS"))
+        self.assertEqual(bridge.universe_index()[("CSPX", "USD")], "SPY")
+
+    def test_a_us_fund_is_bought_as_its_european_version(self):
+        ib = FakeIB(positions=[position("AAPL", "USD", 400),
+                               position("NESN", "CHF", 1000)])
+        bridge.run(ib, api, self.fund_payload(), self.params(), send=True,
+                   say=lambda *_: None)
+        (contract, order), = ib.placed
+        # 12% of 1'000'000 USD = 120'000 USD = 160 CSPX at 750 USD.
+        self.assertEqual((contract.symbol, contract.primaryExchange,
+                          order.totalQuantity), ("CSPX", "LSEETF", 160))
+        # Held CSPX counts as SPY the next morning: nothing more to buy.
+        ib2 = FakeIB(positions=[position("AAPL", "USD", 400),
+                                position("NESN", "CHF", 1000),
+                                position("CSPX", "USD", 160)])
+        said = []
+        bridge.run(ib2, api, self.fund_payload(), self.params(), send=True,
+                   say=said.append)
+        self.assertEqual(ib2.placed, [])
+
+    def test_a_fund_without_a_price_stays_in_cash(self):
+        ib = FakeIB(positions=[position("AAPL", "USD", 400),
+                               position("NESN", "CHF", 1000)])
+        said = []
+        out = bridge.run(ib, api, self.fund_payload(stand_in=False),
+                         self.params(), send=True, say=said.append)
+        self.assertEqual(ib.placed, [])
+        self.assertEqual(out["no_price"], ["SPY"])
+        self.assertEqual(said[-1], "Done: no orders needed; no price for: SPY.")
+
+    def test_dollars_are_bought_before_the_buys(self):
+        # A 100'000 CHF account that has borrowed 5'000 USD.
+        ib = FakeIB(base="CHF", net_liq=100_000.0, cash={"USD": -5_000.0})
+        said = []
+        out = bridge.run(ib, api, payload(), self.params(change_currency=True),
+                         send=True, say=said.append)
+        contract, order = ib.placed[0]
+        # 50 AAPL x 200 USD = 10'000 USD, plus the 5'000 borrowed, plus 1%.
+        self.assertEqual((contract.pair, order.action, order.totalQuantity),
+                         ("USDCHF", "BUY", 15_150))
+        self.assertEqual([c.symbol for c, _ in ib.placed[1:]],
+                         ["NESN", "AAPL"])
+        self.assertEqual(out["currency"][0]["side"], "BUY")
+        self.assertIn("currency: bought 15,150 USD", said[-1])
+
+    def test_left_over_currency_goes_back(self):
+        plan = []
+        fx = bridge.currency_plan(plan, {"USD": 20_000.0, "EUR": 100.0},
+                                  "CHF", payload(), 500.0)
+        self.assertEqual(fx, [{"currency": "USD", "side": "SELL",
+                               "amount": 19_800, "value": 16_000.0}])
+
+    def test_pairs_quoted_the_other_way(self):
+        self.assertEqual(bridge.forex_order("USD", "CHF", "BUY", 1000,
+                                            payload()), ("USDCHF", "BUY", 1000))
+        # A euro account buys dollars by selling euros: 1000 USD = 860.2 EUR.
+        self.assertEqual(bridge.forex_order("USD", "EUR", "BUY", 1000,
+                                            payload()), ("EURUSD", "SELL", 861))
 
 
 class ConnectHelpTest(unittest.TestCase):
