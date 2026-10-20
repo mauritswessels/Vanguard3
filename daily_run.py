@@ -147,13 +147,12 @@ def stand_in_prices(last: pd.Timestamp, provider=None) -> dict:
     for us, (symbol, exchange, ccy, yahoo) in config.IBKR_STAND_INS.items():
         try:
             bars = provider.fetch(yahoo, last - pd.Timedelta(days=10), last)
+            out[us] = {"symbol": symbol, "exchange": exchange,
+                       "currency": ccy, "price": float(bars["Close"].iloc[-1]),
+                       "date": bars.index[-1].strftime("%Y-%m-%d")}
         except Exception as exc:
             logger.warning("No price for %s (the IBKR version of %s): %s",
                            yahoo, us, exc)
-            continue
-        out[us] = {"symbol": symbol, "exchange": exchange, "currency": ccy,
-                   "price": float(bars["Close"].iloc[-1]),
-                   "date": bars.index[-1].strftime("%Y-%m-%d")}
     return out
 
 

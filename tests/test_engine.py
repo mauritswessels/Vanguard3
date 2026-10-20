@@ -410,6 +410,8 @@ class StandInPriceTest(unittest.TestCase):
             def fetch(self, symbol, start, end):
                 if symbol == "IDBZ.L":
                     raise RuntimeError("no data")
+                if symbol == "IDTL.L":
+                    return pd.DataFrame({"Close": []})
                 return pd.DataFrame({"Close": [1.0, 2.0]}, index=pd.to_datetime(
                     ["2026-10-08", "2026-10-09"]))
         out = daily_run.stand_in_prices(pd.Timestamp("2026-10-09"), Provider())
@@ -417,7 +419,8 @@ class StandInPriceTest(unittest.TestCase):
                                       "currency": "USD", "price": 2.0,
                                       "date": "2026-10-09"})
         self.assertNotIn("EWZ", out)
-        self.assertEqual(len(out), len(config.IBKR_STAND_INS) - 1)
+        self.assertNotIn("TLT", out)
+        self.assertEqual(len(out), len(config.IBKR_STAND_INS) - 2)
 
 
 class LearningTest(unittest.TestCase):
