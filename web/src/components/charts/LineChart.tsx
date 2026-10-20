@@ -47,7 +47,7 @@ export function LineChart({ lines, format, height = 380, onHover, zeroLine, clas
     if (!el.current) return;
     const c = createChart(el.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, fontFamily: "Geist Variable, ui-sans-serif, system-ui", fontSize: 11.5, attributionLogo: false },
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, fontFamily: "Inter Variable, ui-sans-serif, system-ui", fontSize: 11.5, attributionLogo: false },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: {
         borderVisible: false, fixLeftEdge: true, fixRightEdge: true, lockVisibleTimeRangeOnResize: true,

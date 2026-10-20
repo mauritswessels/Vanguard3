@@ -12,7 +12,7 @@ const CREDITS: [string, string, string][] = [
   ["Language models", "Claude Sonnet and Claude Opus by Anthropic", "https://www.anthropic.com"],
   ["Broker", "Interactive Brokers paper trading, through IB Gateway", "https://www.interactivebrokers.com"],
   ["Charts", "TradingView Lightweight Charts™, Copyright (c) 2025 TradingView, Inc.", "https://www.tradingview.com/"],
-  ["Type", "Instrument Serif and Geist", "https://fonts.google.com/specimen/Instrument+Serif"],
+  ["Type", "Inter and Inter Tight by Rasmus Andersson, Geist Mono by Vercel", "https://rsms.me/inter/"],
 ];
 
 export default function About() {
