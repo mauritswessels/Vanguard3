@@ -58,11 +58,16 @@ limit() {  # seconds command...: stop a step that hangs (where possible)
     fi
 }
 
+to_seconds() {  # Docker's UTC time (2026-10-13T05:00:00.5Z) as epoch seconds
+    date -d "$1" +%s 2> /dev/null ||                                  # Linux
+        date -j -u -f '%Y-%m-%dT%H:%M:%S' "${1%%[.Z]*}" +%s 2> /dev/null  # macOS
+}
+
 gateway_minutes() {  # how long the IB Gateway container has been running
-    local started
+    local started since
     started=$(docker inspect -f '{{.State.StartedAt}}' ib-gateway 2> /dev/null) &&
-        [ -n "$started" ] &&
-        echo $(( ($(date +%s) - $(date -d "$started" +%s)) / 60 ))
+        [ -n "$started" ] && since=$(to_seconds "$started") &&
+        echo $(( ($(date +%s) - since) / 60 ))
 }
 
 warnings=""
