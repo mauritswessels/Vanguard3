@@ -24,8 +24,9 @@ python3 -m venv .venv
 `daily_run.py` advances every agent by the sessions completed since its last
 run and saves everything (cash, positions, pending orders, trailing stops) to
 `state/paper_state.json`. The GitHub Actions workflow in
-`.github/workflows/daily.yml` runs it every weekday at 21:30 UTC, commits the
-new state, and refreshes `docs/data/`. GitHub Pages serves `docs/index.html`
+`.github/workflows/daily.yml` runs it every weekday evening between the New
+York close and midnight in Zurich (after midnight Yahoo leaves out the
+European markets' day), commits the new state, and refreshes `docs/data/`. GitHub Pages serves `docs/index.html`
 as the dashboard, so nothing needs to run on your own computer.
 
 Live, each strategy runs twice: a **learning** agent that reviews its own
@@ -292,7 +293,9 @@ own computer can stay off.
    Telegram, then run `bash /opt/Vanguard3/server/telegram.sh` on the
    server and paste the bot's token. Telegram then also gets the race
    chart (`telegram_chart.py`: every account's return since launch, the
-   top three and the yardsticks) after each run.
+   top three and the yardsticks) after each run, followed by why the top
+   three hold what they hold: how each one picks, its biggest holdings
+   with the reason it bought them, and what it trades at the next open.
 
 IB Gateway restarts itself every night and logs in afresh on Sundays,
 and the server updates it every Saturday. If it stops answering (IBKR

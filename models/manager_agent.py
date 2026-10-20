@@ -10,9 +10,11 @@ own, and each month it decides whom to back:
   agents with the best return over the last ``lookback`` sessions, in
   equal shares.
 
-Every evening it works out the mix of holdings that gives (the agents'
-holdings x its shares) and trades towards it, but only where a market is
-more than ``band`` of the account away from its target, to keep fees down.
+Every evening, after the other agents have decided, it works out the mix
+of holdings that gives (the agents' holdings once their new orders fill x
+its shares) and trades towards it, but only where a market is more than
+``band`` of the account away from its target, to keep fees down. Its orders
+fill at the same open as theirs, so it follows them without a day's delay.
 """
 
 from __future__ import annotations
@@ -25,6 +27,15 @@ import config
 from engine.broker import Order
 from engine.portfolio import Portfolio
 from models.base_agent import Action, BaseAgent, Signal
+
+
+def holdings_after_orders(acc) -> dict[str, int]:
+    """Shares ``acc`` will hold once its waiting orders fill."""
+    qty = {t: pos.quantity for t, pos in acc.portfolio.positions.items()}
+    for o in acc.broker.pending:
+        change = o.quantity if o.side == "BUY" else -o.quantity
+        qty[o.ticker] = max(qty.get(o.ticker, 0) + change, 0)
+    return {t: q for t, q in qty.items() if q > 0}
 
 
 class ManagerAgent(BaseAgent):
@@ -89,8 +100,8 @@ class ManagerAgent(BaseAgent):
             if acc is None:
                 continue
             eq = acc.portfolio.equity(prices)
-            for t, pos in acc.portfolio.positions.items():
-                w = pos.quantity * float(prices[t]) / eq
+            for t, qty in holdings_after_orders(acc).items():
+                w = qty * float(prices[t]) / eq
                 targets[t] = targets.get(t, 0.0) + share * w
         cap = 1 - config.CASH_BUFFER_PCT
         total = sum(targets.values())

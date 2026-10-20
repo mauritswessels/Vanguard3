@@ -72,7 +72,10 @@ class Simulator:
                 if acc.agent.learning:
                     self.tuner(acc.agent, self.market, self.last_date)
         prices_chf = self.market.close_chf(date)
-        for acc in self.accounts:
+        # The Team Manager goes last, so it sees today's decisions of the
+        # agents it copies (sorted() keeps everyone else in order).
+        for acc in sorted(self.accounts, key=lambda a: getattr(
+                a.agent, "uses_team", False)):
             if getattr(acc.agent, "uses_team", False):
                 acc.agent.team = self.accounts   # the Team Manager
             fills = acc.broker.process(date)

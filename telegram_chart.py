@@ -1,17 +1,22 @@
 """The race chart for the Telegram message after each morning run.
 
     python telegram_chart.py race.png      # writes the chart, prints the caption
+    python telegram_chart.py race.png --why why.txt   # and the "why" message
 
 Draws every account's return since launch from the dashboard results
 (``docs/data/paper.json`` on GitHub) in the dashboard's colours: learning
 agents solid, their fixed twins dashed, the yardsticks grey and brown. The
-caption lists the top three and the two yardsticks. ``ibkr_morning.sh``
-sends both to Telegram when ``TELEGRAM_TOKEN`` is set.
+caption lists the top three and the two yardsticks. ``--why`` also writes a
+message saying, for each of the top three, how it picks, what it holds and
+why it bought it, and what it will trade at the next open, in plain words.
+``ibkr_morning.sh`` sends all of it to Telegram when ``TELEGRAM_TOKEN`` is
+set.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -35,15 +40,102 @@ def returns(agent: dict) -> tuple[list[str], list[float]]:
     return days, [(v / start - 1) * 100 for _, v in agent["equity"]]
 
 
+#: How each agent picks, in plain words.
+STYLES = {
+    "trend": "Buys markets in a steady rise and sells when the rise ends.",
+    "reversion": "Buys markets that fell too far, too fast, and sells when "
+                 "they recover.",
+    "volatility": "Buys markets that break above their recent high, with a "
+                  "safety stop that follows the price up.",
+    "learner": "A self-learning model that scores every market each evening.",
+    "learner_opus": "The AI Learner's picks, each one checked by Claude Opus.",
+    "news": "Claude reads the news and company results each evening.",
+    "news_opus": "Claude Opus reads the news and company results each "
+                 "evening.",
+    "manager": "Copies the agents with the best recent results.",
+}
+
+#: The agents' own reasons -> plain words (anything else is shown as is).
+PLAIN = [
+    (r"Up-trend, ADX [\d.]+", "in a steady rise"),
+    (r"Oversold, RSI [\d.]+", "fell sharply and looks cheap"),
+    (r"Donchian breakout", "broke above its recent high"),
+    (r"Model score favours BUY; biggest factor: (.+) \((?:for|against)\)",
+     r"its model likes it, mostly because of the \1"),
+    (r"Model score favours SELL; biggest factor: (.+) \((?:for|against)\)",
+     r"its model turned against it, mostly because of the \1"),
+    (r"Exploring: tried \w+ at random to learn", "a random try, to learn"),
+    (r"Opus approved: (.+)", r"\1"),
+    (r"Team target ([\d.]+)% .*", r"copying its agents (\1% of the account)"),
+    (r"Initial benchmark buy", "bought once at the start"),
+]
+
+
+def plain(reason: str) -> str:
+    """An agent's reason in plain words, at most one line."""
+    reason = (reason or "").strip()
+    for pattern, words in PLAIN:
+        if re.fullmatch(pattern, reason):
+            reason = re.sub(pattern, words, reason)
+            break
+    reason = reason.rstrip(".")
+    return reason if len(reason) <= 120 else reason[:117].rstrip() + "..."
+
+
+def day(d: str) -> str:
+    return date.fromisoformat(d).strftime("%-d %b")
+
+
+def ranked(payload: dict) -> list[dict]:
+    """The racing agents, best first (no fixed twins or yardsticks)."""
+    return sorted((a for a in payload["agents"] if not a.get("benchmark")
+                   and a["key"] != "monkey" and "(fixed)" not in a["name"]),
+                  key=lambda a: -a["stats"]["total_return"])
+
+
+def why(payload: dict, top: int = 3) -> str:
+    """For each of the top agents: how it picks, what it holds and why,
+    and what it will trade at the next open."""
+    lines = [f"Why the top {top} hold what they hold "
+             f"(close of {day(payload['last'])})"]
+    for i, a in enumerate(ranked(payload)[:top], 1):
+        lines += ["", f"{i}. {a['name']} {a['stats']['total_return']:+.2%}",
+                  STYLES.get(a["key"], a.get("style", ""))]
+        value = a["stats"]["final_equity_chf"]
+        bought = {}
+        for t in a["trades"]:
+            if t["side"] == "BUY":
+                bought[t["ticker"]] = t
+        held = sorted(a["positions"], key=lambda p: -p["value_chf"])
+        for p in held[:3]:
+            t = bought.get(p["ticker"])
+            note = (f", bought {day(t['date'])}: {plain(t['reason'])}"
+                    if t else "")
+            lines.append(f"- {p['ticker']} {p['value_chf'] / value:.0%} of the "
+                         f"account ({p['pnl_pct']:+.1%}){note}")
+        if len(held) > 3:
+            lines.append(f"- and {len(held) - 3} more")
+        if not held:
+            lines.append("- Holds nothing yet")
+        lines.append(f"- Cash: {a['cash_chf'] / value:.0%}")
+        orders = a.get("pending_orders", [])
+        for o in orders[:3]:
+            verb = "Buys" if o["side"] == "BUY" else "Sells"
+            lines.append(f"- Next open: {verb.lower()} {o['ticker']} "
+                         f"({plain(o['reason'])})")
+        if len(orders) > 3:
+            lines.append(f"- Next open: {len(orders) - 3} more orders")
+        if not orders:
+            lines.append("- Next open: no trades planned")
+    return "\n".join(lines)
+
+
 def caption(payload: dict) -> str:
     """Top three and the yardsticks, one line each."""
     agents = payload["agents"]
-    ranked = sorted((a for a in agents if not a.get("benchmark")
-                     and a["key"] != "monkey" and "(fixed)" not in a["name"]),
-                    key=lambda a: -a["stats"]["total_return"])
     lines = [f"The race, day {len(agents[0]['equity'])} "
              f"(close of {payload['last']})"]
-    for i, a in enumerate(ranked[:3], 1):
+    for i, a in enumerate(ranked(payload)[:3], 1):
         lines.append(f"{i}. {a['name']} {a['stats']['total_return']:+.2%}")
     for a in agents:
         if a.get("benchmark") or a["key"] == "monkey":
@@ -114,11 +206,15 @@ def main() -> None:
     parser.add_argument("--results",
                         default=config.IBKR_PARAMS["results_url"],
                         help="URL or file of paper.json")
+    parser.add_argument("--why", type=Path,
+                        help="also write the top three's reasons to this file")
     args = parser.parse_args()
     payload = load_results(args.results)
     if not payload.get("agents"):
         sys.exit("No results yet: nothing to draw.")
     draw(payload, args.png)
+    if args.why:
+        args.why.write_text(why(payload))
     print(caption(payload))
 
 

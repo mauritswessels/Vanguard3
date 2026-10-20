@@ -16,9 +16,20 @@ def payload():
         return {"key": key, "name": name,
                 "equity": [[days[0], 100_000.0], [days[1], 100_000.0],
                            [days[2], end]],
-                "stats": {"total_return": end / 100_000 - 1}, **extra}
+                "stats": {"total_return": end / 100_000 - 1,
+                          "final_equity_chf": end},
+                "cash_chf": end / 4, "positions": [], "trades": [],
+                "pending_orders": [], **extra}
     return {"start": days[0], "last": days[-1], "agents": [
-        agent("trend", "Trend Follower", 101_000.0),
+        agent("trend", "Trend Follower", 101_000.0,
+              positions=[{"ticker": "MA", "value_chf": 30_300.0,
+                          "pnl_pct": 0.021},
+                         {"ticker": "V", "value_chf": 20_200.0,
+                          "pnl_pct": -0.01}],
+              trades=[{"date": "2026-10-08", "side": "BUY", "ticker": "MA",
+                       "reason": "Up-trend, ADX 27.1"}],
+              pending_orders=[{"side": "SELL", "ticker": "V",
+                               "reason": "Down-trend"}]),
         agent("trend", "Trend Follower (fixed)", 103_000.0),
         agent("news", "News Analyst", 99_500.0),
         agent("reversion", "Bargain Hunter", 100_200.0),
@@ -43,6 +54,38 @@ class ChartTest(unittest.TestCase):
         a, b, c = sorted(chart.spread([0.0, 0.1, 0.2], 1.0))
         self.assertAlmostEqual(b - a, 1.0)
         self.assertAlmostEqual(c - b, 1.0)
+
+    def test_why_explains_the_top_three(self):
+        text = chart.why(payload())
+        self.assertTrue(text.startswith("Why the top 3 hold what they hold "
+                                        "(close of 9 Oct)"))
+        self.assertIn("1. Trend Follower +1.00%\nBuys markets in a steady "
+                      "rise", text)
+        self.assertIn("- MA 30% of the account (+2.1%), bought 8 Oct: in a "
+                      "steady rise", text)
+        self.assertIn("- V 20% of the account (-1.0%)\n", text)
+        self.assertIn("- Cash: 25%", text)
+        self.assertIn("- Next open: sells V (Down-trend)", text)
+        self.assertIn("3. AI Learner", text)
+        self.assertIn("- Holds nothing yet\n- Cash: 25%\n"
+                      "- Next open: no trades planned", text)
+        self.assertNotIn("Monkey", text)
+        self.assertNotIn("(fixed)", text)
+        self.assertLess(len(text), 4096)         # one Telegram message
+
+    def test_plain_words(self):
+        self.assertEqual(chart.plain("Oversold, RSI 28.3"),
+                         "fell sharply and looks cheap")
+        self.assertEqual(chart.plain("Team target 5.1% (holds 0.0%)"),
+                         "copying its agents (5.1% of the account)")
+        self.assertEqual(chart.plain(
+            "Model score favours SELL; biggest factor: 5-day momentum "
+            "(against)"),
+            "its model turned against it, mostly because of the 5-day "
+            "momentum")
+        self.assertEqual(chart.plain("Opus approved: Strong results."),
+                         "Strong results")
+        self.assertEqual(len(chart.plain("x" * 300)), 120)
 
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"),
                          "needs matplotlib")
