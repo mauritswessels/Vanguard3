@@ -305,8 +305,11 @@ def main() -> None:
         logger.info("Dry run: nothing saved")
         return
     write_json(sim.to_dict(), args.state)
-    write_json(dashboard_payload(sim, "paper", start, {"status": "live"}),
-               args.dashboard)
+    # The evening run's prices of the IBKR stand-in funds stay.
+    old = json.loads(args.dashboard.read_text()) if args.dashboard.exists() else {}
+    write_json(dashboard_payload(sim, "paper", start, {
+        "status": "live", "stand_ins": old.get("stand_ins", {})}),
+        args.dashboard)
 
 
 if __name__ == "__main__":
