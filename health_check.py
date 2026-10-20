@@ -11,7 +11,10 @@ the repository owner. It looks for:
 * accounts that are behind the latest finished trading session (a run that
   failed, or a scheduled run GitHub never started),
 * a News Analyst or the Opus Learner that could not make its latest
-  decision.
+  decision,
+* orders that did not go through in the latest session (not enough cash,
+  or their market did not open for a week),
+* with ``--midday``: a News Analyst whose midday check failed today.
 """
 
 from __future__ import annotations
@@ -59,8 +62,18 @@ def recent_sessions() -> list[pd.Timestamp] | None:
         return None
 
 
-def problems(state: dict | None, expected: pd.Timestamp) -> list[str]:
-    """Plain-English problems with the saved paper accounts."""
+#: Why an order did not go through, in plain words.
+WHY = {"insufficient cash": "there was not enough cash",
+       "expired": "its market did not open for a week",
+       "no position": "there was nothing left to sell",
+       "no session": "its market was closed"}
+
+
+def problems(state: dict | None, expected: pd.Timestamp,
+             today: pd.Timestamp | None = None,
+             midday: bool = False) -> list[str]:
+    """Plain-English problems with the saved paper accounts. ``midday``
+    checks the midday run instead of the evening's orders."""
     if not state:
         return ["The paper accounts could not be found."]
     out = []
@@ -68,15 +81,30 @@ def problems(state: dict | None, expected: pd.Timestamp) -> list[str]:
     if last < expected:
         out.append(f"The accounts were last updated for {last:%a %d %b}, but "
                    f"the latest finished trading day is {expected:%a %d %b}. "
-                   "The evening run failed or did not start; the next "
-                   "successful run catches up on the missed days.")
+                   "The evening run failed or did not start (or Yahoo had no "
+                   "European prices for that day yet; on a European holiday "
+                   "that is normal). The next successful run catches up.")
     for acc in state["accounts"]:
-        if acc["agent"] not in CLAUDE_KEYS:
-            continue
+        name = acc.get("name", acc["agent"])
         s = acc["agent_state"]
-        if s.get("decided") != state["last_date"]:
+        if acc["agent"] in CLAUDE_KEYS and s.get("decided") != state["last_date"]:
             out.append(f"The {acc.get('name', 'News Analyst')} made no decision for "
                        f"{last:%a %d %b}: {s.get('status', 'no reason given')}")
+        if midday:
+            m = s.get("midday") or {}
+            day = (today or pd.Timestamp.now(tz="UTC")).strftime("%Y-%m-%d")
+            if m.get("time", "").startswith(day) and not m.get("ok", True):
+                out.append(f"The {name}'s midday check failed: "
+                           f"{m.get('status', 'no reason given')}")
+            continue
+        for entry in acc.get("activity", []):
+            if entry["date"] != state["last_date"]:
+                continue
+            for r in entry.get("rejected", []):
+                out.append(
+                    f"{name}: the order to {r['side'].lower()} {r['quantity']} "
+                    f"{r['ticker']} (from {pd.Timestamp(r['created']):%a %d %b}) "
+                    f"did not go through: {WHY.get(r['why'], r['why'])}.")
     return out
 
 
@@ -84,12 +112,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--state", type=Path, default=config.PAPER_STATE_FILE)
     parser.add_argument("--out", type=Path, default=Path("health.md"))
+    parser.add_argument("--midday", action="store_true",
+                        help="check the midday run instead of the evening's "
+                             "orders")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     state = (json.loads(args.state.read_text())
              if args.state.exists() else None)
-    found = problems(state, latest_session(sessions=recent_sessions()))
+    found = problems(state, latest_session(sessions=recent_sessions()),
+                     midday=args.midday)
     if found:
         args.out.write_text("".join(f"- {p}\n" for p in found))
         logger.warning("Problems found:\n%s", "\n".join(found))

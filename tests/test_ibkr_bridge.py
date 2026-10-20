@@ -8,6 +8,7 @@ import ssl
 import tempfile
 import unittest
 import urllib.error
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
@@ -73,11 +74,14 @@ class FakeIB:
         return [self.account]
 
     def accountSummary(self, account):
+        gross = sum(abs(p.position) for p in self._positions) * 100.0
         return [NS(tag="BuyingPower", value="9", currency=self.base),
                 NS(tag="NetLiquidation", value=str(self.net_liq),
+                   currency=self.base),
+                NS(tag="GrossPositionValue", value=str(gross),
                    currency=self.base)]
 
-    def positions(self, account):
+    def reqPositions(self):
         return self._positions
 
     def reqAllOpenOrders(self):
@@ -116,9 +120,22 @@ api = NS(Stock=lambda symbol, exchange, currency, primaryExchange="":
 PARAMS = {"agent": "trend", "min_trade_pct": 0.005, "order_ref": "Vanguard3"}
 
 
-def position(symbol, currency, qty):
+def position(symbol, currency, qty, account="DU123"):
     return NS(contract=NS(symbol=symbol, currency=currency, secType="STK"),
-              position=qty)
+              position=qty, account=account)
+
+
+def setUpModule():
+    """Each test's logs (earlier runs, refused funds) go to a temporary
+    folder, never to the real ibkr_logs/."""
+    global LOGS
+    LOGS = Path(tempfile.mkdtemp())
+    PARAMS.update(log_dir=LOGS, blocked_file=LOGS / "blocked.json")
+
+
+def tearDownModule():
+    import shutil
+    shutil.rmtree(LOGS, ignore_errors=True)
 
 
 class BridgeTest(unittest.TestCase):
@@ -213,6 +230,119 @@ class BridgeTest(unittest.TestCase):
                          send=True, say=lambda *_: None)
         self.assertEqual(out["status"], "no agent")
         self.assertEqual(ib.placed, [])
+
+
+class SafetyTest(unittest.TestCase):
+    """Checks that stop the bridge from sending wrong orders."""
+
+    def params(self):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        return {**PARAMS, "log_dir": tmp, "blocked_file": tmp / "blocked.json"}
+
+    def test_only_the_newest_waiting_order_counts(self):
+        p = payload()
+        order = {"ticker": "NESN.SW", "side": "BUY", "quantity": 125}
+        p["agents"][0]["pending_orders"] = [order, dict(order), dict(order)]
+        _, w = bridge.agent_weights(p, "trend")
+        self.assertAlmostEqual(w["NESN.SW"], 0.10)
+
+    def test_targets_above_the_account_send_nothing(self):
+        p = payload()
+        p["agents"][0]["stats"]["final_equity_chf"] = 10_000.0   # wrong
+        ib, said = FakeIB(), []
+        with self.assertRaises(SystemExit) as ctx:
+            bridge.run(ib, api, p, self.params(), send=True, say=said.append)
+        self.assertEqual(ctx.exception.code, bridge.REFUSED)
+        self.assertEqual(ib.placed, [])
+        self.assertIn("add up to 180% of its account", said[-1])
+
+    def test_an_empty_position_list_sends_nothing(self):
+        """Just after a restart IB Gateway may list no positions yet while
+        the account holds some: buying everything again must not happen."""
+        ib, said = FakeIB(), []
+        ib.accountSummary = lambda account: [
+            NS(tag="NetLiquidation", value="1000000", currency="USD"),
+            NS(tag="GrossPositionValue", value="600000", currency="USD")]
+        with self.assertRaises(SystemExit) as ctx:
+            bridge.run(ib, api, payload(), self.params(), send=True,
+                       say=said.append)
+        self.assertEqual(ctx.exception.code, bridge.REFUSED)
+        self.assertEqual(ib.placed, [])
+        self.assertIn("listed none", said[-1])
+
+    def test_positions_of_other_accounts_are_ignored(self):
+        ib = FakeIB(positions=[position("AAPL", "USD", 400),
+                               position("NESN", "CHF", 1000, "DU999")])
+        out = bridge.run(ib, api, payload(), self.params(), send=False,
+                         say=lambda *_: None)
+        self.assertEqual([(o["ticker"], o["quantity"]) for o in out["plan"]],
+                         [("NESN.SW", 1000)])
+
+    def test_a_fund_ibkr_does_not_sell_here_stays_in_cash(self):
+        params = self.params()
+        p = payload()
+        p["agents"][0]["pending_orders"].append(
+            {"ticker": "SAP.DE", "side": "BUY", "quantity": 50})
+        ib = FakeIB(positions=[position("AAPL", "USD", 400),
+                               position("NESN", "CHF", 1000)])
+        refusal = ("Order rejected: no KID (key information document) "
+                   "is available for this product")
+        ib.placeOrder = self.refusing(ib, refusal)
+        said = []
+        out = bridge.run(ib, api, p, params, send=True, say=said.append)
+        self.assertEqual(out["kept_in_cash"], ["SAP.DE"])
+        self.assertIn("kept in cash: SAP.DE", said[-1])
+        self.assertIn("SAP.DE", json.loads(params["blocked_file"].read_text()))
+        # The next morning it is not sent again.
+        ib2 = FakeIB(positions=[position("AAPL", "USD", 400),
+                                position("NESN", "CHF", 1000)])
+        said = []
+        out = bridge.run(ib2, api, p, params, send=True, say=said.append)
+        self.assertEqual(ib2.placed, [])
+        self.assertEqual(said[-1], "Done: no orders needed; kept in cash: "
+                                   "SAP.DE (IBKR does not sell these to "
+                                   "this account).")
+
+    @staticmethod
+    def refusing(ib, message):
+        def place(contract, order):
+            order.orderId = 7
+            ib.placed.append((contract, order))
+            trade = FakeTrade(order, status="Inactive")
+            for h in ib.errorEvent.handlers:
+                h(order.orderId, 201, message, contract)
+            return trade
+        return place
+
+    def test_says_when_yesterdays_orders_did_not_fill(self):
+        params = self.params()
+        (params["log_dir"] / "2026-10-12.json").write_text(json.dumps([{
+            "status": "sent",
+            "sent": [{"ticker": "NESN.SW", "side": "BUY", "quantity": 1000,
+                      "note": "waiting for the market to open"},
+                     {"ticker": "AAPL", "side": "BUY", "quantity": 400,
+                      "note": "waiting for the market to open"}]}]))
+        ib, said = FakeIB(positions=[position("AAPL", "USD", 400)]), []
+        out = bridge.run(ib, api, payload(), params, send=True,
+                         say=said.append, today=date(2026, 10, 13))
+        self.assertEqual(out["not_filled"], ["NESN.SW"])
+        self.assertIn("Warning: the orders for NESN.SW sent on 2026-10-12 "
+                      "did not fill", "\n".join(said))
+
+    def test_old_results_are_flagged(self):
+        p = payload()                                  # Fri 9 Oct
+        self.assertIsNone(bridge.stale_warning(p, date(2026, 10, 12)))  # Mon
+        self.assertIsNone(bridge.stale_warning(p, date(2026, 10, 10)))
+        warning = bridge.stale_warning(p, date(2026, 10, 13))            # Tue
+        self.assertTrue(warning.startswith("Warning: the newest results are "
+                                           "from Fri 09 Oct, not Mon 12 Oct"))
+
+    def test_a_warning_from_ibkr_is_not_a_refusal(self):
+        trade = FakeTrade(NS(orderId=1), status="ValidationError")
+        self.assertEqual(bridge.status_text(trade, ["will not be placed at "
+                                                    "the exchange until "
+                                                    "09:30 (code 399)"]),
+                         "waiting for the market to open")
 
 
 class ConnectHelpTest(unittest.TestCase):

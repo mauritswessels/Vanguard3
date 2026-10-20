@@ -21,7 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # The newest main, not the commit this run was started on.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -57,3 +60,24 @@ jobs:
         run: |
           url=$(gh issue create --title "Weekly report: week to $(date -u +%d\ %b)" --body-file report.md)
           gh issue close "$url"
+
+      # Opens (or adds to) one GitHub issue; GitHub emails it to the owner.
+      - name: Alert if something went wrong
+        if: always() && job.status != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The **${{ github.workflow }}** run on $(date -u '+%a %d %b %H:%M UTC') needs a look."
+            echo
+            echo "- This week's report could not be written. Log: $RUN_URL"
+            echo
+            echo "@Mits-Alt-F4 · automatic message. Close this issue once things are fine again."
+          } > alert.md
+          n=$(gh issue list --state open --search '"Vanguard3 needs attention" in:title' --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file alert.md
+          else
+            gh issue create --title "Vanguard3 needs attention" --body-file alert.md
+          fi

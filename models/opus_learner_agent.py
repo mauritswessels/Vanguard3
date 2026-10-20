@@ -31,11 +31,11 @@ import logging
 import os
 import re
 import time
-import urllib.request
 
 import pandas as pd
 
 import config
+from claude_api import call_claude
 from engine.portfolio import Portfolio
 from models.base_agent import Action, Signal
 from models.learner_agent import LearnerAgent
@@ -69,18 +69,12 @@ def ask_opus(brief: str, model: str, effort: str,
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    body = json.dumps({
+    reply = call_claude({
         "model": model, "max_tokens": 8000,
         "output_config": {"effort": effort},
         "system": SYSTEM,
         "messages": [{"role": "user", "content": brief}],
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=body, method="POST",
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=180) as r:
-        reply = json.loads(r.read())
+    }, key, timeout=180)
     if reply.get("stop_reason") == "refusal":
         raise RuntimeError("the model declined to answer")
     text = "".join(b.get("text", "") for b in reply.get("content", [])

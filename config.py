@@ -29,6 +29,8 @@ COMMISSION_PER_TRADE_CHF = 2.0   # flat fee charged on every fill
 SLIPPAGE_BPS = 5.0               # adverse price move per fill (1 bp = 0.01 %)
 FX_CONVERSION_BPS = 2.0          # spread paid when converting CHF <-> foreign
 CASH_BUFFER_PCT = 0.005          # cash kept back when sizing to absorb gaps
+MIN_ORDER_CHF = 500.0            # smaller buys are skipped: the fee would eat them,
+                                 # and a 1-share order often cannot be paid at the open
 
 # ---------------------------------------------------------------------------
 # Watchlist: ticker (Yahoo Finance symbol) -> trading currency.
@@ -50,7 +52,7 @@ _US_STOCKS = [
     "XOM", "CVX", "CAT", "GE", "HON", "BA", "LIN", "T", "VZ",
 ]
 _SWISS_STOCKS = [   # the SMI and other large SIX shares, traded in CHF
-    "NESN.SW", "ROG.SW", "NOVN.SW", "UBSG.SW", "ZURN.SW", "ABBN.SW",
+    "NESN.SW", "NOVN.SW", "UBSG.SW", "ZURN.SW", "ABBN.SW",
     "CFR.SW", "LONN.SW", "SIKA.SW", "GIVN.SW", "ALC.SW", "HOLN.SW",
     "SREN.SW", "PGHN.SW", "SCMN.SW", "SLHN.SW", "GEBN.SW", "LOGN.SW",
     "KNIN.SW", "SOON.SW",
@@ -222,6 +224,7 @@ IBKR_PARAMS = {
     "order_ref": "Vanguard3",    # label on every order the bridge sends
     "answer_seconds": 60,        # give up when TWS / IB Gateway stays silent
     "max_minutes": 10,           # and on any run that takes longer than this
+    "max_invested": 1.05,        # send nothing if the targets add up to more
     "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
                     "Vanguard3/main/docs/data/paper.json"),
 }

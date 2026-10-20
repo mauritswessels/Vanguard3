@@ -23,6 +23,10 @@ services:
       - ib_password
     ports:
       - "127.0.0.1:4002:4004"       # only programs on this server get in
+    logging:                        # keep its log from filling the disk
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 secrets:
   ib_password:

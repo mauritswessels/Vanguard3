@@ -90,7 +90,12 @@ class ManagerAgent(BaseAgent):
                           portfolio: Portfolio) -> list[Signal]:
         new_month = (self.chosen is None
                      or pd.Timestamp(self.chosen).month != date.month)
-        if new_month or not self.backing:
+        # While it backs everyone equally, an agent that joins the race is
+        # backed from its first day, not from the next month.
+        everyone = {a.agent.name for a in self._racers()}
+        joined = (self.why.startswith("Backs all")
+                  and set(self.backing) != everyone)
+        if new_month or not self.backing or joined:
             self.choose(date)
         prices = self.market.close_chf(date)
         by_name = {a.agent.name: a for a in self.team}
@@ -135,7 +140,9 @@ class ManagerAgent(BaseAgent):
         costs = portfolio.costs
         prices = self.market.close_chf(date)
         equity = portfolio.equity(prices)
-        budget = portfolio.cash * (1 - config.CASH_BUFFER_PCT)
+        waiting = self.waiting_buys(broker, date, costs)
+        budget = (portfolio.cash * (1 - config.CASH_BUFFER_PCT)
+                  - sum(waiting.values()))
         orders = []
         for sig in (s for s in signals if s.action is Action.SELL):
             close, fx, ccy = self._quote(sig.ticker, date)
@@ -153,9 +160,10 @@ class ManagerAgent(BaseAgent):
         for sig in buys:
             close, fx, ccy = self._quote(sig.ticker, date)
             unit = costs.buy_price_chf(close, fx, ccy)
+            budget += waiting.pop(sig.ticker, 0.0)   # replaced by this one
             qty = int(sig.score * equity // unit)
             qty = min(qty, int(max(budget - costs.commission_chf, 0) // unit))
-            if qty <= 0:
+            if qty <= 0 or qty * unit < config.MIN_ORDER_CHF:
                 continue
             budget -= qty * unit + costs.commission_chf
             orders.append(Order(sig.ticker, "BUY", qty, date, sig.reason))

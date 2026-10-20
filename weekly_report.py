@@ -19,12 +19,12 @@ import argparse
 import json
 import logging
 import os
-import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
 import config
+from claude_api import call_claude
 
 logger = logging.getLogger("vanguard3.weekly")
 
@@ -101,18 +101,12 @@ def ask_claude(facts: dict, model: str, api_key: str | None = None) -> dict:
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    body = json.dumps({
+    reply = call_claude({
         "model": model, "max_tokens": 1500, "system": SYSTEM,
         "messages": [{"role": "user", "content":
                       "This week's facts (returns are fractions, 0.012 = "
                       "+1.2%):\n" + json.dumps(facts, indent=1)}],
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=body, method="POST",
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        reply = json.loads(r.read())
+    }, key, timeout=120)
     text = "".join(b.get("text", "") for b in reply.get("content", []))
     if not text.strip():
         raise ValueError("Claude sent an empty report")

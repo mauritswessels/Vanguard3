@@ -6,10 +6,12 @@ on:
   schedule:
     # The prices must be downloaded after New York has closed (16:00 there,
     # plus 30 minutes) but before midnight in Zurich: after that, Yahoo
-    # leaves out the European markets' day. GitHub often starts a run 15-30
-    # minutes late, so there are two runs; the one before the close, or the
-    # one after a successful run, finds nothing new and stops early.
+    # leaves out the European markets' day (daily_run.py then leaves that
+    # day for the next run). GitHub often starts a run 15-30 minutes late,
+    # so there are several runs; one before the close, or one after a
+    # successful run, finds nothing new and stops early.
     - cron: "40 20 * * 1-5"   # summer: 22:40 Zurich, 16:40 New York
+    - cron: "5 21 * * 1-5"    # summer: a second chance before midnight
     - cron: "40 21 * * 1-5"   # winter: 22:40 Zurich, 16:40 New York
   workflow_dispatch: {}
 
@@ -25,8 +27,16 @@ jobs:
   trade:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Optional (healthchecks.io, free): it warns you when an evening
+      # passes without a successful run, even one GitHub never started.
+      HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
     steps:
+      # The newest main, not the commit this run was started on: a run
+      # that waited for another one must build on that one's results.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -36,8 +46,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Prices first (see the schedule above). Nothing is published unless
-      # the tests below pass.
+      # Prices first (see the schedule above), and the day's results are
+      # saved straight away: nothing after this can lose them.
       - name: Advance paper accounts
         id: advance
         env:
@@ -45,15 +55,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python daily_run.py
-
-      - name: Run tests
-        if: steps.advance.outputs.new_sessions != '0'
-        run: python -m unittest discover -s tests -t .
-
-      - name: Refresh 5-year backtest
-        if: steps.advance.outputs.new_sessions != '0'
-        continue-on-error: true
-        run: python main.py --source yfinance --days 1825 --dashboard --no-save
 
       - name: Commit results
         if: steps.advance.outputs.new_sessions != '0'
@@ -69,13 +70,34 @@ jobs:
             git push
           fi
 
+      # A failure here sends the alert below.
+      - name: Run tests
+        if: steps.advance.outputs.new_sessions != '0'
+        run: python -m unittest discover -s tests -t .
+
+      - name: Refresh 5-year backtest
+        if: steps.advance.outputs.new_sessions != '0'
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python main.py --source yfinance --days 1825 --dashboard --no-save
+
+      - name: Commit backtest
+        if: steps.advance.outputs.new_sessions != '0'
+        run: |
+          git add docs/data/backtest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Backtest update $(date -u +%F)"
+            git pull --rebase origin main
+            git push
+          fi
+
       - name: Health check
         if: always()
         run: python health_check.py --out health.md
 
       # Opens (or adds to) one GitHub issue; GitHub emails it to the owner.
       - name: Alert if something went wrong
-        if: always() && (failure() || hashFiles('health.md') != '')
+        if: always() && (job.status != 'success' || hashFiles('health.md') != '')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -96,3 +118,10 @@ jobs:
           else
             gh issue create --title "Vanguard3 needs attention" --body-file alert.md
           fi
+
+      - name: Tell healthchecks.io
+        if: always() && env.HEALTHCHECK_URL != '' && (job.status != 'success' || steps.advance.outputs.new_sessions != '0')
+        run: |
+          url="$HEALTHCHECK_URL"
+          [ "${{ job.status }}" = success ] || url="$HEALTHCHECK_URL/fail"
+          curl -fsS -m 30 --retry 3 "$url" > /dev/null || echo "healthchecks.io did not answer"

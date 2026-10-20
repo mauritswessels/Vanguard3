@@ -78,6 +78,7 @@ class Simulator:
                 a.agent, "uses_team", False)):
             if getattr(acc.agent, "uses_team", False):
                 acc.agent.team = self.accounts   # the Team Manager
+            seen = len(acc.broker.rejected)
             fills = acc.broker.process(date)
             acc.portfolio.mark_to_market(date, prices_chf)
             signals = acc.agent.calculate_signals(date, acc.portfolio)
@@ -85,10 +86,20 @@ class Simulator:
                                              acc.broker)
             if acc.portfolio.cash < -1e-6:  # defence in depth
                 raise AssertionError(f"{acc.agent.name} cash went negative")
-            if signals or fills:
-                acc.activity.append(_activity(
+            # Orders that did not go through (replacing one is routine).
+            failed = [(o, why) for o, why in acc.broker.rejected[seen:]
+                      if not why.startswith("replaced")]
+            if signals or fills or failed:
+                entry = _activity(
                     date, signals, orders, fills,
-                    decision_context(acc.agent, signals, date, acc.portfolio)))
+                    decision_context(acc.agent, signals, date, acc.portfolio))
+                if failed:
+                    entry["rejected"] = [
+                        {"ticker": o.ticker, "side": o.side,
+                         "quantity": o.quantity,
+                         "created": o.created.strftime("%Y-%m-%d"),
+                         "why": why} for o, why in failed]
+                acc.activity.append(entry)
         self.last_date = date
 
     def add_account(self, agent: BaseAgent, since: pd.Timestamp) -> None:
