@@ -19,6 +19,18 @@ from walk_forward import make_folds
 #: Small settings so the tests stay quick.
 S = {**config.LUCK_PARAMS, "monkeys": 40, "years": 1, "resamples": 400}
 
+#: The labels skill.json uses, and the fields the new dashboard reads.
+VERDICTS = {"skill", "can't tell yet", "looks like luck"}
+ACCOUNT_FIELDS = {"id", "key", "name", "fixed_twin", "yardstick",
+                  "verdict", "verdict_from", "summary", "past", "live"}
+PART_FIELDS = {
+    "from", "to", "days", "return", "spy_return", "monkey_median_return",
+    "percentile_vs_monkeys", "verdict", "excess_vs_monkey",
+    "excess_vs_monkey_low", "excess_vs_monkey_high", "p_vs_monkeys",
+    "p_vs_monkeys_adjusted", "weeks_needed", "verdict_vs_spy",
+    "excess_vs_spy", "excess_vs_spy_low", "excess_vs_spy_high", "p_vs_spy",
+    "p_vs_spy_adjusted", "weeks_needed_vs_spy"}
+
 #: A short watchlist (SPY plus shares in all three currencies).
 WATCH = {t: config.WATCHLIST[t] for t in [
     "SPY", "QQQ", "GLD", "TLT", "AAPL", "MSFT", "JPM", "XOM",
@@ -171,22 +183,33 @@ class ReplayTest(unittest.TestCase):
         self.assertNotIn("verdict", res["benchmark"]["monkey"])
         self.assertIn(res["trend"]["monkey"]["verdict"], ls.VERDICTS)
 
-    def test_report_is_strict_json_with_plain_words(self):
+    def test_skill_json_is_strict_and_keeps_its_shape(self):
         report = ls.build_report(self.part, None, S, "synthetic")
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "luck.json"
+            path = Path(tmp) / "skill.json"
             write_json(report, path)
             data = json.loads(path.read_text())
         self.assertIsNone(data["live"])
-        self.assertEqual(data["verdicts"]["unclear"], "can't tell yet")
-        rows = {r["id"]: r for r in data["agents"]}
+        self.assertEqual(data["as_of"], data["past"]["to"])
+        self.assertIn("40 monkeys", data["method"])
+        self.assertEqual(set(data["verdict_meanings"]), set(VERDICTS))
+        self.assertEqual(len(data["past"]["monkey_returns"]), S["monkeys"])
+        rows = {r["id"]: r for r in data["accounts"]}
+        self.assertEqual(list(rows)[-2:], ["benchmark", "monkey"])
+        trend = rows["trend"]
+        self.assertEqual(set(trend), ACCOUNT_FIELDS)
+        self.assertEqual(set(trend["past"]), PART_FIELDS)
+        self.assertIn(trend["verdict"], VERDICTS)
+        self.assertEqual(trend["verdict_from"], "past prices")
+        self.assertEqual(rows["trend-fixed"]["key"], "trend")
+        self.assertTrue(0 <= trend["past"]["percentile_vs_monkeys"] <= 1)
+        self.assertIsNone(trend["past"]["weeks_needed"])
         self.assertTrue(rows["trend-fixed"]["fixed_twin"])
-        self.assertTrue(rows["benchmark"]["yardstick"])
-        past = rows["trend"]["summary"][0]
-        self.assertTrue(past.startswith("Past 1 year:"), past)
-        self.assertIn("monkeys", past)
-        self.assertEqual([r["id"] for r in data["agents"]][-2:],
-                         ["benchmark", "monkey"])
+        spy = rows["benchmark"]
+        self.assertTrue(spy["yardstick"])
+        self.assertIsNone(spy["verdict"])
+        self.assertIsNone(spy["past"]["excess_vs_spy"])
+        self.assertTrue(trend["summary"][0].startswith("Past 1 year:"))
 
 
 class LiveTest(unittest.TestCase):
@@ -224,13 +247,21 @@ class LiveTest(unittest.TestCase):
         res = self.part["results"]
         self.assertEqual(res["trend-fixed"]["monkey"]["verdict"], "unclear")
         report = ls.build_report(None, self.part, self.s, "synthetic")
-        rows = {r["id"]: r for r in report["agents"]}
-        live = rows["trend-fixed"]["summary"][-1]
-        self.assertIn("too few to judge", live)
-        self.assertIn(f"since {self.days[30].day}", live)
+        rows = {r["id"]: r for r in report["accounts"]}
+        late = rows["trend-fixed"]
+        self.assertIn("too few to judge", late["summary"][-1])
+        self.assertIn(f"since {self.days[30].day}", late["summary"][-1])
+        self.assertEqual(late["live"]["verdict"], "can't tell yet")
+        self.assertGreater(late["live"]["weeks_needed"], 0)
+        self.assertEqual(late["live"]["from"], self.part["results"][
+            "trend-fixed"]["since"])
+        # Enough live days: the headline verdict comes from the live race.
+        self.assertGreaterEqual(rows["trend"]["live"]["days"], 40)
+        self.assertEqual(rows["trend"]["verdict_from"], "live")
+        self.assertIsNone(rows["trend"]["past"])
+        self.assertEqual(report["as_of"], self.days[-1].strftime("%Y-%m-%d"))
         self.assertTrue(rows["monkey"]["summary"][-1].startswith("Live:"))
         self.assertEqual(list(rows)[-2:], ["benchmark", "monkey"])
-        self.assertIsNone(rows["trend"]["history"])
 
     def test_news_agents_explain_why_there_is_no_replay(self):
         row = {"id": "news", "key": "news", "name": "News Analyst",

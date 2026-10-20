@@ -101,8 +101,42 @@ rather than weeks: day-to-day swings are large next to any edge, so even
 10% a year over random picks takes well over ten years to show. The news
 agents, the Opus Learner and the Team Manager are judged on their live
 results only. The study runs every Saturday (workflow "Skill or luck",
-about 5 minutes; settings in `LUCK_PARAMS` in `config.py`) and is on the
-dashboard under Research > Skill or luck?
+about 5 minutes; settings in `LUCK_PARAMS` in `config.py`), writes
+`docs/data/skill.json` and is on the dashboard under Research > Skill or
+luck?
+
+`docs/data/skill.json` keeps a fixed shape, so pages can rely on it. Shares
+and returns are fractions (0.1 = 10%), dates are `YYYY-MM-DD`, and a value
+that does not apply is `null`. At the top: `generated_utc`, `as_of` (the
+last session with results), `data_source`, `method` (the method in a few
+plain sentences), `verdict_meanings` (each verdict explained), `settings`
+(`LUCK_PARAMS`), `past` (`from`, `to`, `years`, `days`, `monkeys`,
+`agents_tested`, and `monkey_returns`: every monkey's return over those
+years, for a histogram), `live` (`from`, `to`, `monkeys`, `agents_tested`;
+`null` before paper trading starts), and `accounts`, one entry per account
+(racing accounts first, the two yardsticks last):
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `key`, `name` | As in `paper.json`: `trend-fixed`, `trend`, "Trend Follower (fixed)" |
+| `fixed_twin`, `yardstick` | A fixed twin; Buy & Hold SPY or the Monkey (never judged) |
+| `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices |
+| `verdict_from` | "live", "past prices", or `null` (no results yet, or a yardstick) |
+| `summary` | A few plain sentences: one on the past prices, one on the live results |
+| `past`, `live` | The two parts, with the same fields below (`null` when the account has none) |
+
+Fields of `past` and `live`:
+
+| Field | Meaning |
+| --- | --- |
+| `from`, `to`, `days` | Counted from this close (live: the account's first decision) to `to`; `days` sessions with a result |
+| `return`, `spy_return`, `monkey_median_return` | Over those days: the account, buy-and-hold SPY, the middle monkey |
+| `percentile_vs_monkeys` | Share of the monkeys it beat (0 to 1) |
+| `verdict`, `verdict_vs_spy` | The verdict against the monkeys, and against SPY |
+| `excess_vs_monkey`, `excess_vs_monkey_low`, `excess_vs_monkey_high` | Average lead a year over the typical monkey, with its 95% range |
+| `excess_vs_spy`, `excess_vs_spy_low`, `excess_vs_spy_high` | The same over SPY |
+| `p_vs_monkeys`, `p_vs_monkeys_adjusted`, `p_vs_spy`, `p_vs_spy_adjusted` | Chance of a result this good by luck alone, before and after allowing for the number of agents tested |
+| `weeks_needed`, `weeks_needed_vs_spy` | Live only, while it can't tell yet: more weeks of results needed to spot an edge of `settings.edge` a year |
 
 The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are

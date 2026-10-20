@@ -1084,14 +1084,14 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   }
 
   // ---------- skill or luck ----------
-  const VERDICT = { skill: "skill", unclear: "can't tell yet", luck: "looks like luck" };
-  const verdictChip = v => v ? `<span class="verdict v-${v}"><i aria-hidden="true"></i>${VERDICT[v]}</span>` : "";
+  const VERDICT_CLASS = { "skill": "skill", "can't tell yet": "unclear", "looks like luck": "luck" };
+  const verdictChip = v => v ? `<span class="verdict v-${VERDICT_CLASS[v]}"><i aria-hidden="true"></i>${esc(v)}</span>` : "";
   const share = v => Math.round(v * 100) + "%";
 
   function renderLuck(d) {
-    const h = d.history, l = d.live, s = d.settings;
-    const racing = d.agents.filter(a => !a.yardstick).length;
-    const tested = l ? l.tested : racing;
+    const h = d.past, l = d.live, s = d.settings;
+    const racing = d.accounts.filter(a => !a.yardstick).length;
+    const tested = l ? l.agents_tested : racing;
     const edge = share(s.edge);
     const weeks = w => w == null ? "–" : w > 104
       ? `${Math.round(w).toLocaleString("en")} <span class="faint">(${Math.round(w / 52)} yrs)</span>` : String(Math.round(w));
@@ -1101,26 +1101,26 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       and a lead only counts as skill when it is too big for luck even after allowing for the number of agents racing.</span></div>`];
 
     if (h) parts.push(`<section><div class="section-head"><h2>How far luck gets you</h2>
-      <span class="muted" style="font-size:.85rem">Return over the past ${h.years} years (${fmtDate(ts(h.from))} – ${fmtDate(ts(h.last))}):
+      <span class="muted" style="font-size:.85rem">Return over the past ${h.years} years (${fmtDate(ts(h.from))} – ${fmtDate(ts(h.to))}):
         bars count the ${h.monkeys} monkeys, lines mark each replayed account</span></div>
       <div class="panel" style="display:grid;gap:10px;padding-top:10px"><div class="luck-chart" id="luck-chart"></div>
-      <div class="legend">${d.agents.filter(a => a.history).map(a =>
-        `<span>${sw(a)}${esc(a.name)} <span class="num">${pct(a.history.return, 0)}</span></span>`).join("")}</div></div></section>`);
+      <div class="legend">${d.accounts.filter(a => a.past).map(a =>
+        `<span>${sw(a)}${esc(a.name)} <span class="num">${pct(a.past.return, 0)}</span></span>`).join("")}</div></div></section>`);
 
-    const rows = d.agents.map(a => {
-      const p = a.history, q = a.live, judged = !a.yardstick;
-      const beat = part => part ? share(part.monkey.beat) : "–";
+    const rows = d.accounts.map(a => {
+      const p = a.past, q = a.live, judged = !a.yardstick;
+      const beat = part => part ? share(part.percentile_vs_monkeys) : "–";
       return `<tr class="${a.yardstick ? "ref" : ""}"><td><span class="agent-name">${sw(a)}${esc(a.name)}${a.yardstick ? ' <span class="tag">ref</span>' : ""}</span></td>
         <td class="num">${p ? beat(p) : '<span class="na">not replayed</span>'}</td>
-        <td>${p && judged ? verdictChip(p.monkey.verdict) : ""}</td>
-        <td class="num">${p && p.spy ? `<span class="${cls(p.spy.per_year)}">${pct(p.spy.per_year)}</span>
-          <span class="range">${pct(p.spy.low, 0)} to ${pct(p.spy.high, 0)}</span>` : ""}</td>
-        <td>${p && p.spy && judged ? verdictChip(p.spy.verdict) : ""}</td>
-        <td class="num">${q ? q.sessions : "–"}</td>
+        <td>${p && judged ? verdictChip(p.verdict) : ""}</td>
+        <td class="num">${p && p.excess_vs_spy != null ? `<span class="${cls(p.excess_vs_spy)}">${pct(p.excess_vs_spy)}</span>
+          <span class="range">${pct(p.excess_vs_spy_low, 0)} to ${pct(p.excess_vs_spy_high, 0)}</span>` : ""}</td>
+        <td>${p && judged ? verdictChip(p.verdict_vs_spy) : ""}</td>
+        <td class="num">${q ? q.days : "–"}</td>
         <td class="num">${q ? beat(q) : ""}</td>
-        <td>${q && judged ? verdictChip(q.monkey.verdict) : ""}</td>
-        <td>${q && q.spy && judged ? verdictChip(q.spy.verdict) : ""}</td>
-        <td class="num">${q && judged && q.monkey.verdict === "unclear" ? weeks(q.monkey.weeks_more) : ""}</td></tr>`;
+        <td>${q && judged ? verdictChip(q.verdict) : ""}</td>
+        <td>${q && judged ? verdictChip(q.verdict_vs_spy) : ""}</td>
+        <td class="num">${q && judged && q.weeks_needed != null ? weeks(q.weeks_needed) : ""}</td></tr>`;
     }).join("");
     parts.push(`<section><div class="section-head"><h2>Verdicts</h2>
       <span class="muted" style="font-size:.85rem">Beat = share of the ${s.monkeys} monkeys it did better than.
@@ -1133,7 +1133,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       </thead><tbody>${rows}</tbody></table></div></div></section>`);
 
     parts.push(`<section><div class="section-head"><h2>In plain words</h2></div>
-      <div class="panel words">${d.agents.map(a => `<div><div class="agent-name">${sw(a)}${esc(a.name)}</div>
+      <div class="panel words">${d.accounts.map(a => `<div><div class="agent-name">${sw(a)}${esc(a.name)}</div>
         <div class="said">${[].concat(a.summary).map(t => `<p>${esc(t)}</p>`).join("")}</div></div>`).join("")}</div></section>`);
 
     parts.push(`<section><div class="section-head"><h2>How it works</h2></div><ul class="how">
@@ -1164,8 +1164,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
 
   // Histogram of the monkeys' returns with a marker line per replayed account.
   function luckChart(box, d) {
-    const h = d.history, monkeys = h.monkey_returns;
-    const marks = d.agents.filter(a => a.history).map(a => ({ a, r: a.history.return, beat: a.history.monkey.beat }));
+    const h = d.past, monkeys = h.monkey_returns;
+    const marks = d.accounts.filter(a => a.past).map(a => ({ a, r: a.past.return, beat: a.past.percentile_vs_monkeys }));
     const W = box.clientWidth, H = W < 560 ? 240 : 290, m = { l: 36, r: 12, t: 62, b: 26 };
     const all = monkeys.concat(marks.map(k => k.r));
     const lo0 = Math.min(...all), hi0 = Math.max(...all), span = hi0 - lo0 || 0.1;
@@ -1313,7 +1313,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     }
   }, 5 * 60 * 1000);
 
-  Promise.all(["paper", "backtest", "walkforward", "luck"].map(load)).then(([p, b, w, l]) => {
+  Promise.all(["paper", "backtest", "walkforward", "skill"].map(load)).then(([p, b, w, l]) => {
     Object.assign(DATA, { paper: p, backtest: b, walkforward: w, luck: l });
     show(p && p.status !== "waiting" ? "paper" : "research");
   });

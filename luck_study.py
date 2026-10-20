@@ -39,8 +39,9 @@ Usage::
     python luck_study.py                        # real prices, 300 monkeys
     python luck_study.py --source synthetic --monkeys 40
 
-Writes ``docs/data/luck.json`` for the dashboard (Research > Skill or luck?)
-and prints a table. Pure NumPy/pandas; no LLM calls.
+Writes ``docs/data/skill.json`` (its fields are listed in the README) for
+the dashboard (Research > Skill or luck?) and prints a table. Pure
+NumPy/pandas; no LLM calls.
 """
 
 from __future__ import annotations
@@ -58,6 +59,7 @@ import numpy as np
 import pandas as pd
 
 import config
+from daily_run import last_completed_session
 from data_manager import MarketData, load_market_data
 from engine.simulator import Simulator, build_accounts
 from learning import GRIDS, LOOKBACK_YEARS
@@ -500,46 +502,130 @@ def summary(row: dict, history: dict | None, live_part: dict | None,
     return out
 
 
+def method(s: dict) -> str:
+    """Short plain-language account of the method, for skill.json."""
+    return (
+        f"Every account is compared with {s['monkeys']} monkeys (random "
+        f"picks under the same rules and costs, each with its own dice) and "
+        f"with buy-and-hold SPY, over exactly the same days: on the last "
+        f"{s['years']} years of prices for the agents that can be replayed, "
+        f"and live from each account's first decision. A lead counts as "
+        f"skill only when luck explains it less than 1 time in "
+        f"{1 / s['alpha']:.0f} after allowing for the number of agents "
+        f"racing (Holm's correction). It looks like luck when the results "
+        f"rule out an edge of {s['edge']:.0%} a year. Anything in between: "
+        f"can't tell yet. Ranges are 95% ranges from a block bootstrap of "
+        f"the account's own days.")
+
+
+#: What each verdict means, keyed by the label used in skill.json.
+VERDICT_MEANINGS = {
+    VERDICTS["skill"]: "The lead is too big for luck, even allowing for "
+                       "the number of agents racing.",
+    VERDICTS["unclear"]: "Neither skill nor luck can be ruled out yet.",
+    VERDICTS["luck"]: "The results rule out a real edge of the size worth "
+                      "having (see settings.edge).",
+}
+
+
+def _label(code: str | None) -> str | None:
+    return VERDICTS[code] if code else None
+
+
+def export_part(res: dict | None, start: str,
+                is_live: bool) -> dict | None:
+    """One account's results for one part (past or live), flat and with
+    the same fields in both parts. Fractions: 0.1 means 10%. Weeks still
+    needed only make sense live, and only while it can't tell yet."""
+    if res is None:
+        return None
+    m, b = res["monkey"], res["spy"] or {}
+    live_weeks = lambda part: (part.get("weeks_more") if is_live
+                               and part.get("verdict") == "unclear" else None)
+    return {
+        "from": start, "to": res["last"], "days": res["sessions"],
+        "return": res["return"],
+        "spy_return": res["spy_return"],
+        "monkey_median_return": res["monkey_median"],
+        "percentile_vs_monkeys": m["beat"],
+        "verdict": _label(m.get("verdict")),
+        "excess_vs_monkey": m["per_year"],
+        "excess_vs_monkey_low": m["low"],
+        "excess_vs_monkey_high": m["high"],
+        "p_vs_monkeys": m["p"],
+        "p_vs_monkeys_adjusted": m.get("p_adjusted"),
+        "weeks_needed": live_weeks(m),
+        "verdict_vs_spy": _label(b.get("verdict")),
+        "excess_vs_spy": b.get("per_year"),
+        "excess_vs_spy_low": b.get("low"),
+        "excess_vs_spy_high": b.get("high"),
+        "p_vs_spy": b.get("p"),
+        "p_vs_spy_adjusted": b.get("p_adjusted"),
+        "weeks_needed_vs_spy": live_weeks(b),
+    }
+
+
 def build_report(history: dict | None, live_part: dict | None, s: dict,
                  source: str) -> dict:
-    """The dashboard's ``luck.json``: settings, both parts, one row per
-    account (in the live order when there is a live part, yardsticks
-    last)."""
+    """The contents of ``docs/data/skill.json`` (fields in the README):
+    one entry per account, racing accounts in the live order first, the
+    yardsticks last."""
     order = list(live_part["order"]) if live_part else []
     order += [i for i in (history or {}).get("results", {}) if i not in order]
-    # The racing accounts first, the yardsticks last.
     order.sort(key=lambda i: i.removesuffix("-fixed") in YARDSTICKS)
-    rows = []
+    accounts = []
     for i in order:
         h = history["results"].get(i) if history else None
         lv = live_part["results"].get(i) if live_part else None
-        name = ((live_part or {}).get("names", {}).get(i)
-                or history["names"][i])
         key = i.removesuffix("-fixed")
-        row = {"id": i, "key": key, "name": name,
-               "fixed_twin": i.endswith("-fixed"),
-               "yardstick": key in YARDSTICKS, "history": h, "live": lv}
-        row["summary"] = summary(row, history, live_part, s)
-        rows.append(row)
+        row = {"id": i, "key": key, "yardstick": key in YARDSTICKS,
+               "history": h, "live": lv}
+        past = export_part(h, history["from"], False) if h else None
+        now = export_part(lv, lv["since"], True) if lv else None
+        # The headline: live once there are enough live days, else the
+        # replay of past prices; never for the yardsticks.
+        if row["yardstick"]:
+            verdict, source_of = None, None
+        elif now and now["days"] >= s["min_days"]:
+            verdict, source_of = now["verdict"], "live"
+        elif past:
+            verdict, source_of = past["verdict"], "past prices"
+        else:
+            verdict, source_of = VERDICTS["unclear"], None
+        accounts.append({
+            "id": i, "key": key,
+            "name": ((live_part or {}).get("names", {}).get(i)
+                     or history["names"][i]),
+            "fixed_twin": i.endswith("-fixed"),
+            "yardstick": row["yardstick"],
+            "verdict": verdict, "verdict_from": source_of,
+            "summary": summary(row, history, live_part, s),
+            "past": past, "live": now,
+        })
 
-    def meta(part):
-        if not part:
-            return None
-        return {k: v for k, v in part.items()
-                if k not in ("results", "names", "order")}
+    def meta(part, extra):
+        return {"from": part["from"], "to": part["last"],
+                "monkeys": part["monkeys"],
+                "agents_tested": part["tested"], **extra} if part else None
 
+    last = (live_part or history)["last"]
     return {"generated_utc": pd.Timestamp.now(tz="UTC").isoformat(
                 timespec="seconds"),
-            "data_source": source, "settings": s,
-            "verdicts": VERDICTS, "history": meta(history),
-            "live": meta(live_part), "agents": rows}
+            "as_of": last, "data_source": source, "method": method(s),
+            "verdict_meanings": VERDICT_MEANINGS, "settings": s,
+            "past": meta(history, history and {
+                "years": history["years"], "days": history["sessions"],
+                "monkey_returns": history["monkey_returns"]}),
+            "live": meta(live_part, {}),
+            "accounts": accounts}
 
 
 def run(source: str, s: dict, state_path: Path | None,
         seed: int = config.SYNTHETIC_SEED,
         today: pd.Timestamp | None = None, **replay_kw) -> dict:
     """Load prices, run both parts and return the report."""
-    today = today or pd.Timestamp.today().normalize()
+    # Only finished sessions: during the day Yahoo also sends today's bar.
+    today = today or last_completed_session()
     data_start = (today - pd.DateOffset(years=s["years"] + LOOKBACK_YEARS)
                   - pd.Timedelta(days=config.WARMUP_DAYS))
     market = load_market_data(source, data_start, today, seed=seed,
@@ -557,34 +643,31 @@ def run(source: str, s: dict, state_path: Path | None,
 
 
 def print_report(report: dict) -> None:
-    h, lv, s = report["history"], report["live"], report["settings"]
+    h, lv, s = report["past"], report["live"], report["settings"]
 
     def beat(part):
-        return f"{part['monkey']['beat']:.0%}" if part else "-"
+        return f"{part['percentile_vs_monkeys']:.0%}" if part else "-"
 
-    def said(part, side):
-        got = (part or {}).get(side) or {}
-        return VERDICTS[got["verdict"]] if "verdict" in got else ""
-
-    live_days = f"{lv['from']} -> {lv['last']}" if lv else "none"
+    live_days = f"{lv['from']} -> {lv['to']}" if lv else "none"
     print()
     print("=" * 112)
     print(f" SKILL OR LUCK  |  past {h['years']} years {h['from']} -> "
-          f"{h['last']}, {h['tested']} agents tested  |  live {live_days}  |  "
-          f"{s['monkeys']} monkeys  |  data: {report['data_source']}")
+          f"{h['to']}, {h['agents_tested']} agents tested  |  live "
+          f"{live_days}  |  {s['monkeys']} monkeys  |  "
+          f"data: {report['data_source']}")
     print("=" * 112)
     print(f" {'Agent':<29}{'Past: beat':>11}  {'verdict':<16}{'vs SPY':>8}  "
           f"{'verdict':<16}{'Live: days':>10}{'beat':>6}  "
           f"{'weeks to tell':>13}")
-    for row in report["agents"]:
-        past, now = row["history"], row["live"]
-        spy = (past or {}).get("spy")
-        weeks = ((now or {}).get("monkey") or {}).get("weeks_more")
-        print(f" {row['name']:<29}{beat(past):>11}  "
-              f"{said(past, 'monkey'):<16}"
-              f"{_signed(spy['per_year'], 1) if spy else '':>8}  "
-              f"{said(past, 'spy'):<16}"
-              f"{now['sessions'] if now else '-':>10}"
+    for acc in report["accounts"]:
+        past, now = acc["past"], acc["live"]
+        spy = (past or {}).get("excess_vs_spy")
+        weeks = (now or {}).get("weeks_needed")
+        print(f" {acc['name']:<29}{beat(past):>11}  "
+              f"{(past or {}).get('verdict') or '':<16}"
+              f"{_signed(spy, 1) if spy is not None else '':>8}  "
+              f"{(past or {}).get('verdict_vs_spy') or '':<16}"
+              f"{now['days'] if now else '-':>10}"
               f"{beat(now) if now else '':>6}  "
               f"{f'{weeks:,.0f}' if weeks is not None else '':>13}")
     print(f" Beat = share of the {s['monkeys']} monkeys (random picks, same "
@@ -600,7 +683,7 @@ def main() -> None:
                         choices=["auto", "yfinance", "synthetic"])
     parser.add_argument("--state", type=Path, default=config.PAPER_STATE_FILE)
     parser.add_argument("--out", type=Path,
-                        default=config.DASHBOARD_DATA_DIR / "luck.json")
+                        default=config.DASHBOARD_DATA_DIR / "skill.json")
     parser.add_argument("--monkeys", type=int,
                         default=config.LUCK_PARAMS["monkeys"])
     parser.add_argument("--years", type=int,
