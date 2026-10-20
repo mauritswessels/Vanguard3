@@ -222,6 +222,7 @@ IBKR_PARAMS = {
     "order_ref": "Vanguard3",    # label on every order the bridge sends
     "answer_seconds": 60,        # give up when TWS / IB Gateway stays silent
     "max_minutes": 10,           # and on any run that takes longer than this
+    "max_invested": 1.05,        # send nothing if the targets add up to more
     "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
                     "Vanguard3/main/docs/data/paper.json"),
 }

@@ -25,6 +25,16 @@ Safety:
   account is left alone.
 * Its own unfilled orders from an earlier run are cancelled first, so
   running it twice does not double the orders.
+* It sends nothing when the agent's targets add up to more than its account
+  (``IBKR_PARAMS["max_invested"]``): such results must be wrong.
+* It asks IB Gateway for a fresh list of positions, and sends nothing when
+  that list is empty while the account says it holds positions (just after
+  a restart, the list can still be loading; it would then buy everything a
+  second time).
+* Funds IBKR refuses to sell to this account (US funds have no "KID", the
+  key information sheet European and Swiss private investors must get) are
+  remembered in ``ibkr_logs/blocked.json`` and left in cash from then on.
+  Delete that file to try them again.
 
 Needs ``pip install -r requirements-ibkr.txt`` (the ``ib_async`` library,
 and ``certifi`` for checking GitHub's security certificate).
@@ -41,7 +51,7 @@ import signal
 import ssl
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import config
@@ -54,6 +64,12 @@ EXCHANGES = {".SW": ("EBS", "CHF"), ".DE": ("IBIS", "EUR"),
 
 #: TWS messages about its own data connections, not about our orders.
 QUIET_CODES = {2104, 2106, 2107, 2108, 2119, 2158}
+
+#: Words in IBKR's refusal of a product it does not sell to this account.
+BLOCKED_HINTS = ("KID", "key information", "PRIIP")
+
+#: Exit code when the bridge refuses to trade: trying again won't help.
+REFUSED = 3
 
 
 # -- what the agent holds ------------------------------------------------------
@@ -128,7 +144,10 @@ def agent_weights(payload: dict, agent_id: str
     if agent is None:
         return None, {}
     qty = {p["ticker"]: p["quantity"] for p in agent["positions"]}
-    for o in agent.get("pending_orders", []):
+    # The simulator keeps one waiting order per market, its newest; older
+    # results could hold several, which must not be added up.
+    newest = {o["ticker"]: o for o in agent.get("pending_orders", [])}
+    for o in newest.values():
         sign = 1 if o["side"] == "BUY" else -1
         qty[o["ticker"]] = max(qty.get(o["ticker"], 0) + sign * o["quantity"],
                                0)
@@ -175,25 +194,115 @@ def plan_orders(weights: dict[str, float], held: dict[str, int],
     return orders
 
 
+# -- checks ------------------------------------------------------------------
+def previous_weekday(day: date) -> date:
+    """The weekday before ``day``: the close whose results the morning run
+    should have."""
+    day -= timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
+def stale_warning(payload: dict, today: date) -> str | None:
+    """A warning when last night's results are missing."""
+    last = date.fromisoformat(payload["last"])
+    expected = previous_weekday(today)
+    if last >= expected:
+        return None
+    return (f"Warning: the newest results are from {last:%a %d %b}, not "
+            f"{expected:%a %d %b}. Unless that was a holiday, the evening "
+            "run did not finish; this copies the older results.")
+
+
+def too_much(weights: dict[str, float], limit: float) -> str | None:
+    """Why the agent's targets cannot be right, if they add up to more than
+    ``limit`` times its account."""
+    total = sum(weights.values())
+    if total <= limit:
+        return None
+    return (f"The agent's targets add up to {total:.0%} of its account, "
+            "which can't be right, so no orders were sent. Check the "
+            "evening run's results.")
+
+
+def blocked_markets(path: Path | None = None) -> dict[str, str]:
+    """Markets IBKR refused to sell to this account: ``ticker -> reason``."""
+    path = path or LOG_DIR / "blocked.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def remember_blocked(sent: list[dict], path: Path | None = None) -> list[str]:
+    """Add the markets IBKR refused for good (no KID) to ``blocked.json``.
+    Returns the new ones."""
+    path = path or LOG_DIR / "blocked.json"
+    blocked = blocked_markets(path)
+    new = [s["ticker"] for s in sent
+           if s["note"].startswith("not accepted")
+           and any(h.lower() in s["note"].lower() for h in BLOCKED_HINTS)
+           and s["ticker"] not in blocked]
+    if new:
+        for s in sent:
+            if s["ticker"] in new:
+                blocked[s["ticker"]] = s["note"]
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps(blocked, indent=1))
+    return new
+
+
+def last_sent(today: date, log_dir: Path | None = None
+              ) -> tuple[str | None, dict[str, dict]]:
+    """Date and accepted orders of the last earlier run that sent orders."""
+    log_dir = log_dir or LOG_DIR
+    for path in sorted(log_dir.glob("????-??-??.json"), reverse=True):
+        if path.stem >= today.isoformat():
+            continue
+        for run in reversed(json.loads(path.read_text())):
+            if run.get("status") == "sent":
+                return path.stem, {
+                    s["ticker"]: s for s in run.get("sent", [])
+                    if not s["note"].startswith("not accepted")}
+    return None, {}
+
+
+def not_filled(plan: list[dict], before: dict[str, dict]) -> list[str]:
+    """Markets an earlier run already sent (most of) the same order for:
+    that order did not fill."""
+    return [o["ticker"] for o in plan
+            if o["ticker"] in before
+            and before[o["ticker"]]["side"] == o["side"]
+            and o["quantity"] >= 0.5 * before[o["ticker"]]["quantity"]]
+
+
 # -- talking to TWS ------------------------------------------------------------
-def account_value(ib, account: str) -> tuple[float, str]:
-    """Net liquidation value and base currency of ``account``."""
-    for v in ib.accountSummary(account):
-        if v.tag == "NetLiquidation":
-            return float(v.value), v.currency
-    raise RuntimeError("TWS did not report the account value")
+def account_value(ib, account: str) -> tuple[float, str, float]:
+    """Net liquidation value, base currency and value of all positions
+    (in the base currency) of ``account``."""
+    tags = {v.tag: v for v in ib.accountSummary(account)}
+    if "NetLiquidation" not in tags:
+        raise RuntimeError("TWS did not report the account value")
+    net = tags["NetLiquidation"]
+    gross = tags.get("GrossPositionValue")
+    return (float(net.value), net.currency,
+            float(gross.value) if gross else 0.0)
 
 
-def ib_holdings(ib, account: str) -> dict[str, int]:
-    """Watchlist positions of ``account`` in shares; others are ignored."""
+def ib_holdings(ib, account: str) -> tuple[dict[str, int], int]:
+    """Watchlist positions of ``account`` in shares (others are ignored),
+    and how many positions it has in all."""
     index = universe_index()
-    held = {}
-    for pos in ib.positions(account):
+    held, count = {}, 0
+    # A fresh request, not the list IB Gateway collected while starting:
+    # that one can still be empty just after a restart.
+    for pos in ib.reqPositions():
+        if pos.account != account or not pos.position:
+            continue
+        count += 1
         c = pos.contract
         ticker = index.get((c.symbol, c.currency))
-        if c.secType == "STK" and ticker and pos.position:
+        if c.secType == "STK" and ticker:
             held[ticker] = int(pos.position)
-    return held
+    return held, count
 
 
 def status_text(trade, errors: list[str]) -> str:
@@ -207,27 +316,45 @@ def status_text(trade, errors: list[str]) -> str:
         return "waiting for the market to open"
     if s.status in ("Submitted", "PendingSubmit"):
         return "sent, waiting to be filled"
+    if s.status == "ValidationError":
+        # Only a warning (e.g. "not sent to the exchange until 09:30"):
+        # the order stays live.
+        return "waiting for the market to open"
     why = "; ".join(errors) or s.status
     return f"not accepted: {why}"
 
 
 def run(ib, api, payload: dict, p: dict, send: bool = False,
-        say=print) -> dict:
+        say=print, today: date | None = None) -> dict:
     """Plan (and with ``send`` place) the orders. ``ib`` is a connected
     ``ib_async.IB``; ``api`` provides ``Stock`` and ``MarketOrder``."""
+    today = today or date.today()
     agent, weights = agent_weights(payload, p["agent"])
     if agent is None:
         say(f"No agent '{p['agent']}' in the results yet (agents just added "
             "join on the next evening run). Nothing to do.")
         return {"status": "no agent"}
+    wrong = too_much(weights, p.get("max_invested", 1.05))
+    if wrong:
+        say(wrong)
+        raise SystemExit(REFUSED)
+    blocked = blocked_markets(p.get("blocked_file"))
+    kept = sorted(t for t in weights if t in blocked)
+    weights = {t: w for t, w in weights.items() if t not in blocked}
+
     accounts = [a for a in ib.managedAccounts() if a.startswith("D")]
     if not accounts:
         raise SystemExit("TWS is logged in to a live account. The bridge "
                          "only trades paper accounts: log in to TWS with "
                          "Paper Trading selected.")
     account = accounts[0]
-    net_liq, base = account_value(ib, account)
-    held = ib_holdings(ib, account)
+    net_liq, base, gross = account_value(ib, account)
+    held, count = ib_holdings(ib, account)
+    if count == 0 and gross > 0.01 * net_liq:
+        say(f"IBKR says the account holds {gross:,.0f} {base} in positions "
+            "but listed none, so no orders were sent (they would buy "
+            "everything a second time). Run it again in a few minutes.")
+        raise SystemExit(REFUSED)
     plan = plan_orders(weights, held, net_liq, base, payload,
                        p["min_trade_pct"])
 
@@ -235,15 +362,24 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         f"{payload['last']} close.")
     say(f"IBKR paper account {account}: {net_liq:,.2f} {base}, "
         f"{len(held)} watchlist positions.")
+    if kept:
+        say(f"Kept in cash: {', '.join(kept)} (IBKR does not sell these to "
+            "this account; see ibkr_logs/blocked.json).")
     if not plan:
         say("Already matches the agent. No orders needed.")
     for o in plan:
         say(f"  {o['side']:<4} {o['quantity']:>6} {o['ticker']:<8} "
             f"(holds {o['now']}, target {o['target']}, "
             f"about {o['value']:,.0f} {base})")
+    since, before = last_sent(today, p.get("log_dir"))
+    unfilled = not_filled(plan, before)
+    if unfilled:
+        say(f"Warning: the orders for {', '.join(unfilled)} sent on {since} "
+            "did not fill; they are sent again.")
     result = {"account": account, "base": base, "net_liq": net_liq,
               "agent": p["agent"], "results_of": payload["last"],
-              "plan": plan, "sent": []}
+              "plan": plan, "sent": [], "kept_in_cash": kept,
+              "not_filled": unfilled}
 
     ours = [t for t in ib.reqAllOpenOrders()
             if t.order.orderRef == p["order_ref"] and not t.isDone()]
@@ -293,12 +429,18 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
                                "note": text})
     refused = [s["ticker"] for s in result["sent"]
                if s["note"].startswith("not accepted")]
+    kept += remember_blocked(result["sent"], p.get("blocked_file"))
     if not plan:
-        say("Done: no orders needed.")
+        done = "Done: no orders needed"
     else:
-        say(f"Done: {len(plan) - len(refused)} of {len(plan)} orders placed"
-            + (f"; not accepted: {', '.join(refused)}" if refused else "")
-            + ".")
+        done = (f"Done: {len(plan) - len(refused)} of {len(plan)} orders "
+                "placed"
+                + (f"; not accepted: {', '.join(refused)}" if refused else ""))
+    if kept:
+        done += (f"; kept in cash: {', '.join(sorted(kept))} (IBKR does not "
+                 "sell these to this account)")
+    say(done + ".")
+    result["kept_in_cash"] = sorted(kept)
     result["status"] = "sent"
     return result
 
@@ -380,17 +522,18 @@ def main() -> None:
         raise SystemExit("The IBKR library is missing. Install it with:\n"
                          "  pip install -r requirements-ibkr.txt")
     payload = load_results(args.results)
-    age = (date.today() - date.fromisoformat(payload["last"])).days
-    if age > 4:
-        print(f"Warning: the newest results are from {payload['last']}. "
-              "Check that the evening runs are working.")
+    stale = stale_warning(payload, date.today())
+    if stale:
+        print(stale)
 
     ib = api.IB()
     # A logged-out TWS or IB Gateway still accepts the connection but never
     # answers; without a limit the run would wait forever.
     ib.RequestTimeout = p["answer_seconds"]
     try:
-        ib.connect(p["host"], p["port"], clientId=p["client_id"], timeout=15)
+        # A startup step that times out is an error, not just a log line.
+        ib.connect(p["host"], p["port"], clientId=p["client_id"], timeout=15,
+                   raiseSyncErrors=True)
     except Exception as exc:
         raise SystemExit(not_reachable(p["port"], exc))
     try:

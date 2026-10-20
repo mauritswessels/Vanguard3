@@ -27,6 +27,7 @@ n=$(wc -l < "$CALLS" | tr -d ' ')
 code=$(echo "$FAKE_CODES" | cut -d, -f"$n")
 if [ "$code" = 0 ]; then
     echo "Copying Team Manager: 3 markets, results of the 2026-10-12 close."
+    [ -n "$FAKE_WARNING" ] && echo "$FAKE_WARNING"
     echo "Done: 2 of 3 orders placed; not accepted: EWZ."
     echo "Saved to ibkr_logs/2026-10-13.json"
 else
@@ -43,6 +44,9 @@ printf '%s' "$last" > "$NOTIFIED"
 
 FAKE_DOCKER = """#!/bin/bash
 echo "$@" >> "$DOCKER"
+# IB Gateway's start time: long ago, unless the test says otherwise.
+[ "$1" = inspect ] && echo "${FAKE_STARTED:-2026-10-13T05:00:00.5Z}"
+exit 0
 """
 
 FAKE_CURL = """#!/bin/bash
@@ -92,7 +96,8 @@ class JobTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
 class MorningScriptTest(unittest.TestCase):
-    def run_script(self, codes, settings=None, failure=None, docker=False):
+    def run_script(self, codes, settings=None, failure=None, docker=False,
+                   **env_extra):
         """Run ibkr_morning.sh with fake tools; the bridge exits with
         ``codes`` on its attempts. ``settings`` is the text of
         ibkr_morning.env, if any. Returns (notification, calls, log); the
@@ -123,6 +128,7 @@ class MorningScriptTest(unittest.TestCase):
                "FAKE_CODES": ",".join(map(str, codes))}
         if failure:
             env["FAKE_FAILURE"] = failure
+        env.update(env_extra)
         done = subprocess.run(["bash", str(repo / "ibkr_morning.sh")],
                               env=env, timeout=30)
         self.assertEqual(done.returncode, codes[-1])
@@ -163,10 +169,43 @@ class MorningScriptTest(unittest.TestCase):
                                            docker=True)
         self.assertEqual(len(calls), 3)
         # Restarted before each new try, not after the last one.
-        self.assertEqual(self.docker, ["inspect ib-gateway",
-                                       "restart ib-gateway"] * 2)
+        started = "inspect -f {{.State.StartedAt}} ib-gateway"
+        self.assertEqual(self.docker, [started, "restart ib-gateway"] * 2)
         self.assertEqual(note, f"Morning run failed: {silent}")
         self.assertIn("Restarting IB Gateway", log)
+
+    def test_lets_a_starting_ib_gateway_log_in(self):
+        """Just after the server boots (or a restart) it is still logging
+        in: restarting it then would only start the login over."""
+        silent = "Could not reach IB Gateway on port 4002 (refused)."
+        now = subprocess.run(["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"],
+                             capture_output=True, text=True).stdout.strip()
+        _, calls, log = self.run_script([1, 1, 0], failure=silent,
+                                        docker=True, FAKE_STARTED=now)
+        self.assertEqual(len(calls), 3)
+        self.assertNotIn("restart ib-gateway", self.docker)
+        self.assertIn("letting it log in", log)
+
+    def test_no_new_try_when_the_bridge_refuses(self):
+        note, calls, _ = self.run_script(
+            [3], failure="The agent's targets add up to 114% of its account, "
+                         "which can't be right, so no orders were sent.")
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(note.startswith("Morning run failed: The agent's "
+                                        "targets add up to 114%"))
+
+    def test_warnings_come_along(self):
+        warning = ("Warning: the orders for SOON.SW sent on 2026-10-12 did "
+                   "not fill; they are sent again.")
+        note, _, _ = self.run_script([0], FAKE_WARNING=warning)
+        self.assertEqual(note, "Done: 2 of 3 orders placed; not accepted: "
+                               f"EWZ.\n{warning}")
+
+    def test_healthchecks_ping(self):
+        self.run_script([0], "HEALTHCHECK_URL=https://hc-ping.com/abc\n")
+        self.assertIn("https://hc-ping.com/abc\n", self.all_curled)
+        self.run_script([1, 1, 1], "HEALTHCHECK_URL=https://hc-ping.com/abc\n")
+        self.assertIn("https://hc-ping.com/abc/fail", self.all_curled)
 
     def test_leaves_docker_alone_for_other_problems(self):
         self.run_script([1, 0], docker=True)

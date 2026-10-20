@@ -26,8 +26,21 @@ fi
 say "Installing Docker and Python (a minute or two)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q docker.io docker-compose-v2 python3-venv git curl
+apt-get install -y -q docker.io docker-compose-v2 python3-venv git curl \
+    unattended-upgrades
 timedatectl set-timezone Europe/Zurich
+
+say "Security updates by themselves"
+# Ubuntu installs security updates every day; a restart they need (a new
+# kernel) happens at 11:00, after the morning run. IB Gateway and the
+# weekday runs start again on their own.
+cat > /etc/apt/apt.conf.d/52vanguard3-updates <<EOF
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "11:00";
+EOF
+systemctl enable --now docker
 
 say "Preparing the bridge"
 [ -x "$REPO/.venv/bin/python" ] || python3 -m venv "$REPO/.venv"
@@ -85,6 +98,8 @@ After=network-online.target docker.service
 Type=oneshot
 Environment=HOME=/root
 ExecStart=/bin/bash $REPO/ibkr_morning.sh
+# A run that hangs would block every later one.
+TimeoutStartSec=40min
 EOF
 cat > "$UNIT_DIR/vanguard3-bridge.timer" <<EOF
 [Unit]
