@@ -381,8 +381,23 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   async function load(name) {
     try {
       const r = await fetch("data/" + name + ".json", { cache: "no-store" });
-      return r.ok ? await r.json() : null;
+      return r.ok ? hydrate(await r.json()) : null;
     } catch { return null; }
+  }
+
+  /** Round trips name the fills that opened and closed them (to keep the
+   *  file small): attach those fills' decisions. */
+  function hydrate(d) {
+    (d && d.agents || []).forEach(a => {
+      const byId = {};
+      (a.trades || []).forEach(t => { byId[t.id] = t; });
+      const dec = id => id == null ? null : (byId[id] || {}).decision || null;
+      (a.trips || []).forEach(t => {
+        if (!("entry" in t)) t.entry = dec(t.entry_fill);
+        if (!("exit" in t)) t.exit = dec(t.exit_fill);
+      });
+    });
+    return d;
   }
 
   function destroyCharts() { charts.forEach(c => c.destroy()); charts = []; }

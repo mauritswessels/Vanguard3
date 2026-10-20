@@ -75,14 +75,24 @@ jobs:
         if: steps.advance.outputs.new_sessions != '0'
         run: python -m unittest discover -s tests -t .
 
+      # The 5-year backtest hardly moves in a day and is 4 MB, so it is
+      # redone once a week (Fridays, or when the run is started by hand)
+      # to keep the repository from growing by 4 MB every evening.
+      - name: Backtest day?
+        id: weekly
+        run: |
+          if [ "$(date -u +%u)" = 5 ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            echo "refresh=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Refresh 5-year backtest
-        if: steps.advance.outputs.new_sessions != '0'
+        if: steps.advance.outputs.new_sessions != '0' && steps.weekly.outputs.refresh == 'true'
         continue-on-error: true
         timeout-minutes: 10
         run: python main.py --source yfinance --days 1825 --dashboard --no-save
 
       - name: Commit backtest
-        if: steps.advance.outputs.new_sessions != '0'
+        if: steps.advance.outputs.new_sessions != '0' && steps.weekly.outputs.refresh == 'true'
         run: |
           git add docs/data/backtest.json
           if ! git diff --cached --quiet; then
@@ -119,9 +129,17 @@ jobs:
             gh issue create --title "Vanguard3 needs attention" --body-file alert.md
           fi
 
+      # "All fine" whenever the accounts are up to date (also on market
+      # holidays), "failed" when the run broke, and nothing while they are
+      # behind: then healthchecks.io emails once the evening has passed.
       - name: Tell healthchecks.io
-        if: always() && env.HEALTHCHECK_URL != '' && (job.status != 'success' || steps.advance.outputs.new_sessions != '0')
+        if: always() && env.HEALTHCHECK_URL != ''
         run: |
-          url="$HEALTHCHECK_URL"
-          [ "${{ job.status }}" = success ] || url="$HEALTHCHECK_URL/fail"
+          if [ "${{ job.status }}" != success ]; then
+            url="$HEALTHCHECK_URL/fail"
+          elif grep -qs "were last updated for" health.md; then
+            exit 0
+          else
+            url="$HEALTHCHECK_URL"
+          fi
           curl -fsS -m 30 --retry 3 "$url" > /dev/null || echo "healthchecks.io did not answer"

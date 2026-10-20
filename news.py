@@ -18,6 +18,7 @@ decision Claude would make for an empty account) without trading.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -142,8 +143,29 @@ def pd_isna(v) -> bool:
         return True
 
 
+#: The last brief downloaded, with its market lines: both News Analysts
+#: read the same news, so each check downloads it once (about 250 pages).
+_last_brief: tuple[str, dict] | None = None
+
+
 def build_brief(market_lines: dict[str, str]) -> dict:
-    """Collect everything the model reads today. Failures are skipped."""
+    """Collect everything the model reads today. Failures are skipped.
+
+    A second call with the same market lines (the other News Analyst, in
+    the same run) gets a copy of the first one's brief instead of
+    downloading it all again; a brief with no headlines is not reused.
+    """
+    global _last_brief
+    key = json.dumps(market_lines, sort_keys=True)
+    if _last_brief is not None and _last_brief[0] == key:
+        return copy.deepcopy(_last_brief[1])
+    brief = _download_brief(market_lines)
+    if brief["macro"] or any(e["news"] for e in brief["markets"].values()):
+        _last_brief = (key, brief)
+    return copy.deepcopy(brief)
+
+
+def _download_brief(market_lines: dict[str, str]) -> dict:
     brief = {"markets": {}, "macro": [], "errors": 0}
     for topic in MACRO:
         try:
