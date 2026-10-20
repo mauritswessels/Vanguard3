@@ -3,12 +3,40 @@
 import json
 import unittest
 
+import numpy as np
 import pandas as pd
 
 from data_manager import load_market_data
 from engine.simulator import Simulator, build_accounts
 from models import CLAUDE_KEYS, agent_key, make_agent
+from models.learner_agent import BUY, DIM, HOLD, SELL
 from models.opus_learner_agent import parse_review
+
+
+def verdicts(approve):
+    """A stand-in reviewer: ``approve(i, ticker)`` decides each pick."""
+    def ask(brief, model, effort):
+        tickers = [line.split(":")[0] for line in brief.splitlines()
+                   if "model wants to" in line]
+        return {"view": "", "decisions": {
+            t: {"approve": approve(i, t), "reason": "test"}
+            for i, t in enumerate(tickers)}, "usage": {}}
+    return ask
+
+
+def eager(market):
+    """An Opus Learner whose model wants to buy every market it does not
+    hold and sell every one it does, and never changes its mind (no
+    learning steps, no random tries, no minimum holding time)."""
+    agent = make_agent("learner_opus", {
+        "live_from": "2025-01-02", "lr": 0.0, "epsilon": 0.0, "min_hold": 0,
+        "max_review": 1000})
+    w = np.zeros((3, DIM))
+    w[BUY, -2:] = [-1.0, 1.0]       # holding flag, bias: 2 when not held
+    w[SELL, -2:] = [1.0, 1.0]       # 2 when held
+    agent.w = w
+    agent.news = lambda t, n: []
+    return agent
 
 
 class OpusLearnerTest(unittest.TestCase):
@@ -64,6 +92,55 @@ class OpusLearnerTest(unittest.TestCase):
         self.assertEqual(acc.broker.pending_to_list(), [])
         self.assertIn("API key", acc.agent.status)
         self.assertGreater(acc.agent.days_learned, 0)   # still learns
+        # Nothing was traded, so only random tries are learned as trades.
+        agent = acc.agent
+        for t, m in agent.memory.items():
+            if m["pos"] != m["prev"]:
+                self.assertTrue(agent.last_decisions[t]["explored"], t)
+
+    def test_turned_down_picks_are_learned_as_holds(self):
+        cal = self.market.calendar
+        # Evening one: every buy approved, so the account holds something.
+        first = self.market.until(cal[-3])
+        sim = Simulator(first, build_accounts(first, [eager(first)]))
+        sim.accounts[0].agent.ask = verdicts(lambda i, t: True)
+        sim.run([cal[-3]])
+        # Evenings two (catching up, no review) and three: all turned down.
+        sim = Simulator.from_dict(json.loads(json.dumps(sim.to_dict())),
+                                  self.market)
+        acc = sim.accounts[0]
+        acc.agent.ask = verdicts(lambda i, t: False)
+        acc.agent.news = lambda t, n: []
+        sim.run(cal[-2:])
+        agent, held = acc.agent, set(acc.portfolio.positions)
+        self.assertTrue(held)
+        picks = agent.review["picks"]
+        self.assertEqual({p["ticker"] for p in picks if p["action"] == "SELL"},
+                         held)
+        self.assertTrue(any(p["action"] == "BUY" for p in picks))
+        for p in picks:
+            m = agent.memory[p["ticker"]]
+            self.assertEqual(m["a"], HOLD)
+            self.assertEqual(m["prev"], int(p["ticker"] in held))
+            self.assertEqual(m["pos"], m["prev"])
+            self.assertEqual(agent.shadow[p["ticker"]], m["prev"])
+            self.assertEqual(agent.last_decisions[p["ticker"]]["action"],
+                             "HOLD")
+        self.assertEqual(acc.broker.pending_to_list(), [])
+
+    def test_approved_picks_are_learned_as_made(self):
+        agent = eager(self.market)
+        agent.ask = verdicts(lambda i, t: i % 2 == 0)
+        sim = Simulator(self.market, build_accounts(self.market, [agent]))
+        sim.run(self.market.calendar[-1:])
+        picks = agent.review["picks"]
+        self.assertGreater(len(picks), 2)
+        for p in picks:
+            m = agent.memory[p["ticker"]]
+            self.assertEqual(p["action"], "BUY")
+            self.assertEqual((m["a"], m["pos"]),
+                             (BUY, 1) if p["approve"] else (HOLD, 0))
+            self.assertEqual(agent.shadow[p["ticker"]], m["pos"])
 
     def test_state_round_trips(self):
         acc = self.sim(lambda b, m, e: {"view": "", "decisions": {}})
@@ -76,6 +153,12 @@ class OpusLearnerTest(unittest.TestCase):
         self.assertEqual(b.review, acc.agent.review)
         self.assertEqual(b.decided, acc.agent.decided)
         self.assertIsNotNone(b.w)
+        # Picks left out are restored as the holds they were learned as.
+        self.assertEqual(b.memory, acc.agent.memory)
+        self.assertEqual(b.shadow, acc.agent.shadow)
+        self.assertTrue(b.review["picks"])
+        for p in b.review["picks"]:
+            self.assertEqual(b.memory[p["ticker"]]["a"], HOLD)
 
     def test_parse_review_defaults_to_not_approved(self):
         r = parse_review('Sure: {"view": "v", "decisions": {'
