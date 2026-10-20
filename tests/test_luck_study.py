@@ -17,7 +17,8 @@ from reporting import write_json
 from walk_forward import make_folds
 
 #: Small settings so the tests stay quick.
-S = {**config.LUCK_PARAMS, "monkeys": 40, "years": 1, "resamples": 400}
+S = {**config.LUCK_PARAMS, "monkeys": 40, "years": 1, "resamples": 400,
+     "starts": 3, "start_gap": 4}
 
 #: The labels skill.json uses, and the fields the new dashboard reads.
 VERDICTS = {"skill", "can't tell yet", "looks like luck"}
@@ -29,7 +30,7 @@ PART_FIELDS = {
     "excess_vs_monkey_low", "excess_vs_monkey_high", "p_vs_monkeys",
     "p_vs_monkeys_adjusted", "weeks_needed", "verdict_vs_spy",
     "excess_vs_spy", "excess_vs_spy_low", "excess_vs_spy_high", "p_vs_spy",
-    "p_vs_spy_adjusted", "weeks_needed_vs_spy"}
+    "p_vs_spy_adjusted", "weeks_needed_vs_spy", "returns_by_start_day"}
 
 #: A short watchlist (SPY plus shares in all three currencies).
 WATCH = {t: config.WATCHLIST[t] for t in [
@@ -176,6 +177,20 @@ class ReplayTest(unittest.TestCase):
         blind = cal[cal >= make_folds(cal[-1], 1)[0][0]][0]
         self.assertEqual(res["trend"]["first"], blind.strftime("%Y-%m-%d"))
 
+    def test_each_agent_starts_on_several_days_and_the_middle_counts(self):
+        res = self.part["results"]
+        starts = [pd.Timestamp(d) for d in self.part["start_days"]]
+        self.assertEqual(len(starts), 3)
+        cal = list(self.market.calendar)
+        self.assertEqual([cal.index(starts[0]) - cal.index(d)
+                          for d in starts], [0, 4, 8])
+        for i in ("trend-fixed", "trend"):
+            spread = res[i]["returns_by_start_day"]
+            self.assertEqual(len(spread), 3)
+            self.assertEqual(spread, sorted(spread))
+            self.assertEqual(res[i]["return"], spread[1])
+        self.assertNotIn("returns_by_start_day", res["benchmark"])
+
     def test_yardsticks_are_shown_but_not_judged(self):
         res = self.part["results"]
         self.assertIsNone(res["benchmark"]["spy"])
@@ -210,6 +225,9 @@ class ReplayTest(unittest.TestCase):
         self.assertIsNone(spy["verdict"])
         self.assertIsNone(spy["past"]["excess_vs_spy"])
         self.assertTrue(trend["summary"][0].startswith("Past 1 year:"))
+        self.assertIn("Started on 3 different days", trend["summary"][0])
+        self.assertEqual(len(data["past"]["start_days"]), 3)
+        self.assertIsNone(spy["past"]["returns_by_start_day"])
 
 
 class LiveTest(unittest.TestCase):

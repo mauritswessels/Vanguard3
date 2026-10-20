@@ -218,6 +218,8 @@ NEWS_OPUS_PARAMS = {
 LUCK_PARAMS = {
     "monkeys": 300,              # random-pick accounts, each with its own dice
     "years": 5,                  # past prices replayed
+    "starts": 5,                 # each replay starts on this many days...
+    "start_gap": 5,              # ...this many sessions apart (the middle counts)
     "edge": 0.10,                # lead a year worth spotting (10% is a lot)
     "alpha": 0.05,               # accepted chance of calling luck skill
     "power": 0.80,               # chance of spotting a real edge of that size

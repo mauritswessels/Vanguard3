@@ -96,7 +96,10 @@ days reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
 when the lead is too big for luck even allowing for the number of agents
 racing (Holm's correction), **looks like luck** when the results rule out
 an edge of 10% a year, and **can't tell yet** otherwise, with how many more
-weeks of live results it would take to spot such an edge. Expect years
+weeks of live results it would take to spot such an edge. A rule's
+five-year result depends a lot on the day it starts (started a few days
+apart, the Trend Follower ended anywhere between +22% and +59%), so each replayed
+agent starts on 5 days a week apart and the middle one counts. Expect years
 rather than weeks: day-to-day swings are large next to any edge, so even
 10% a year over random picks takes well over ten years to show. The news
 agents, the Opus Learner and the Team Manager are judged on their live
@@ -111,8 +114,8 @@ that does not apply is `null`. At the top: `generated_utc`, `as_of` (the
 last session with results), `data_source`, `method` (the method in a few
 plain sentences), `verdict_meanings` (each verdict explained), `settings`
 (`LUCK_PARAMS`), `past` (`from`, `to`, `years`, `days`, `monkeys`,
-`agents_tested`, and `monkey_returns`: every monkey's return over those
-years, for a histogram), `live` (`from`, `to`, `monkeys`, `agents_tested`;
+`agents_tested`, `start_days`, and `monkey_returns`: every monkey's
+return over those years, for a histogram), `live` (`from`, `to`, `monkeys`, `agents_tested`;
 `null` before paper trading starts), and `accounts`, one entry per account
 (racing accounts first, the two yardsticks last):
 
@@ -137,6 +140,7 @@ Fields of `past` and `live`:
 | `excess_vs_spy`, `excess_vs_spy_low`, `excess_vs_spy_high` | The same over SPY |
 | `p_vs_monkeys`, `p_vs_monkeys_adjusted`, `p_vs_spy`, `p_vs_spy_adjusted` | Chance of a result this good by luck alone, before and after allowing for the number of agents tested |
 | `weeks_needed`, `weeks_needed_vs_spy` | Live only, while it can't tell yet: more weeks of results needed to spot an edge of `settings.edge` a year |
+| `returns_by_start_day` | Past only, replayed agents: the return of each start-day copy, lowest first (the fields above describe the middle one) |
 
 The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are

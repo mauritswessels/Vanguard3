@@ -284,52 +284,76 @@ def replay(market: MarketData, s: dict, keys=REPLAYED + ("learner",),
            grids: dict = GRIDS, train_years: int = LOOKBACK_YEARS) -> dict:
     """The last ``years`` years for every agent that can be replayed.
 
-    Every account starts with cash on the same close; the learning
-    versions come from the walk-forward study, whose blind years cover the
-    same days.
+    A rule's result over five years depends a lot on the day it starts
+    (started a few days apart, the Trend Follower ended anywhere between
+    +22% and +59%). So each agent is replayed from ``starts`` start days
+    ``start_gap`` sessions apart, all at or before the test years, every
+    copy is judged on the same test years, and the middle one is shown.
+    The learning versions come from the walk-forward study, whose blind
+    years are the test years. The monkeys and SPY start on the earliest
+    start day.
     """
     rng = np.random.default_rng(s["seed"])
     cal = market.calendar
     end = cal[-1]
     folds = make_folds(end, s["years"])
-    start = cal[cal < folds[0][0]][-1]
-    days = cal[cal >= start]
+    first = cal[cal >= folds[0][0]][0]          # first day with a result
+    at = cal.get_loc(first) - 1                 # the close before it
+    offsets = [k * s["start_gap"] for k in range(s["starts"])]
+    starts = [cal[at - o] for o in offsets]
 
-    agents = {}
-    for key in keys:
-        if key in REPLAYED:
-            agents[f"{key}-fixed"] = make_agent(
-                key, name=f"{make_agent(key).name} (fixed)")
-        else:   # the AI Learner trades from day one (no practice mode)
-            agents[key] = make_agent(
-                key, {"live_from": start.strftime("%Y-%m-%d")})
+    names, copies = {}, {}      # id -> daily returns, one per start day
     t0 = time.time()
-    sim = Simulator(market, build_accounts(market, list(agents.values())))
-    sim.run(days)
-    logger.info("Replayed %d agents in %.0fs", len(agents), time.time() - t0)
-    rets = {i: acc.portfolio.equity_curve.pct_change().iloc[1:]
-            for i, acc in zip(agents, sim.accounts)}
-    names = {i: agent.name for i, agent in agents.items()}
+    for start in starts:
+        agents = {}
+        for key in keys:
+            if key in REPLAYED:
+                agents[f"{key}-fixed"] = make_agent(
+                    key, name=f"{make_agent(key).name} (fixed)")
+            else:   # the AI Learner trades from day one (no practice mode)
+                agents[key] = make_agent(
+                    key, {"live_from": start.strftime("%Y-%m-%d")})
+        sim = Simulator(market, build_accounts(market, list(agents.values())))
+        sim.run(cal[cal >= start])
+        for i, acc in zip(agents, sim.accounts):
+            names[i] = acc.agent.name
+            copies.setdefault(i, []).append(
+                acc.portfolio.equity_curve.pct_change().iloc[1:])
+    logger.info("Replayed %d agents from %d start days in %.0fs",
+                len(keys), len(starts), time.time() - t0)
 
-    sim_start = end - pd.DateOffset(years=s["years"] + train_years)
+    base = cal.get_loc(cal[cal >= end - pd.DateOffset(
+        years=s["years"] + train_years)][0])
     for key in keys:
         if key in REPLAYED and key in grids:
-            wf = walk_forward_agent(market, key, grids[key], sim_start,
-                                    folds, train_years)
-            rets[key], names[key] = wf["tuned"], make_agent(key).name
+            names[key] = make_agent(key).name
+            for o in offsets:
+                wf = walk_forward_agent(market, key, grids[key],
+                                        cal[base - o], folds, train_years)
+                copies.setdefault(key, []).append(wf["tuned"])
 
     refs = [make_agent(key) for key in YARDSTICKS]
-    monkeys, curves = run_monkeys(market, days, s["monkeys"], refs)
+    monkeys, curves = run_monkeys(market, cal[cal >= starts[-1]],
+                                  s["monkeys"], refs)
+    monkeys = monkeys.loc[first:]
     for i, agent, curve in zip(YARDSTICKS, refs, curves):
-        rets[i], names[i] = curve.pct_change().iloc[1:], agent.name
+        copies[i], names[i] = [curve.pct_change().iloc[1:]], agent.name
 
-    results = {i: compare(r, rets["benchmark"], monkeys, s, rng)
-               for i, r in rets.items()}
+    spy = copies["benchmark"][0].loc[first:]
+    results = {}
+    for i, series in copies.items():
+        runs = sorted((compare(r.loc[first:], spy, monkeys, s, rng)
+                       for r in series), key=lambda r: r["return"])
+        results[i] = runs[len(runs) // 2]
+        if len(runs) > 1:
+            results[i]["returns_by_start_day"] = [r["return"] for r in runs]
     results["benchmark"]["spy"] = None
     tests = judge(results, s, [i for i in results if i not in YARDSTICKS])
     crowd = (1 + monkeys).prod() - 1
-    return {"from": start.strftime("%Y-%m-%d"),
-            "last": end.strftime("%Y-%m-%d"), "sessions": len(days) - 1,
+    return {"from": cal[at].strftime("%Y-%m-%d"),
+            "last": end.strftime("%Y-%m-%d"),
+            "sessions": len(cal[cal >= first]),
+            "start_days": [d.strftime("%Y-%m-%d") for d in starts],
             "years": s["years"], "monkeys": s["monkeys"], "tested": tests,
             "monkey_returns": sorted(float(v) for v in crowd),
             "results": results, "names": names}
@@ -474,6 +498,11 @@ def summary(row: dict, history: dict | None, live_part: dict | None,
         text += (f" Against SPY: {_signed(b['per_year'], 1)} a year (95% "
                  f"range {_signed(b['low'])} to {_signed(b['high'])}): "
                  f"{VERDICTS[b['verdict']]}.")
+        spread = h.get("returns_by_start_day")
+        if spread:
+            text += (f" Started on {len(spread)} different days, it ended "
+                     f"between {_signed(spread[0])} and {_signed(spread[-1])}"
+                     f"; these figures are for the middle one.")
         out.append(text)
     elif row["key"] in NOT_REPLAYED:
         out.append(f"No replay on past prices: {NOT_REPLAYED[row['key']]}.")
@@ -562,6 +591,7 @@ def export_part(res: dict | None, start: str,
         "p_vs_spy": b.get("p"),
         "p_vs_spy_adjusted": b.get("p_adjusted"),
         "weeks_needed_vs_spy": live_weeks(b),
+        "returns_by_start_day": res.get("returns_by_start_day"),
     }
 
 
@@ -615,6 +645,7 @@ def build_report(history: dict | None, live_part: dict | None, s: dict,
             "verdict_meanings": VERDICT_MEANINGS, "settings": s,
             "past": meta(history, history and {
                 "years": history["years"], "days": history["sessions"],
+                "start_days": history["start_days"],
                 "monkey_returns": history["monkey_returns"]}),
             "live": meta(live_part, {}),
             "accounts": accounts}
@@ -627,7 +658,8 @@ def run(source: str, s: dict, state_path: Path | None,
     # Only finished sessions: during the day Yahoo also sends today's bar.
     today = today or last_completed_session()
     data_start = (today - pd.DateOffset(years=s["years"] + LOOKBACK_YEARS)
-                  - pd.Timedelta(days=config.WARMUP_DAYS))
+                  - pd.Timedelta(days=config.WARMUP_DAYS
+                                 + 2 * s["starts"] * s["start_gap"]))
     market = load_market_data(source, data_start, today, seed=seed,
                               strict={config.BENCHMARK_TICKER})
     history = replay(market, s, **replay_kw)

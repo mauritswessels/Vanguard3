@@ -1147,7 +1147,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       <li><b>Weeks to tell</b> is the usual sample-size rule: how much longer it takes, at this account's day-to-day swings, to spot
         an edge of ${edge} a year over random picks 4 times out of 5.</li>
       <li>The replay covers the three strategies with fixed settings, their learning versions (settings re-picked each year from the
-        3 years before, as in the walk-forward check) and the AI Learner. The news agents, the Opus Learner and the Team Manager
+        3 years before, as in the walk-forward check) and the AI Learner. Each starts on ${s.starts} days a week apart, because
+        the start day alone moves a five-year result a lot; the middle one counts. The news agents, the Opus Learner and the Team Manager
         cannot be replayed. The replay flatters everyone, monkeys included, because the markets were picked in 2026.</li>
     </ul></section>`);
     root.innerHTML = parts.join("");
