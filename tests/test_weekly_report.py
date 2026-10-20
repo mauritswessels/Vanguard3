@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import claude_api
 import weekly_report as wr
 
 
@@ -76,7 +77,7 @@ class WeeklyReportTest(unittest.TestCase):
             argv = ["weekly_report.py", "--results", str(tmp / "paper.json"),
                     "--out", str(out), "--issue", str(issue)]
             with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "k"}), \
-                    mock.patch.object(wr.urllib.request, "urlopen", urlopen), \
+                    mock.patch.object(claude_api.urllib.request, "urlopen", urlopen), \
                     mock.patch("sys.argv", argv):
                 wr.main()
             reports = json.loads(out.read_text())["reports"]
