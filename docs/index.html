@@ -319,6 +319,28 @@ h1 svg rect { fill: var(--title); }
 .hub { margin-inline: 0; border: 1px solid var(--line); }
 .timebar button[aria-pressed="true"] { color: #fff; background: var(--title); border-color: var(--title); }
 
+/* Skill or luck (Research) */
+.verdict { display: inline-flex; align-items: center; gap: 6px; font: .76rem var(--f-data); color: var(--ink); white-space: nowrap; }
+.verdict i { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1.5px solid var(--faint); }
+.verdict.v-skill i { background: var(--up); border-color: var(--up); }
+.verdict.v-luck i { background: var(--faint); }
+.verdict.v-unclear { color: var(--muted); }
+th.grp { color: var(--muted); border-bottom: 0; padding-bottom: 0; }
+.range { display: block; font-size: .7rem; color: var(--faint); }
+.luck-chart { position: relative; min-height: 230px; }
+.luck-chart svg { display: block; }
+.luck-chart text { font: 11px var(--f-data); fill: var(--muted); }
+.luck-tip { position: absolute; z-index: 2; pointer-events: none; background: var(--bar); border: 1px solid var(--line); padding: 6px 9px;
+  font-size: .78rem; max-width: 260px; border-radius: var(--radius); display: none; }
+.words { display: grid; }
+.words > div { display: grid; grid-template-columns: minmax(10rem, 15rem) 1fr; gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.words > div:last-child { border-bottom: 0; }
+.words .said { display: grid; gap: 4px; }
+.words p { margin: 0; font-size: .86rem; color: var(--muted); max-width: 85ch; }
+@media (max-width: 600px) { .words > div { grid-template-columns: 1fr; } }
+ul.how { margin: 0; padding: 10px 0 0 18px; display: grid; gap: 6px; font-size: .86rem; color: var(--muted); max-width: 85ch; }
+ul.how b { color: var(--ink); font-weight: 500; }
+
 footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--line); padding-top: 14px; max-width: 80ch; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -1085,12 +1107,162 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     ], v => chf.format(v)));
   }
 
+  // ---------- skill or luck ----------
+  const VERDICT_CLASS = { "skill": "skill", "can't tell yet": "unclear", "looks like luck": "luck" };
+  const verdictChip = v => v ? `<span class="verdict v-${VERDICT_CLASS[v]}"><i aria-hidden="true"></i>${esc(v)}</span>` : "";
+  const share = v => Math.round(v * 100) + "%";
+
+  function renderLuck(d) {
+    const h = d.past, l = d.live, s = d.settings;
+    const racing = d.accounts.filter(a => !a.yardstick).length;
+    const tested = l ? l.agents_tested : racing;
+    const edge = share(s.edge);
+    const weeks = w => w == null ? "–" : w > 104
+      ? `${Math.round(w).toLocaleString("en")} <span class="faint">(${Math.round(w / 52)} yrs)</span>` : String(Math.round(w));
+    const parts = [`<div class="panel notice"><b>With ${tested} agents racing, one of them leads by luck alone.</b>
+      <span class="muted">The chance that at least one of them beats 95% of random pickers is ${share(1 - Math.pow(0.95, tested))}.
+      So every account is compared with ${s.monkeys} monkeys (random picks under the same rules and costs, each with its own dice),
+      and a lead only counts as skill when it is too big for luck even after allowing for the number of agents racing.</span></div>`];
+
+    if (h) parts.push(`<section><div class="section-head"><h2>How far luck gets you</h2>
+      <span class="muted" style="font-size:.85rem">Return over the past ${h.years} years (${fmtDate(ts(h.from))} – ${fmtDate(ts(h.to))}):
+        bars count the ${h.monkeys} monkeys, lines mark each replayed account</span></div>
+      <div class="panel" style="display:grid;gap:10px;padding-top:10px"><div class="luck-chart" id="luck-chart"></div>
+      <div class="legend">${d.accounts.filter(a => a.past).map(a =>
+        `<span>${sw(a)}${esc(a.name)} <span class="num">${pct(a.past.return, 0)}</span></span>`).join("")}</div></div></section>`);
+
+    const rows = d.accounts.map(a => {
+      const p = a.past, q = a.live, judged = !a.yardstick;
+      const beat = part => part ? share(part.percentile_vs_monkeys) : "–";
+      return `<tr class="${a.yardstick ? "ref" : ""}"><td><span class="agent-name">${sw(a)}${esc(a.name)}${a.yardstick ? ' <span class="tag">ref</span>' : ""}</span></td>
+        <td class="num">${p ? beat(p) : '<span class="na">not replayed</span>'}</td>
+        <td>${p && judged ? verdictChip(p.verdict) : ""}</td>
+        <td class="num">${p && p.excess_vs_spy != null ? `<span class="${cls(p.excess_vs_spy)}">${pct(p.excess_vs_spy)}</span>
+          <span class="range">${pct(p.excess_vs_spy_low, 0)} to ${pct(p.excess_vs_spy_high, 0)}</span>` : ""}</td>
+        <td>${p && judged ? verdictChip(p.verdict_vs_spy) : ""}</td>
+        <td class="num">${q ? q.days : "–"}</td>
+        <td class="num">${q ? beat(q) : ""}</td>
+        <td>${q && judged ? verdictChip(q.verdict) : ""}</td>
+        <td>${q && judged ? verdictChip(q.verdict_vs_spy) : ""}</td>
+        <td class="num">${q && judged && q.weeks_needed != null ? weeks(q.weeks_needed) : ""}</td></tr>`;
+    }).join("");
+    parts.push(`<section><div class="section-head"><h2>Verdicts</h2>
+      <span class="muted" style="font-size:.85rem">Beat = share of the ${s.monkeys} monkeys it did better than.
+        Weeks to tell = live weeks still needed to spot an edge of ${edge} a year over random picks.</span></div>
+      <div class="panel"><div class="tbl-wrap"><table class="dense lb"><thead>
+        <tr><th></th><th colspan="4" class="grp">${h ? `Past ${h.years} years (replay)` : "No replay"}</th>
+          <th colspan="5" class="grp">${l ? `Live since ${fmtDate(ts(l.from))}` : "No live results"}</th></tr>
+        <tr><th>Account</th><th class="r">Beat</th><th>vs monkeys</th><th class="r">Lead over SPY a year</th><th>vs SPY</th>
+          <th class="r">Sessions</th><th class="r">Beat</th><th>vs monkeys</th><th>vs SPY</th><th class="r">Weeks to tell</th></tr>
+      </thead><tbody>${rows}</tbody></table></div></div></section>`);
+
+    parts.push(`<section><div class="section-head"><h2>In plain words</h2></div>
+      <div class="panel words">${d.accounts.map(a => `<div><div class="agent-name">${sw(a)}${esc(a.name)}</div>
+        <div class="said">${[].concat(a.summary).map(t => `<p>${esc(t)}</p>`).join("")}</div></div>`).join("")}</div></section>`);
+
+    parts.push(`<section><div class="section-head"><h2>How it works</h2></div><ul class="how">
+      <li><b>Skill</b>: the lead is too big for luck, even allowing for ${tested} agents racing (Holm's correction: the more agents race,
+        the rarer a result must be before it counts). <b>Looks like luck</b>: the results rule out an edge of ${edge} a year or more.
+        <b>Can't tell yet</b>: neither; a live account needs at least ${s.min_days} sessions before any verdict.</li>
+      <li><b>Beat</b> compares the account's return with ${s.monkeys} monkeys over exactly its own days; live, the monkeys start with
+        cash on the day the account made its first decision.</li>
+      <li><b>Lead over SPY</b> is the average daily lead as a yearly figure. Its 95% range comes from reshuffling the account's own
+        days in runs of ${s.block_days} sessions, so calm and wild spells stay together.</li>
+      <li><b>Weeks to tell</b> is the usual sample-size rule: how much longer it takes, at this account's day-to-day swings, to spot
+        an edge of ${edge} a year over random picks 4 times out of 5.</li>
+      <li>The replay covers the three strategies with fixed settings, their learning versions (settings re-picked each year from the
+        3 years before, as in the walk-forward check) and the AI Learner. Each starts on ${s.starts} days a week apart, because
+        the start day alone moves a five-year result a lot; the middle one counts. The news agents, the Opus Learner and the Team Manager
+        cannot be replayed. The replay flatters everyone, monkeys included, because the markets were picked in 2026.</li>
+    </ul></section>`);
+    root.innerHTML = parts.join("");
+
+    const box = $("#luck-chart");
+    if (!box) return;
+    let width = 0;
+    const draw = () => { if (box.clientWidth && box.clientWidth !== width) { width = box.clientWidth; luckChart(box, d); } };
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(box);
+    charts.push({ destroy: () => ro.disconnect() });
+  }
+
+  // Histogram of the monkeys' returns with a marker line per replayed account.
+  function luckChart(box, d) {
+    const h = d.past, monkeys = h.monkey_returns;
+    const marks = d.accounts.filter(a => a.past).map(a => ({ a, r: a.past.return, beat: a.past.percentile_vs_monkeys }));
+    const W = box.clientWidth, H = W < 560 ? 240 : 290, m = { l: 36, r: 12, t: 62, b: 26 };
+    const all = monkeys.concat(marks.map(k => k.r));
+    const lo0 = Math.min(...all), hi0 = Math.max(...all), span = hi0 - lo0 || 0.1;
+    const spread = (monkeys[monkeys.length - 1] - monkeys[0]) || span;
+    const bw = [0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1].find(v => spread / v <= (W < 560 ? 18 : 30)) || 1;
+    const lo = Math.floor((lo0 - 0.02 * span) / bw) * bw, hi = Math.ceil((hi0 + 0.02 * span) / bw) * bw;
+    const bins = Math.max(1, Math.round((hi - lo) / bw)), counts = new Array(bins).fill(0);
+    monkeys.forEach(v => counts[Math.min(bins - 1, Math.floor((v - lo) / bw + 1e-9))]++);
+    const yStep = [1, 2, 5, 10, 20, 25, 50, 100].find(v => Math.max(...counts) / v <= 4) || 100;
+    const yTop = Math.ceil(Math.max(...counts) / yStep) * yStep || 1;
+    const X = v => m.l + (v - lo) / (hi - lo) * (W - m.l - m.r), base = H - m.b;
+    const Y = c => base - c / yTop * (base - m.t);
+    const fmt = v => (v > 0 ? "+" : "") + Math.round(v * 100) + "%";
+    const xStep = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2].find(v => (hi - lo) / v <= W / 80) || 2;
+    const out = [];
+    for (let c = 0; c <= yTop; c += yStep) {
+      out.push(`<line x1="${m.l}" x2="${W - m.r}" y1="${Y(c)}" y2="${Y(c)}" stroke="${css("--line")}" stroke-width="1"/>
+        <text x="${m.l - 6}" y="${Y(c) + 4}" text-anchor="end">${c}</text>`);
+    }
+    for (let v = Math.ceil(lo / xStep) * xStep; v <= hi + 1e-9; v += xStep) {
+      const x = X(v), anchor = x > W - m.r - 24 ? "end" : x < m.l + 24 ? "start" : "middle";
+      out.push(`<text x="${x}" y="${H - 8}" text-anchor="${anchor}">${fmt(Math.abs(v) < 1e-9 ? 0 : v)}</text>`);
+    }
+    const monkeyColor = css("--a-monkey");
+    counts.forEach((c, i) => {
+      const x0 = X(lo + i * bw) + 1, x1 = X(lo + (i + 1) * bw) - 1, w = Math.max(1, x1 - x0);
+      const tip = `${c} monkey${c === 1 ? "" : "s"} between ${fmt(lo + i * bw)} and ${fmt(lo + (i + 1) * bw)}`;
+      if (c) {
+        const y = Y(c), r = Math.min(4, w / 2, base - y);
+        out.push(`<path d="M${x0},${base}V${y + r}Q${x0},${y} ${x0 + r},${y}H${x1 - r}Q${x1},${y} ${x1},${y + r}V${base}Z"
+          fill="${monkeyColor}" fill-opacity=".5"/>`);
+      }
+      out.push(`<rect x="${x0 - 1}" y="${m.t}" width="${w + 2}" height="${base - m.t}" fill="transparent" data-tip="${esc(tip)}"/>`);
+    });
+    // Marker dots on up to four rows so neighbours do not hide each other.
+    const rows = [];
+    marks.map(k => ({ ...k, x: X(k.r) })).sort((p, q) => p.x - q.x).forEach(k => {
+      let row = rows.findIndex(last => k.x - last >= 14);
+      if (row < 0) row = rows.length < 4 ? rows.length : rows.indexOf(Math.min(...rows));
+      rows[row] = k.x;
+      const y = 10 + row * 14, col = color(k.a.key), twin = k.a.fixed_twin, dash = twin || k.a.key === "benchmark";
+      const tip = `${k.a.name}: ${pct(k.r)} in ${h.years} years, ahead of ${share(k.beat)} of the ${h.monkeys} monkeys`;
+      out.push(`<line x1="${k.x}" x2="${k.x}" y1="${y}" y2="${base}" stroke="${col}" stroke-width="2"${dash ? ' stroke-dasharray="4 3"' : ""}/>
+        <circle cx="${k.x}" cy="${y}" r="7" fill="${css("--raise")}"/>
+        <circle cx="${k.x}" cy="${y}" r="${twin ? 3.5 : 5}" fill="${twin ? css("--raise") : col}"${twin ? ` stroke="${col}" stroke-width="2"` : ""}/>
+        <rect x="${k.x - 7}" y="${y - 7}" width="14" height="${base - y + 7}" fill="transparent" data-tip="${esc(tip)}"/>`);
+    });
+    out.push(`<line x1="${m.l}" x2="${W - m.r}" y1="${base}" y2="${base}" stroke="${css("--faint")}" stroke-width="1"/>`);
+    const label = `Histogram of ${h.monkeys} monkeys' returns over ${h.years} years, from ${fmt(monkeys[0])} to ${fmt(monkeys[monkeys.length - 1])}, `
+      + marks.map(k => `${k.a.name} ${fmt(k.r)}`).join(", ");
+    box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${out.join("")}</svg>
+      <div class="luck-tip" role="status"></div>`;
+    const tipEl = box.querySelector(".luck-tip");
+    box.onpointermove = e => {
+      const t = e.target.closest("[data-tip]");
+      if (!t) { tipEl.style.display = "none"; return; }
+      const r = box.getBoundingClientRect();
+      tipEl.textContent = t.dataset.tip;
+      tipEl.style.display = "block";
+      const x = e.clientX - r.left, left = Math.min(Math.max(0, x + 12), W - tipEl.offsetWidth);
+      tipEl.style.left = (x + 12 + tipEl.offsetWidth > W ? Math.max(0, x - 12 - tipEl.offsetWidth) : left) + "px";
+      tipEl.style.top = Math.max(0, e.clientY - r.top - 40) + "px";
+    };
+    box.onpointerleave = () => { tipEl.style.display = "none"; };
+  }
+
   // ---------- shell ----------
   function setStatus() {
     const sub = view === "research" ? researchSub() : view;
     const d = DATA[sub];
     const el = $("#status");
-    if (sub === "walkforward") {
+    if (sub === "walkforward" || sub === "luck") {
       el.innerHTML = d ? `Study run ${fmtDate(Date.parse(d.generated_utc))} · data <b>${esc(d.data_source)}</b>` : "";
       return;
     }
@@ -1100,20 +1272,25 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       &nbsp;Data to <b>${fmtDate(ts(d.last))}</b> · source <b>${esc(d.data_source)}</b>`;
   }
 
-  const researchSub = () => (store.get("v3-research") === "walkforward" ? "walkforward" : "backtest");
+  const researchSub = () => {
+    const sub = store.get("v3-research");
+    return sub === "walkforward" || sub === "luck" ? sub : "backtest";
+  };
 
   function renderResearch() {
     const sub = researchSub(), d = DATA[sub];
     const tab = (k, label) => `<button type="button" data-sub="${k}" aria-pressed="${k === sub}">${label}</button>`;
     $("#view").innerHTML = `
-      <div class="panel notice"><b>Research uses past prices only.</b> <span class="muted">These studies were used to choose the agents' rules
+      ${sub === "luck" ? "" : `<div class="panel notice"><b>Research uses past prices only.</b> <span class="muted">These studies were used to choose the agents' rules
         before launch. They are replays of history, not live money, and past results do not predict future returns.
         They also flatter every agent a little: the markets were picked in 2026 because they are big today, so companies that shrank
-        or disappeared in those years are missing. Trust the live race more.</span></div>
-      <div class="section-head"><div class="chips sub-nav" role="group" aria-label="Research study">${tab("backtest", "5-year replay")}${tab("walkforward", "Walk-forward check")}</div></div>
-      <p class="muted" style="margin:0">${sub === "backtest"
-        ? "The same rules run over the last five years, as if they had traded then. A sanity check that the rules are not broken."
-        : "Each year the settings are picked using only earlier years, then tested blind on that year. It shows whether tuning really helps."}</p>
+        or disappeared in those years are missing. Trust the live race more.</span></div>`}
+      <div class="section-head"><div class="chips sub-nav" role="group" aria-label="Research study">${tab("backtest", "5-year replay")}${tab("walkforward", "Walk-forward check")}${tab("luck", "Skill or luck?")}</div></div>
+      <p class="muted" style="margin:0">${{
+        backtest: "The same rules run over the last five years, as if they had traded then. A sanity check that the rules are not broken.",
+        walkforward: "Each year the settings are picked using only earlier years, then tested blind on that year. It shows whether tuning really helps.",
+        luck: "Is a lead skill, or what random picks get anyway? Every account against hundreds of monkeys and buy-and-hold SPY, on past prices and live.",
+      }[sub]}</p>
       <div id="sub" style="display:grid;gap:32px"></div>
       <div class="panel lab-card"><div><h3>3D AI research lab</h3><span class="muted" style="font-size:.9rem">A training sandbox where a separate
         learning AI practises on past prices. It never touches the live accounts.</span></div><a href="lab/">Open the lab →</a></div>`;
@@ -1123,6 +1300,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     }));
     if (!d) root.innerHTML = `<div class="panel notice">No data for this study yet.</div>`;
     else if (sub === "walkforward") renderWF(d);
+    else if (sub === "luck") renderLuck(d);
     else renderRun(d);
   }
 
@@ -1160,8 +1338,8 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
     }
   }, 5 * 60 * 1000);
 
-  Promise.all(["paper", "backtest", "walkforward"].map(load)).then(([p, b, w]) => {
-    Object.assign(DATA, { paper: p, backtest: b, walkforward: w });
+  Promise.all(["paper", "backtest", "walkforward", "skill"].map(load)).then(([p, b, w, l]) => {
+    Object.assign(DATA, { paper: p, backtest: b, walkforward: w, luck: l });
     show(p && p.status !== "waiting" ? "paper" : "research");
   });
 })();

@@ -17,6 +17,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -t .
 .venv/bin/python walk_forward.py              # tune on the past, test blind
 .venv/bin/python main.py --days 1825 --dashboard   # refresh dashboard backtest
+.venv/bin/python luck_study.py                # skill or luck: everyone against 300 monkeys
 ```
 
 ## Live paper trading and dashboard
@@ -85,6 +86,63 @@ at random under the same rules as the agents (10 positions of 10%, same
 costs; each evening a holding has a 1 in 20 chance of being sold). With
 nine accounts racing, one will lead by luck alone; an agent shows skill only
 if it keeps beating the Monkey over many weeks.
+
+How many weeks? `luck_study.py` puts a number on it. It runs 300 monkeys,
+each with its own dice, over the same days as each account: over the last
+five years for every agent that can be replayed honestly (the three
+strategies with fixed settings, their learning versions re-tuned each year
+as in the walk-forward study, and the AI Learner), and live for every paper
+account from its first decision on. For each account it gives the share of
+monkeys it beat, its average lead a year over SPY with a 95% range (its own
+days reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
+when the lead is too big for luck even allowing for the number of agents
+racing (Holm's correction), **looks like luck** when the results rule out
+an edge of 10% a year, and **can't tell yet** otherwise, with how many more
+weeks of live results it would take to spot such an edge. A rule's
+five-year result depends a lot on the day it starts (started a few days
+apart, the Trend Follower ended anywhere between +22% and +59%), so each replayed
+agent starts on 5 days a week apart and the middle one counts. Expect years
+rather than weeks: day-to-day swings are large next to any edge, so even
+10% a year over random picks takes well over ten years to show. The news
+agents, the Opus Learner and the Team Manager are judged on their live
+results only. The study runs every Saturday (workflow "Skill or luck",
+about 5 minutes; settings in `LUCK_PARAMS` in `config.py`), writes
+`docs/data/skill.json` and is on the dashboard under Research > Skill or
+luck?
+
+`docs/data/skill.json` keeps a fixed shape, so pages can rely on it. Shares
+and returns are fractions (0.1 = 10%), dates are `YYYY-MM-DD`, and a value
+that does not apply is `null`. At the top: `generated_utc`, `as_of` (the
+last session with results), `data_source`, `method` (the method in a few
+plain sentences), `verdict_meanings` (each verdict explained), `settings`
+(`LUCK_PARAMS`), `past` (`from`, `to`, `years`, `days`, `monkeys`,
+`agents_tested`, `start_days`, and `monkey_returns`: every monkey's
+return over those years, for a histogram), `live` (`from`, `to`, `monkeys`, `agents_tested`;
+`null` before paper trading starts), and `accounts`, one entry per account
+(racing accounts first, the two yardsticks last):
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `key`, `name` | As in `paper.json`: `trend-fixed`, `trend`, "Trend Follower (fixed)" |
+| `fixed_twin`, `yardstick` | A fixed twin; Buy & Hold SPY or the Monkey (never judged) |
+| `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices |
+| `verdict_from` | "live", "past prices", or `null` (no results yet, or a yardstick) |
+| `summary` | A few plain sentences: one on the past prices, one on the live results |
+| `past`, `live` | The two parts, with the same fields below (`null` when the account has none) |
+
+Fields of `past` and `live`:
+
+| Field | Meaning |
+| --- | --- |
+| `from`, `to`, `days` | Counted from this close (live: the account's first decision) to `to`; `days` sessions with a result |
+| `return`, `spy_return`, `monkey_median_return` | Over those days: the account, buy-and-hold SPY, the middle monkey |
+| `percentile_vs_monkeys` | Share of the monkeys it beat (0 to 1) |
+| `verdict`, `verdict_vs_spy` | The verdict against the monkeys, and against SPY |
+| `excess_vs_monkey`, `excess_vs_monkey_low`, `excess_vs_monkey_high` | Average lead a year over the typical monkey, with its 95% range |
+| `excess_vs_spy`, `excess_vs_spy_low`, `excess_vs_spy_high` | The same over SPY |
+| `p_vs_monkeys`, `p_vs_monkeys_adjusted`, `p_vs_spy`, `p_vs_spy_adjusted` | Chance of a result this good by luck alone, before and after allowing for the number of agents tested |
+| `weeks_needed`, `weeks_needed_vs_spy` | Live only, while it can't tell yet: more weeks of results needed to spot an edge of `settings.edge` a year |
+| `returns_by_start_day` | Past only, replayed agents: the return of each start-day copy, lowest first (the fields above describe the middle one) |
 
 The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are
@@ -191,6 +249,7 @@ To start over, delete `state/paper_state.json` and change
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
+| `luck_study.py` | Skill or luck: every account against hundreds of monkeys and SPY |
 | `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
 | `docs/lab/` | 3D AI research lab: a browser-only reinforcement-learning simulation (see below) |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |
