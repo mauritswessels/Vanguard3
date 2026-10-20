@@ -185,7 +185,9 @@ class NewsAgent(BaseAgent):
             call = {"date": tr.date.strftime("%Y-%m-%d"), "ticker": tr.ticker,
                     "side": tr.side}
             for h in self.HORIZONS:
-                if i + h >= len(cal) or bench not in panel:
+                # A market that failed to download today has no column.
+                if (i + h >= len(cal) or bench not in panel
+                        or tr.ticker not in panel):
                     continue
                 later = cal[i + h]
                 move = float(panel.at[later, tr.ticker]) / tr.market_price - 1

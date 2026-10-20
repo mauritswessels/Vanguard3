@@ -35,6 +35,38 @@ class HealthTest(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("News Analyst (Opus) made no decision", found[0])
 
+    def test_orders_that_did_not_go_through_are_reported(self):
+        s = state("2026-10-20", "2026-10-20")
+        s["accounts"][0].update(name="Volatility Protected", activity=[
+            {"date": "2026-10-19", "rejected": [
+                {"ticker": "MA", "side": "BUY", "quantity": 1,
+                 "created": "2026-10-16", "why": "insufficient cash"}]},
+            {"date": "2026-10-20", "rejected": [
+                {"ticker": "SAP.DE", "side": "BUY", "quantity": 54,
+                 "created": "2026-10-12", "why": "expired"}]}])
+        found = problems(s, pd.Timestamp("2026-10-20"))
+        self.assertEqual(found, [
+            "Volatility Protected: the order to buy 54 SAP.DE (from Mon 12 "
+            "Oct) did not go through: its market did not open for a week."])
+
+    def test_failed_midday_check_is_reported(self):
+        s = state("2026-10-19", "2026-10-19")
+        s["accounts"][1]["name"] = "News Analyst"
+        s["accounts"][1]["agent_state"]["midday"] = {
+            "time": "2026-10-20T15:12+00:00", "ok": False,
+            "status": "Midday check failed: Claude refused (400): Your "
+                      "credit balance is too low"}
+        today = pd.Timestamp("2026-10-20 15:20", tz="UTC")
+        found = problems(s, pd.Timestamp("2026-10-19"), today, midday=True)
+        self.assertEqual(len(found), 1)
+        self.assertIn("News Analyst's midday check failed", found[0])
+        self.assertIn("credit balance is too low", found[0])
+        # Yesterday's failure is old news; the evening check ignores it.
+        later = pd.Timestamp("2026-10-21 15:20", tz="UTC")
+        self.assertEqual(problems(s, pd.Timestamp("2026-10-19"), later,
+                                  midday=True), [])
+        self.assertEqual(problems(s, pd.Timestamp("2026-10-19")), [])
+
     def test_latest_session(self):
         before_close = pd.Timestamp("2026-10-12 15:00", tz="UTC")  # Monday
         self.assertEqual(latest_session(before_close),

@@ -243,6 +243,12 @@ class MarketData:
     def tickers(self) -> list[str]:
         return list(self.bars)
 
+    def until(self, end: pd.Timestamp) -> "MarketData":
+        """The same data without the days after ``end``."""
+        return MarketData(bars={t: df.loc[:end] for t, df in self.bars.items()},
+                          fx={c: df.loc[:end] for c, df in self.fx.items()},
+                          currencies=self.currencies, source=self.source)
+
     def history(self, ticker: str, end: pd.Timestamp) -> pd.DataFrame:
         """Bars for ``ticker`` up to and including ``end`` (no look-ahead)."""
         return self.bars[ticker].loc[:end]

@@ -26,6 +26,19 @@ class ManagerTest(unittest.TestCase):
                 make_agent("benchmark"),
                 make_agent("manager", {"min_history": 30, "top_n": 2})]
 
+    def test_an_agent_that_joins_is_backed_at_once(self):
+        sim = Simulator(self.market, build_accounts(self.market,
+                                                    self.lineup()))
+        sim.run(self.days[:5])
+        mgr = sim.accounts[-1].agent
+        self.assertEqual(len(mgr.backing), 3)
+        sim.add_account(make_agent("monkey"), self.days[0])     # a yardstick
+        sim.add_account(make_agent("learner"), self.days[0])
+        sim.run(self.days[5:7])
+        self.assertIn("AI Learner", mgr.backing)
+        self.assertEqual(len(mgr.backing), 4)
+        self.assertNotIn("Monkey", mgr.backing)
+
     def test_backs_everyone_then_the_best(self):
         sim = Simulator(self.market, build_accounts(self.market,
                                                     self.lineup()))

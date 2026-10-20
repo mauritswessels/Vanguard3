@@ -93,6 +93,24 @@ class NewsAgentTest(unittest.TestCase):
         self.assertIn("YOUR TRACK RECORD", seen["note"])
         self.assertIn(f"bought {t}", seen["note"])
 
+    def test_report_card_skips_a_market_without_prices_today(self):
+        from types import SimpleNamespace as NS
+        agent = make_agent("news")
+        agent.prepare(self.market)
+        cal = self.market.calendar
+        gone = NS(date=cal[-30], ticker="GONE.SW", side="BUY",
+                  market_price=10.0)
+        card = agent.report_card([gone], cal[-1])
+        self.assertEqual(card["graded_5"], 0)
+
+    def test_a_reply_in_the_wrong_shape_is_not_sell_everything(self):
+        for text in ('{"market_view": "calm"}', '{"targets": ["A"]}',
+                     '{"targets": {"a": {"weight": 0.2}}}'):
+            with self.assertRaises(ValueError, msg=text):
+                news.parse_decision(text, ["A", "B"], 0.4, 0.6)
+        empty = news.parse_decision('{"targets": {}}', ["A", "B"], 0.4, 0.6)
+        self.assertEqual(empty["targets"]["A"]["weight"], 0.0)
+
     def test_parse_decision_caps_total_and_ignores_unknown(self):
         text = 'Sure: {"targets": {"A": {"weight": 0.5}, "B": {"weight": 0.5},' \
                ' "EVIL": {"weight": 1}}}'
@@ -118,6 +136,48 @@ class OpusTwinTest(unittest.TestCase):
         from types import SimpleNamespace
         names = [a.name for a in paper_lineup(SimpleNamespace(bars={}))]
         self.assertIn("News Analyst (Opus)", names)
+
+
+class ClaudeApiTest(unittest.TestCase):
+    """How a refusal from Claude reads, and the retry when it is busy."""
+
+    def answer(self, *replies):
+        import io
+        import urllib.error
+        from unittest import mock
+
+        import claude_api
+        calls = []
+
+        def urlopen(req, timeout):
+            calls.append(req)
+            r = replies[len(calls) - 1]
+            if isinstance(r, int):
+                body = io.BytesIO(json.dumps({"error": {
+                    "message": "Your credit balance is too low" if r == 400
+                    else "Overloaded"}}).encode())
+                raise urllib.error.HTTPError(req.full_url, r, "Bad", {}, body)
+            return io.BytesIO(json.dumps(r).encode())
+
+        with mock.patch.object(claude_api.urllib.request, "urlopen", urlopen), \
+                mock.patch.object(claude_api.time, "sleep", lambda s: None):
+            try:
+                return claude_api.call_claude({"model": "m"}, "key"), calls
+            except RuntimeError as exc:
+                return exc, calls
+
+    def test_says_why_it_refused(self):
+        out, calls = self.answer(400)
+        self.assertEqual(str(out), "Claude refused (400): Your credit "
+                                   "balance is too low")
+        self.assertEqual(len(calls), 1)
+
+    def test_tries_once_more_when_busy(self):
+        out, calls = self.answer(529, {"content": []})
+        self.assertEqual(out, {"content": []})
+        self.assertEqual(len(calls), 2)
+        out, calls = self.answer(529, 529)
+        self.assertIn("(529): Overloaded", str(out))
 
 
 if __name__ == "__main__":

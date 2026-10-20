@@ -39,6 +39,9 @@ from reporting import dashboard_payload, print_scoreboard, write_json
 
 logger = logging.getLogger("vanguard3.paper")
 
+#: Yahoo suffixes of the European exchanges on the watchlist.
+EUROPE = (".SW", ".DE", ".PA", ".AS")
+
 
 def last_completed_session(now_utc: pd.Timestamp | None = None
                            ) -> pd.Timestamp:
@@ -70,6 +73,22 @@ def load_for_state(saved: dict | None, source: str,
                             strict=needed or {config.BENCHMARK_TICKER})
 
 
+def europe_missing(market, day: pd.Timestamp) -> bool:
+    """True when ``day`` has New York prices but none from Europe.
+
+    Yahoo leaves the European markets' latest day out of downloads made
+    after midnight in Zurich; simulating that day would keep European
+    prices a day old and leave every European order unfilled. (On the few
+    days all of Europe is closed and New York open, waiting a day is
+    harmless.)
+    """
+    opens = market.open_panel.loc[day]
+    europe = [t for t in opens.index if t.endswith(EUROPE)]
+    others = [t for t in opens.index if not t.endswith(EUROPE)]
+    return (bool(europe) and bool(opens[others].notna().any())
+            and bool(opens[europe].isna().all()))
+
+
 def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
             cutoff: pd.Timestamp, seed: int = config.SYNTHETIC_SEED
             ) -> tuple[Simulator | None, int]:
@@ -80,6 +99,13 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
     """
     saved = json.loads(state_path.read_text()) if state_path.exists() else None
     market = load_for_state(saved, source, paper_start, cutoff, seed)
+    done = pd.Timestamp(saved["last_date"]) if saved else None
+    days = market.calendar[market.calendar <= cutoff]
+    if (len(days) and (done is None or days[-1] > done)
+            and europe_missing(market, days[-1])):
+        logger.warning("No European prices for %s yet: that day is "
+                       "simulated by the next run", days[-1].date())
+        market = market.until(days[-1] - pd.Timedelta(days=1))
 
     if saved is not None:
         sim = Simulator.from_dict(saved, market, tuner=retune)

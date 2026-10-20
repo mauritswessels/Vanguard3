@@ -125,7 +125,9 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
     def live(t: str) -> bool:
         return bool((quotes.get(t) or {}).get("live"))
 
-    # 1. Last evening's orders filled at this morning's open.
+    # 1. Last evening's orders filled at this morning's open (minus any
+    #    replaced by a newer one or waiting too long, as in the evening).
+    broker._tidy(day)
     fills = []
     due = sorted((o for o in broker.pending if opened(o.ticker)),
                  key=lambda o: o.side != "SELL")
@@ -179,7 +181,9 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
         if f is not None:
             orders.append(o)
             fills.append(f)
-    budget = pf.cash * (1.0 - config.CASH_BUFFER_PCT)
+    # Cash promised to orders still waiting for their market stays theirs.
+    promised = agent.waiting_buys(broker, last, costs)
+    budget = pf.cash * (1.0 - config.CASH_BUFFER_PCT) - sum(promised.values())
     buys = sorted((s for s in signals if s.action is Action.BUY),
                   key=lambda s: s.score, reverse=True)
     for sig in buys:
@@ -187,10 +191,11 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
         if not live(t):
             waiting.append(t)
             continue
+        budget += promised.pop(t, 0.0)        # this order replaces it
         unit = costs.buy_price_chf(price(t), fx(t), market.currencies[t])
         qty = agent.position_size(sig, day, equity, unit)
         qty = min(qty, int(max(budget - costs.commission_chf, 0) // unit))
-        if qty <= 0:
+        if qty <= 0 or qty * unit < config.MIN_ORDER_CHF:
             continue
         o = Order(t, "BUY", qty, day, sig.reason)
         f = broker.fill_at(o, day, price(t), fx(t))

@@ -15,6 +15,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
+APT_DIR="${APT_DIR:-/etc/apt/apt.conf.d}"
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -34,7 +35,7 @@ say "Security updates by themselves"
 # Ubuntu installs security updates every day; a restart they need (a new
 # kernel) happens at 11:00, after the morning run. IB Gateway and the
 # weekday runs start again on their own.
-cat > /etc/apt/apt.conf.d/52vanguard3-updates <<EOF
+cat > "$APT_DIR/52vanguard3-updates" <<EOF
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 Unattended-Upgrade::Automatic-Reboot "true";

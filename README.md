@@ -111,9 +111,11 @@ the dashboard ("The week in plain words", from `docs/data/weekly.json`) and
 arrives by email as a closed GitHub issue. Claude only describes the facts;
 it decides nothing.
 
-If a run fails, a scheduled run never starts, or a news agent cannot
-decide, `health_check.py` notices and the workflow opens (or adds to) a
-GitHub issue titled "Vanguard3 needs attention", which GitHub emails out.
+If a run fails, a scheduled run never starts, a news agent cannot decide,
+or an order does not go through (not enough cash, or its market did not
+open for a week), `health_check.py` notices and the workflow opens (or adds
+to) a GitHub issue titled "Vanguard3 needs attention", which GitHub emails
+out. Every pull request runs the tests first (workflow "Tests").
 
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the

@@ -125,7 +125,9 @@ class BaseAgent(ABC):
         """
         costs = portfolio.costs
         orders: list[Order] = []
-        budget = portfolio.cash * (1.0 - config.CASH_BUFFER_PCT)
+        waiting = self.waiting_buys(broker, date, costs)
+        budget = (portfolio.cash * (1.0 - config.CASH_BUFFER_PCT)
+                  - sum(waiting.values()))
 
         for sig in signals:
             if (sig.action is Action.SELL
@@ -148,9 +150,11 @@ class BaseAgent(ABC):
                 continue
             close, fx, ccy = self._quote(sig.ticker, date)
             unit = costs.buy_price_chf(close, fx, ccy)
+            # A new order replaces the one still waiting on this market.
+            budget += waiting.pop(sig.ticker, 0.0)
             qty = self.position_size(sig, date, equity, unit)
             qty = min(qty, int(max(budget - costs.commission_chf, 0) // unit))
-            if qty <= 0:
+            if qty <= 0 or qty * unit < config.MIN_ORDER_CHF:
                 continue
             budget -= qty * unit + costs.commission_chf
             owned.append(sig.ticker)
@@ -159,6 +163,21 @@ class BaseAgent(ABC):
         for order in orders:
             broker.submit(order)
         return orders
+
+    def waiting_buys(self, broker, date: pd.Timestamp,
+                     costs) -> dict[str, float]:
+        """Cash already promised to buy orders still waiting for their
+        market to open (a holiday there): ``ticker -> CHF``. It must not be
+        spent a second time, or one of the orders fails for lack of cash."""
+        out = {}
+        for o in getattr(broker, "pending", []):
+            if o.side == "BUY":
+                close, fx, ccy = self._quote(o.ticker, date)
+                if math.isfinite(close):
+                    out[o.ticker] = (o.quantity
+                                     * costs.buy_price_chf(close, fx, ccy)
+                                     + costs.commission_chf)
+        return out
 
     # -- shared safety rules (each off unless its setting is above zero) ----
     def guard(self, signals: list[Signal], date: pd.Timestamp,

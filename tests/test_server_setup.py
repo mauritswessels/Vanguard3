@@ -58,6 +58,9 @@ class ComposeTest(unittest.TestCase):
         ports = re.findall(r'- "([^"]*:\d+)"', self.text)
         self.assertEqual(ports, ["127.0.0.1:4002:4004"])
 
+    def test_log_cannot_fill_the_disk(self):
+        self.assertIn('max-size: "10m"', self.text)
+
     def test_password_comes_from_the_file_setup_writes(self):
         self.assertIn("file: ./ib_password.txt", self.text)
         self.assertIn("TWS_PASSWORD_FILE: /run/secrets/ib_password",
@@ -84,9 +87,11 @@ class SetupScriptTest(unittest.TestCase):
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.repo, self.tools, self.units = (tmp / "Vanguard3", tmp / "bin",
                                              tmp / "units")
+        self.apt = tmp / "apt"
         (self.repo / "server").mkdir(parents=True)
         self.tools.mkdir()
         self.units.mkdir()
+        self.apt.mkdir()
         for name in ("server/setup.sh", "server/docker-compose.yml",
                      "requirements-ibkr.txt", "ibkr_morning.sh"):
             shutil.copy(ROOT / name, self.repo / name)
@@ -102,7 +107,7 @@ class SetupScriptTest(unittest.TestCase):
         self.env = {**os.environ, "PATH": f"{self.tools}:/usr/bin:/bin",
                     "CALLS": str(self.calls_file),
                     "FAKE_BRIDGE": str(self.tools / "fake-bridge"),
-                    "UNIT_DIR": str(self.units)}
+                    "UNIT_DIR": str(self.units), "APT_DIR": str(self.apt)}
 
     def setup(self, *args, answers="", **env):
         """Run setup.sh, typing ``answers``; returns (exit code, output,
@@ -158,6 +163,14 @@ class SetupScriptTest(unittest.TestCase):
         update = (self.units / "vanguard3-update.service").read_text()
         self.assertIn(f"WorkingDirectory={self.repo}/server", update)
         self.assertIn("ExecStart=/usr/bin/docker compose pull", update)
+        # A run that hangs cannot block the next mornings.
+        self.assertIn("TimeoutStartSec=40min", unit)
+
+    def test_security_updates_restart_after_the_morning_run(self):
+        self.setup(answers="DUTEST1\nsecret\n")
+        apt = (self.apt / "52vanguard3-updates").read_text()
+        self.assertIn('Unattended-Upgrade::Automatic-Reboot "true";', apt)
+        self.assertIn('Automatic-Reboot-Time "11:00";', apt)
 
     @unittest.skipUnless(shutil.which("systemd-analyze"),
                          "needs systemd-analyze")

@@ -8,12 +8,15 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
 
 import config
-from data_manager import SyntheticProvider, clean_bars, load_market_data
+import daily_run
+from data_manager import (MarketData, SyntheticProvider, clean_bars,
+                          load_market_data)
 from engine import metrics
 from engine.broker import Order, SimulatedBroker
 from engine.portfolio import CostModel, InsufficientFundsError, Portfolio
@@ -209,6 +212,77 @@ class BrokerTest(unittest.TestCase):
                          [("SPY", "expired")])
 
 
+class WaitingOrderTest(unittest.TestCase):
+    """Orders still waiting for their market (a holiday there)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.market = synthetic_market(days=400)
+        cls.day = cls.market.calendar[-2]
+
+    def setUp(self):
+        self.agent = make_agent("trend")
+        self.agent.prepare(self.market)
+        self.pf = Portfolio("t", 10_000)
+        self.broker = SimulatedBroker(self.pf, self.market)
+
+    def unit(self, ticker):
+        return self.pf.costs.buy_price_chf(*self.agent._quote(ticker,
+                                                              self.day))
+
+    def test_their_cash_is_not_spent_again(self):
+        from models.base_agent import Action, Signal
+        held = int(9_500 // self.unit("SPY"))
+        self.broker.submit(Order("SPY", "BUY", held,
+                                 self.day - pd.Timedelta(days=1)))
+        orders = self.agent.execute_trade(
+            [Signal("QQQ", Action.BUY, "test")], self.day, self.pf,
+            self.broker)
+        spent = sum(o.quantity * self.unit(o.ticker) + 2.0 for o in orders)
+        self.assertLessEqual(spent + held * self.unit("SPY") + 2.0,
+                             self.pf.cash)
+
+    def test_a_new_order_on_the_same_market_frees_it(self):
+        from models.base_agent import Action, Signal
+        held = int(9_500 // self.unit("SPY"))
+        self.broker.submit(Order("SPY", "BUY", held,
+                                 self.day - pd.Timedelta(days=1)))
+        orders = self.agent.execute_trade(
+            [Signal("SPY", Action.BUY, "test")], self.day, self.pf,
+            self.broker)
+        self.assertEqual([o.ticker for o in orders], ["SPY"])
+        self.assertEqual([o.created for o in self.broker.pending], [self.day])
+
+    def test_no_tiny_orders(self):
+        """A position of a few hundred francs would mostly pay fees, and a
+        1-share order made with the last cash often fails at the open."""
+        from models.base_agent import Action, Signal
+        small = Portfolio("t", 3_000)          # 10% = 300 CHF per position
+        orders = self.agent.execute_trade(
+            [Signal("QQQ", Action.BUY, "test")], self.day, small,
+            SimulatedBroker(small, self.market))
+        self.assertEqual(orders, [])
+        self.assertLess(3_000 * self.agent.params["position_pct"],
+                        config.MIN_ORDER_CHF)
+
+    def test_orders_that_did_not_go_through_are_recorded(self):
+        sim = Simulator(self.market, build_accounts(
+            self.market, [make_agent("benchmark")]))
+        cal = self.market.calendar
+        sim.run(cal[-12:-3])
+        acc = sim.accounts[0]
+        old = cal[-3] - pd.Timedelta(days=10)
+        acc.broker.submit(Order("QQQ", "BUY", 5, old))
+        with self.assertLogs("engine.broker", "WARNING") as logs:
+            sim.step(cal[-3])
+        entry = acc.activity[-1]
+        self.assertEqual(entry["date"], f"{cal[-3]:%Y-%m-%d}")
+        self.assertEqual(entry["rejected"], [
+            {"ticker": "QQQ", "side": "BUY", "quantity": 5,
+             "created": f"{old:%Y-%m-%d}", "why": "expired"}])
+        self.assertIn("5 QQQ not filled: expired", logs.output[0])
+
+
 class BacktestIntegrationTest(unittest.TestCase):
 
     @classmethod
@@ -292,6 +366,33 @@ class PersistenceTest(unittest.TestCase):
         self.assertEqual(n1 + n2, 30)
         self.assertEqual(n3, 0)
         self.assertEqual(sim.last_date, market.calendar[-1])
+
+    def test_waits_for_the_european_prices(self):
+        """A download without Europe's latest day (Yahoo after midnight in
+        Zurich) leaves that day for the next run instead of simulating it
+        with stale European prices."""
+        market = synthetic_market(days=60)
+        start, last = market.calendar[-30], market.calendar[-1]
+        europe = [t for t in market.bars if t.endswith(daily_run.EUROPE)]
+        self.assertTrue(europe)
+        late = MarketData(
+            bars={t: df.drop(last) if t in europe else df
+                  for t, df in market.bars.items()},
+            fx=market.fx, currencies=market.currencies, source=market.source)
+        self.assertTrue(daily_run.europe_missing(late, last))
+        self.assertFalse(daily_run.europe_missing(market, last))
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "state.json"
+            with mock.patch.object(daily_run, "load_for_state",
+                                   lambda *a, **k: late):
+                sim, n1 = advance(state, "synthetic", start, last)
+            self.assertEqual(sim.last_date, market.calendar[-2])
+            self.assertEqual(sim.market.calendar[-1], market.calendar[-2])
+            with mock.patch.object(daily_run, "load_for_state",
+                                   lambda *a, **k: market):
+                sim, n2 = advance(state, "synthetic", start, last)
+        self.assertEqual((n1, n2), (29, 1))
+        self.assertEqual(sim.last_date, last)
 
     def test_waits_for_new_york_close(self):
         before = pd.Timestamp("2026-10-07 19:00", tz="UTC")  # 15:00 NY

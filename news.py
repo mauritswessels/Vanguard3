@@ -30,6 +30,7 @@ from email.utils import parsedate_to_datetime
 
 import config
 import finnhub_feed
+from claude_api import call_claude
 
 #: Single companies (funds have no quarterly results).
 STOCKS = set(config._US_STOCKS + config._SWISS_STOCKS + config._EURO_STOCKS)
@@ -223,17 +224,11 @@ def ask_claude(brief: dict, holdings: dict[str, float], cash_pct: float,
             + f"Universe: {', '.join(brief['markets'])}\n"
             f"Current holdings (share of account): {held}; cash {cash_pct:.1%}\n\n"
             + brief_text(brief))
-    body = json.dumps({
+    reply = call_claude({
         "model": model, "max_tokens": 4000,
         "system": SYSTEM.format(max_w=max_w, max_total=max_total),
         "messages": [{"role": "user", "content": user}],
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=body, method="POST",
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        reply = json.loads(r.read())
+    }, key, timeout=120)
     text = "".join(b.get("text", "") for b in reply.get("content", []))
     decision = parse_decision(text, list(brief["markets"]), max_w, max_total)
     decision["usage"] = reply.get("usage", {})
@@ -248,9 +243,18 @@ def parse_decision(text: str, universe: list[str], max_w: float,
     if not match:
         raise ValueError("No JSON in the model's reply")
     raw = json.loads(match.group(0))
+    given = raw.get("targets")
+    # A reply in the wrong shape must not read as "hold nothing" (that
+    # would sell everything).
+    if not isinstance(given, dict):
+        raise ValueError("The model's reply had no targets")
+    if given and not set(given) & set(universe):
+        raise ValueError("The model's targets named no market on the list")
     targets = {}
     for t in universe:
-        item = (raw.get("targets") or {}).get(t) or {}
+        item = given.get(t) or {}
+        if not isinstance(item, dict):
+            item = {}
         try:
             w = float(item.get("weight", 0) or 0)
         except (TypeError, ValueError):

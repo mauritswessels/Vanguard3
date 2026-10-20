@@ -156,7 +156,10 @@ class SimulatedBroker(BaseBroker):
                         for o in orders]
 
     def _reject(self, order: Order, why: str):
-        logger.debug("%s rejected %s %s: %s", self.portfolio.name,
-                     order.side, order.ticker, why)
+        # Replacing an order is routine; anything else means an order the
+        # agent wanted did not go through.
+        log = logger.debug if why.startswith("replaced") else logger.warning
+        log("%s: %s %s %s not filled: %s", self.portfolio.name, order.side,
+            order.quantity, order.ticker, why)
         self.rejected.append((order, why))
         return None
