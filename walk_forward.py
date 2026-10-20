@@ -66,6 +66,66 @@ def label(params: dict, grid: dict) -> str:
     return ", ".join(f"{k}={params[k]}" for k in keys)
 
 
+def make_folds(end: pd.Timestamp, test_years: int) -> list:
+    """Yearly test windows ``(first day, last day)`` ending at ``end``."""
+    edges = [end - pd.DateOffset(years=test_years - i)
+             for i in range(test_years + 1)]
+    return [(e0 + pd.Timedelta(days=1), e1)
+            for e0, e1 in zip(edges[:-1], edges[1:])]
+
+
+def walk_forward_agent(market, key: str, grid: dict, sim_start: pd.Timestamp,
+                       folds: list, train_years: int) -> dict:
+    """One agent through every fold: settings picked on the years before.
+
+    Returns the fold table, the stitched out-of-sample daily returns of the
+    tuned and of the default settings, and the default settings.
+    """
+    combos = expand(grid)
+    default = {k: config.__dict__[f"{key.upper()}_PARAMS"][k]
+               for k in combos[0]}
+    if default not in combos:
+        combos.append(default)
+    t0 = time.time()
+    runs = []
+    for params in combos:
+        acc = run_simulation(market, sim_start, build_accounts(
+            market, [make_agent(key, params)])).accounts[0]
+        log = acc.portfolio.trade_log()
+        trades = pd.Series(1, index=pd.DatetimeIndex(
+            log["date"] if not log.empty else []))
+        runs.append((params, acc.portfolio.equity_curve, trades))
+    logger.info("%s: %d parameter sets in %.0fs", key, len(combos),
+                time.time() - t0)
+
+    fold_rows, oos, oos_default = [], [], []
+    for lo, hi in folds:
+        train_lo = lo - pd.DateOffset(years=train_years)
+        best, best_sharpe = None, -math.inf
+        for params, eq, trades in runs:
+            s = window_stats(eq, trades, train_lo, lo - pd.Timedelta(days=1))
+            if (s["trades"] >= MIN_TRAIN_TRADES
+                    and s["sharpe"] > best_sharpe):
+                best, best_sharpe = (params, eq, trades), s["sharpe"]
+        if best is None:  # nothing traded enough: fall back to defaults
+            best = next(r for r in runs if r[0] == default)
+        test = window_stats(best[1], best[2], lo, hi)
+        dflt = next(r for r in runs if r[0] == default)
+        dtest = window_stats(dflt[1], dflt[2], lo, hi)
+        oos.append(test["returns"])
+        oos_default.append(dtest["returns"])
+        fold_rows.append({
+            "test": [lo.strftime("%Y-%m-%d"), hi.strftime("%Y-%m-%d")],
+            "params": best[0],
+            "train_sharpe": best_sharpe,
+            "test_return": test["return"], "test_sharpe": test["sharpe"],
+            "test_trades": test["trades"],
+            "default_test_return": dtest["return"],
+        })
+    return {"folds": fold_rows, "tuned": pd.concat(oos),
+            "default": pd.concat(oos_default), "default_params": default}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default=config.DATA_SOURCE,
@@ -82,10 +142,7 @@ def main() -> None:
     market = load_market_data(
         args.source, sim_start - pd.Timedelta(days=config.WARMUP_DAYS), end)
     end = market.calendar[-1]
-    test_edges = [end - pd.DateOffset(years=args.test_years - i)
-                  for i in range(args.test_years + 1)]
-    folds = [(e0 + pd.Timedelta(days=1), e1)
-             for e0, e1 in zip(test_edges[:-1], test_edges[1:])]
+    folds = make_folds(end, args.test_years)
 
     # Benchmark over the same test years, for reference.
     bench = run_simulation(market, sim_start, build_accounts(
@@ -101,54 +158,14 @@ def main() -> None:
     rows = []
 
     for key, grid in GRIDS.items():
-        combos = expand(grid)
-        default = {k: config.__dict__[f"{key.upper()}_PARAMS"][k]
-                   for k in combos[0]}
-        if default not in combos:
-            combos.append(default)
-        t0 = time.time()
-        runs = []
-        for params in combos:
-            acc = run_simulation(market, sim_start, build_accounts(
-                market, [make_agent(key, params)])).accounts[0]
-            log = acc.portfolio.trade_log()
-            trades = pd.Series(1, index=pd.DatetimeIndex(
-                log["date"] if not log.empty else []))
-            runs.append((params, acc.portfolio.equity_curve, trades))
-        logger.info("%s: %d parameter sets in %.0fs", key, len(combos),
-                    time.time() - t0)
+        wf = walk_forward_agent(market, key, grid, sim_start, folds,
+                                args.train_years)
+        fold_rows, default = wf["folds"], wf["default_params"]
 
-        fold_rows, oos, oos_default = [], [], []
-        for lo, hi in folds:
-            train_lo = lo - pd.DateOffset(years=args.train_years)
-            best, best_sharpe = None, -math.inf
-            for params, eq, trades in runs:
-                s = window_stats(eq, trades, train_lo,
-                                 lo - pd.Timedelta(days=1))
-                if (s["trades"] >= MIN_TRAIN_TRADES
-                        and s["sharpe"] > best_sharpe):
-                    best, best_sharpe = (params, eq, trades), s["sharpe"]
-            if best is None:  # nothing traded enough: fall back to defaults
-                best = next(r for r in runs if r[0] == default)
-            test = window_stats(best[1], best[2], lo, hi)
-            dflt = next(r for r in runs if r[0] == default)
-            dtest = window_stats(dflt[1], dflt[2], lo, hi)
-            oos.append(test["returns"])
-            oos_default.append(dtest["returns"])
-            fold_rows.append({
-                "test": [lo.strftime("%Y-%m-%d"), hi.strftime("%Y-%m-%d")],
-                "params": best[0],
-                "train_sharpe": best_sharpe,
-                "test_return": test["return"], "test_sharpe": test["sharpe"],
-                "test_trades": test["trades"],
-                "default_test_return": dtest["return"],
-            })
-
-        def curve(parts):
-            rets = pd.concat(parts)
+        def curve(rets):
             return config.INITIAL_CAPITAL_CHF * (1 + rets).cumprod()
 
-        tuned, dflt_curve = curve(oos), curve(oos_default)
+        tuned, dflt_curve = curve(wf["tuned"]), curve(wf["default"])
         latest = fold_rows[-1]["params"]
         summary = {
             "tuned": _curve_stats(tuned), "default": _curve_stats(dflt_curve),

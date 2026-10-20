@@ -1,0 +1,51 @@
+# Every Saturday morning: is each agent's lead skill or luck? Replays the
+# last five years with 300 monkeys, checks the live accounts the same way,
+# and publishes docs/data/skill.json (dashboard: Research > Skill or luck?).
+name: Skill or luck
+
+on:
+  schedule:
+    # 06:00 UTC, an hour before the weekly report.
+    - cron: "0 6 * * 6"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-trading
+  cancel-in-progress: false
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The newest main, not the commit this run was started on.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the study
+        run: python luck_study.py --source yfinance
+
+      - name: Commit the results
+        run: |
+          git config user.name "vanguard3-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/skill.json
+          if git diff --cached --quiet; then
+            echo "Nothing new"
+          else
+            git commit -m "Skill or luck study $(date -u +%F)"
+            git pull --rebase origin main
+            git push
+          fi
