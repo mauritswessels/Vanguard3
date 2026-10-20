@@ -17,6 +17,17 @@ Until ``live_from`` it runs in shadow mode: it decides and learns every day
 but places no orders. Exploration (random actions with probability
 ``epsilon``) is seeded by date and ticker, so a rerun gives the same result.
 
+Two trading rules keep it from churning (a 5-year replay made 6 fills a
+day, and costs ate most of the account):
+
+* Random tries are learned on paper, never traded (``explore_on_paper``).
+  Q-learning can learn what a pick would have earned without placing it,
+  so the orders were pure cost.
+* A holding is kept at least ``min_hold`` sessions. A sell the model wants
+  sooner is recorded as a hold, so it learns from what the account really
+  did. Without this the "do I hold it" input taught the model to sell the
+  day after almost every buy.
+
 Explanations are exact for this model: each feature's share of a score is
 ``w_a,i * phi_i``. They describe how the model scores, not why markets move.
 """
@@ -196,6 +207,10 @@ class LearnerAgent(BaseAgent):
             phi = self._phi(z, held)
             rng = random.Random(f"{self.params['seed']}|{date.date()}|{t}")
             a, explored = self._act(phi, rng, self.epsilon)
+            if (live and a == SELL and held and not explored
+                    and self.sessions_held(t, date, portfolio)
+                    < self.params["min_hold"]):
+                a = HOLD                    # too soon: it learns from the hold
             new = self._next_pos(a, held)
             self.shadow[t] = new
             self.memory[t] = {"phi": phi.tolist(), "a": a, "pos": new,
@@ -204,7 +219,8 @@ class LearnerAgent(BaseAgent):
             q = self._q(phi)
             self.last_decisions[t] = {"action": ACTIONS[a], "explored": explored,
                                       "q": [round(float(v), 4) for v in q]}
-            if not live or new == held:
+            if not live or new == held or (
+                    explored and self.params["explore_on_paper"]):
                 continue
             why = self._reason(phi, a, explored)
             if a == BUY:
@@ -213,6 +229,14 @@ class LearnerAgent(BaseAgent):
             elif a == SELL:
                 signals.append(Signal(t, Action.SELL, why))
         return signals
+
+    def sessions_held(self, ticker: str, date: pd.Timestamp,
+                      portfolio: Portfolio) -> int:
+        """Closes since the position was bought, ``date`` included."""
+        cal = self.market.calendar
+        entered = portfolio.positions[ticker].entry_date
+        return int(cal.searchsorted(date, "right")
+                   - cal.searchsorted(entered, "right"))
 
     def execute_trade(self, signals, date, portfolio, broker):
         # Respect the position cap: keep the highest-scoring buys only.
@@ -277,6 +301,12 @@ class LearnerAgent(BaseAgent):
             return None
         probs = self._probs(self._phi(z, 1))
         best = int(np.argmax(probs))
+        left = self.params["min_hold"] - self.sessions_held(ticker, date,
+                                                            portfolio)
+        if best == SELL and left > 0:
+            return (f"Model favours SELL, but it keeps every holding at "
+                    f"least {self.params['min_hold']} sessions "
+                    f"({left} more to go)")
         if best == SELL:
             return "Model now favours SELL"
         return (f"Model says keep holding; SELL gets {probs[SELL]:.0%} "
