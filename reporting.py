@@ -112,9 +112,13 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             # 5-year replay keeps the latest 300 to stay small.
             "trades": rows if mode == "paper" else rows[-300:],
             # Positions from first buy to last sell (paper only).
-            "trips": journal.round_trips(rows, pf.equity_curve, pf.positions,
-                                         prices_chf, pf.initial_cash, last)
+            "trips": journal.round_trips(
+                rows, pf.equity_curve, pf.positions, prices_chf,
+                pf.initial_cash, last,
+                [e for e in pf.events if e["kind"] == "split"])
             if mode == "paper" else [],
+            # Dividends received and share splits.
+            "events": pf.events,
             "activity": acc.activity[-120:],
             "pending_orders": acc.broker.pending_to_list(),
             # What each rule is waiting for at the last close.

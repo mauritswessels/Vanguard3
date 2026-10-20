@@ -31,6 +31,12 @@ FX_CONVERSION_BPS = 2.0          # spread paid when converting CHF <-> foreign
 CASH_BUFFER_PCT = 0.005          # cash kept back when sizing to absorb gaps
 MIN_ORDER_CHF = 500.0            # smaller buys are skipped: the fee would eat them,
                                  # and a 1-share order often cannot be paid at the open
+# Dividends are paid into cash on the day the share goes ex-dividend, minus
+# the tax the share's home country keeps and a Swiss investor cannot get
+# back: 15% for US and euro-area shares (after the tax treaty); Swiss
+# dividends count in full, as the 35% Swiss tax comes back with the tax
+# return. (Paper trading only: the backtests' prices include dividends.)
+DIVIDEND_TAX = {"USD": 0.15, "EUR": 0.15, "CHF": 0.0}
 
 # ---------------------------------------------------------------------------
 # Watchlist: ticker (Yahoo Finance symbol) -> trading currency.

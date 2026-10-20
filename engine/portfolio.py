@@ -108,6 +108,11 @@ class Portfolio:
         self.costs = cost_model or CostModel()
         self.positions: dict[str, Position] = {}
         self.trades: list[TradeRecord] = []
+        #: Dividends received and share splits, oldest first: dicts with
+        #: ``date``, ``ticker``, ``kind`` ("dividend" or "split") and, for
+        #: a dividend, ``chf`` paid in; for a split, ``ratio`` and ``chf``
+        #: paid for a fraction of a share.
+        self.events: list[dict] = []
         self._equity: dict[pd.Timestamp, float] = {}
 
     # -- queries -------------------------------------------------------------
@@ -222,6 +227,53 @@ class Portfolio:
         self.trades.append(trade)
         return trade
 
+    # -- dividends and splits ------------------------------------------------
+    def receive_dividend(self, date: pd.Timestamp, ticker: str,
+                         per_share: float, fx_rate: float,
+                         tax: float = 0.0) -> dict | None:
+        """Pay a dividend of ``per_share`` (trading currency) on the shares
+        held, converted at ``fx_rate`` (with the FX spread) and minus
+        ``tax`` (the share kept by the paying country)."""
+        pos = self.positions.get(ticker)
+        if pos is None or not per_share > 0:
+            return None
+        rate = fx_rate * (1 - self.costs.fx_spread(pos.currency))
+        chf = pos.quantity * per_share * rate * (1 - tax)
+        self.cash += chf
+        event = {"date": date.strftime("%Y-%m-%d"), "ticker": ticker,
+                 "kind": "dividend", "shares": pos.quantity,
+                 "per_share": per_share, "currency": pos.currency,
+                 "tax_pct": tax, "chf": chf}
+        self.events.append(event)
+        return event
+
+    def split(self, date: pd.Timestamp, ticker: str, ratio: float,
+              price_chf: float) -> dict | None:
+        """Apply a share split: ``ratio`` new shares for each old one (a
+        reverse split is below 1). The cost stays the same; a fraction of
+        a share left over is paid out at ``price_chf`` per new share, as
+        brokers do."""
+        pos = self.positions.get(ticker)
+        if pos is None or not ratio > 0 or ratio == 1:
+            return None
+        exact = pos.quantity * ratio
+        new = int(math.floor(exact + 1e-9))
+        fraction = max(exact - new, 0.0)
+        chf = fraction * price_chf if math.isfinite(price_chf) else 0.0
+        before = pos.quantity
+        if new == 0:
+            del self.positions[ticker]
+        else:
+            if fraction:
+                pos.cost_basis_chf *= new / exact
+            pos.quantity = new
+        self.cash += chf
+        event = {"date": date.strftime("%Y-%m-%d"), "ticker": ticker,
+                 "kind": "split", "ratio": ratio, "shares_before": before,
+                 "shares": new, "chf": chf}
+        self.events.append(event)
+        return event
+
     # -- valuation & reporting -----------------------------------------------
     def mark_to_market(self, date: pd.Timestamp,
                        prices_chf: pd.Series) -> float:
@@ -248,6 +300,7 @@ class Portfolio:
             "positions": [_jsonable(asdict(p))
                           for p in self.positions.values()],
             "trades": [_jsonable(asdict(t)) for t in self.trades],
+            "events": self.events,
             "equity": {d.strftime("%Y-%m-%d"): v
                        for d, v in self._equity.items()},
         }
@@ -265,6 +318,7 @@ class Portfolio:
             t, date=pd.Timestamp(t["date"]),
             decided=pd.Timestamp(t["decided"]) if t.get("decided") else None))
             for t in data["trades"]]
+        pf.events = list(data.get("events", []))
         pf._equity = {pd.Timestamp(d): float(v)
                       for d, v in data["equity"].items()}
         return pf
@@ -280,6 +334,8 @@ class Portfolio:
             "win_rate": wins / len(sells) if sells else float("nan"),
             "realized_pnl_chf": sum(t.realized_pnl_chf for t in sells),
             "commissions_chf": sum(t.commission_chf for t in self.trades),
+            "dividends_chf": sum(e["chf"] for e in self.events
+                                 if e["kind"] == "dividend"),
             "slippage_fx_chf": sum(t.slippage_chf + t.fx_cost_chf
                                    for t in self.trades),
             "open_positions": len(self.positions),

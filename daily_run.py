@@ -12,7 +12,7 @@ What it does:
    from ``state/paper_state.json``,
 3. simulates every *completed* session since the last run, exactly like a
    backtest day (yesterday's orders fill at today's open, then new
-   decisions at today's close),
+   decisions at today's close), plus dividends and share splits,
 4. saves the state and refreshes ``docs/data/paper.json`` for the dashboard.
 
 If a run is missed, the next one catches up on all skipped sessions.
@@ -120,6 +120,12 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
                     f"{config.INITIAL_CAPITAL_CHF:,.0f}")
         sim = Simulator(market, build_accounts(market, paper_lineup(market)),
                         tuner=retune)
+
+    # Dividends are paid and splits applied in live paper trading only.
+    sim.corporate_actions = True
+    for split in sim.apply_splits():
+        logger.info("Share split: %s, %g new shares per old one (%s)",
+                    split["ticker"], split["ratio"], split["date"])
 
     cal = market.calendar
     new = cal[(cal >= paper_start) & (cal <= cutoff)]

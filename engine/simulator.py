@@ -6,6 +6,11 @@
 2. the portfolio is marked to market at today's close,
 3. the agent reads data up to today's close and submits new orders.
 
+Live paper trading also pays dividends (before the open: whoever held the
+share at the last close gets it) and applies share splits
+(``apply_splits``). Backtests leave both out because their prices are
+adjusted for them already.
+
 A backtest calls ``step`` for every historical date in one go. The daily
 paper-trading job restores the simulator from JSON, calls ``step`` only for
 the sessions that are new since the last run, and saves it again. Because
@@ -60,6 +65,8 @@ class Simulator:
         self.accounts = accounts
         self.tuner = tuner
         self.last_date: pd.Timestamp | None = None
+        #: Pay dividends (live paper trading; see the module docstring).
+        self.corporate_actions = False
         for acc in accounts:
             acc.agent.prepare(market)
 
@@ -79,6 +86,13 @@ class Simulator:
             if getattr(acc.agent, "uses_team", False):
                 acc.agent.team = self.accounts   # the Team Manager
             seen = len(acc.broker.rejected)
+            if self.corporate_actions:
+                self._pay_dividends(acc, date)
+            # Dividends paid and splits applied since the last session.
+            events = [e for e in acc.portfolio.events
+                      if pd.Timestamp(e["date"]) <= date
+                      and (self.last_date is None
+                           or pd.Timestamp(e["date"]) > self.last_date)]
             fills = acc.broker.process(date)
             acc.portfolio.mark_to_market(date, prices_chf)
             signals = acc.agent.calculate_signals(date, acc.portfolio)
@@ -89,10 +103,12 @@ class Simulator:
             # Orders that did not go through (replacing one is routine).
             failed = [(o, why) for o, why in acc.broker.rejected[seen:]
                       if not why.startswith("replaced")]
-            if signals or fills or failed:
+            if signals or fills or failed or events:
                 entry = _activity(
                     date, signals, orders, fills,
                     decision_context(acc.agent, signals, date, acc.portfolio))
+                if events:
+                    entry["corporate"] = [dict(e) for e in events]
                 if failed:
                     entry["rejected"] = [
                         {"ticker": o.ticker, "side": o.side,
@@ -101,6 +117,50 @@ class Simulator:
                          "why": why} for o, why in failed]
                 acc.activity.append(entry)
         self.last_date = date
+
+    def _pay_dividends(self, acc: Account, date: pd.Timestamp) -> None:
+        """Dividends of the shares ``acc`` held at the last close that went
+        ex-dividend since then."""
+        if self.last_date is None:
+            return
+        for t in sorted(acc.portfolio.positions):
+            acts = self.market.actions.get(t)
+            if acts is None or acts.empty:
+                continue
+            due = acts.loc[(acts.index > self.last_date)
+                           & (acts.index <= date), "dividend"]
+            for day, amount in due.items():
+                if amount > 0:
+                    ccy = self.market.currencies[t]
+                    acc.portfolio.receive_dividend(
+                        day, t, float(amount), self.market.fx_rate(t, date),
+                        config.DIVIDEND_TAX.get(ccy, 0.0))
+
+    def apply_splits(self) -> list[dict]:
+        """Restate every account in post-split shares for the splits since
+        the last session, before any new session is simulated: Yahoo
+        divides all earlier prices by a split's ratio the day it happens,
+        so the new sessions' prices are all in post-split shares."""
+        if self.last_date is None:
+            return []
+        cal = self.market.calendar
+        done = []
+        for t, acts in sorted(self.market.actions.items()):
+            due = acts.loc[(acts.index > self.last_date)
+                           & (acts.index <= cal[-1]), "split"]
+            for day, ratio in due.items():
+                if not ratio > 0 or ratio == 1:
+                    continue
+                first = cal[cal >= day][0]
+                price = float(self.market.close_panel.at[first, t]
+                              * self.market.fx_rate(t, first))
+                for acc in self.accounts:
+                    acc.portfolio.split(day, t, float(ratio), price)
+                    acc.broker.split(t, float(ratio))
+                    acc.agent.on_split(t, float(ratio))
+                done.append({"ticker": t, "date": day.strftime("%Y-%m-%d"),
+                             "ratio": float(ratio)})
+        return done
 
     def add_account(self, agent: BaseAgent, since: pd.Timestamp) -> None:
         """Join a new competitor mid-run with untouched starting cash.

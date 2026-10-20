@@ -11,6 +11,9 @@ Conventions
   and columns ``Open, High, Low, Close, Volume``.
 * Prices are split/dividend adjusted.
 * FX bars give the price of 1 unit of foreign currency in CHF.
+* Dividends and share splits come separately (``MarketData.actions``), by
+  the day the share goes ex-dividend or splits: ``dividend`` per share in
+  the trading currency, ``split`` new shares per old share (0 = none).
 """
 
 from __future__ import annotations
@@ -57,6 +60,8 @@ class YFinanceProvider(DataProvider):
 
     def __init__(self, retries: int = 3):
         self.retries = retries
+        #: Dividends and splits of each symbol fetched, see ``corporate_actions``.
+        self.actions: dict[str, pd.DataFrame] = {}
 
     def fetch(self, symbol, start, end):
         try:
@@ -73,9 +78,10 @@ class YFinanceProvider(DataProvider):
                     end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
                     interval=config.DATA_INTERVAL,
                     auto_adjust=True,
-                    actions=False,
+                    actions=True,
                 )
                 if raw is not None and not raw.empty:
+                    self.actions[symbol] = corporate_actions(raw)
                     return clean_bars(raw)
                 last_error = DataUnavailableError(f"No data for {symbol}")
             except Exception as exc:  # network hiccup, rate limit, ...
@@ -192,6 +198,20 @@ def clean_bars(df: pd.DataFrame) -> pd.DataFrame:
     return df.astype(float)
 
 
+def corporate_actions(raw: pd.DataFrame) -> pd.DataFrame:
+    """Days with a dividend or a split, from a Yahoo download made with
+    ``actions=True``: columns ``dividend`` and ``split``."""
+    out = pd.DataFrame({
+        "dividend": raw["Dividends"] if "Dividends" in raw else 0.0,
+        "split": raw["Stock Splits"] if "Stock Splits" in raw else 0.0,
+    }, index=raw.index).fillna(0.0).astype(float)
+    idx = pd.DatetimeIndex(out.index)
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+    out.index = idx.normalize()
+    return out[(out != 0).any(axis=1)]
+
+
 # ---------------------------------------------------------------------------
 # Aligned market data handed to the engine
 # ---------------------------------------------------------------------------
@@ -208,6 +228,9 @@ class MarketData:
     fx: dict[str, pd.DataFrame]
     currencies: dict[str, str]
     source: str
+    #: Dividends and splits per ticker (see ``corporate_actions``); only
+    #: Yahoo downloads have them.
+    actions: dict[str, pd.DataFrame] = field(default_factory=dict)
     calendar: pd.DatetimeIndex = field(init=False)
     open_panel: pd.DataFrame = field(init=False)
     close_panel: pd.DataFrame = field(init=False)
@@ -247,7 +270,9 @@ class MarketData:
         """The same data without the days after ``end``."""
         return MarketData(bars={t: df.loc[:end] for t, df in self.bars.items()},
                           fx={c: df.loc[:end] for c, df in self.fx.items()},
-                          currencies=self.currencies, source=self.source)
+                          currencies=self.currencies, source=self.source,
+                          actions={t: df.loc[:end]
+                                   for t, df in self.actions.items()})
 
     def history(self, ticker: str, end: pd.Timestamp) -> pd.DataFrame:
         """Bars for ``ticker`` up to and including ``end`` (no look-ahead)."""
@@ -280,6 +305,8 @@ class DataManager:
         self.cache_dir = Path(cache_dir) if cache_dir else None
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
+        #: Dividends and splits of the symbols freshly downloaded.
+        self.actions: dict[str, pd.DataFrame] = {}
 
     # -- cache ---------------------------------------------------------------
     def _cache_path(self, symbol: str) -> Path:
@@ -319,6 +346,9 @@ class DataManager:
             logger.warning("%s failed on %s (%s); trying %s", symbol,
                            self.provider.name, exc, self.backup.name)
             return clean_bars(self.backup.fetch(symbol, start, end))
+        actions = getattr(self.provider, "actions", {}).get(symbol)
+        if actions is not None:
+            self.actions[symbol] = actions
         self._write_cache(symbol, df)
         return df
 
@@ -348,7 +378,9 @@ class DataManager:
         for ccy in set(currencies.values()) - {config.BASE_CURRENCY}:
             fx[ccy] = self.get_bars(config.FX_TICKERS[ccy], start, end)
         return MarketData(bars=bars, fx=fx, currencies=currencies,
-                          source=self.provider.name)
+                          source=self.provider.name,
+                          actions={t: self.actions[t] for t in bars
+                                   if t in self.actions})
 
 
 def load_market_data(source: str, start: pd.Timestamp, end: pd.Timestamp,

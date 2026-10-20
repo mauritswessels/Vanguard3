@@ -541,7 +541,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
         ${f.side === "SELL" ? `<span class="num ${cls(f.pnl_chf)}">${chf.format(f.pnl_chf)} CHF</span>` : ""}</div>`));
       day.signals.filter(x => !x.ordered).forEach(x => out.push(`<div class="feed-item"><span class="tag">wanted ${x.action === "BUY" ? "in" : "out"}</span>
         <span class="tick">${esc(x.ticker)}</span><span class="muted">${esc(x.reason)}, no cash left</span></div>`));
-      out.push(...notFilled(day));
+      out.push(...notFilled(day), ...corporate(day));
     }
     a.pending_orders.forEach(o => out.push(`<div class="feed-item"><span class="side ${o.side}">${o.side}</span>
       <span class="tick">${esc(o.ticker)}</span><span class="num">${o.quantity} sh</span><span class="muted">at the next open · ${esc(o.reason)}</span></div>`));
@@ -555,6 +555,15 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   function notFilled(day) {
     return (day.rejected || []).map(r => `<div class="feed-item"><span class="tag">not filled</span>
       <span class="tick">${esc(r.ticker)}</span><span class="muted">${r.side === "BUY" ? "buy" : "sell"} ${r.quantity} sh: ${esc(WHY[r.why] || r.why)}</span></div>`);
+  }
+
+  /** Dividends paid into cash and share splits that day. */
+  function corporate(day) {
+    return (day.corporate || []).map(e => e.kind === "dividend"
+      ? `<div class="feed-item"><span class="tag">dividend</span><span class="tick">${esc(e.ticker)}</span>
+        <span class="num up">+${chf.format(e.chf)} CHF</span><span class="muted">${fix(e.per_share)} ${esc(e.currency)} a share on ${e.shares} sh${e.tax_pct ? `, after ${Math.round(e.tax_pct * 100)}% foreign tax` : ""}</span></div>`
+      : `<div class="feed-item"><span class="tag">split</span><span class="tick">${esc(e.ticker)}</span>
+        <span class="muted">${e.ratio >= 1 ? `${+e.ratio.toFixed(3)} new shares for each old one` : `1 new share for every ${+(1 / e.ratio).toFixed(3)} old ones`}: ${e.shares_before} sh became ${e.shares} sh${e.chf ? `, ${chf.format(e.chf)} CHF paid for the leftover fraction` : ""}</span></div>`);
   }
 
   function summary(a) {
@@ -863,7 +872,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       day.signals.forEach(s => items.push(`<div class="feed-item"><span class="tag">${s.action === "BUY" ? "wants in" : "wants out"}</span>
         <span class="tick">${esc(s.ticker)}</span><span class="muted">${esc(s.reason)}</span>
         ${s.ordered ? "" : `<span class="tag">${esc(s.note || "no cash left")}</span>`}</div>`));
-      items.push(...notFilled(day));
+      items.push(...notFilled(day), ...corporate(day));
       return `<div class="feed-day"><time>${fmtDate(ts(day.date))}${day.time === "midday" ? " · midday" : ""}</time>${items.join("")}</div>`;
     }).join("") || `<div class="empty">No decisions yet.</div>`;
 
