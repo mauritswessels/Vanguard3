@@ -38,7 +38,7 @@ export function RaceChart({ data, height = 400, compact = false }: { data: RunDa
   const toggle = (id: string) => setHidden((h) => { const n = new Set(h); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card min-w-0 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
         <div className="text-[13px] text-muted">
           {hover.date ? <>Close of <span className="text-ink">{dateShort(hover.date)}</span></> : <>Since {r.from ? dateShort(r.from) : "launch"} · hover the chart to read any day</>}
@@ -49,7 +49,7 @@ export function RaceChart({ data, height = 400, compact = false }: { data: RunDa
         </div>
       </div>
       <div className="grid lg:grid-cols-[1fr_300px]">
-        <div className="px-2 pt-3 sm:px-4">
+        <div className="min-w-0 px-2 pt-3 sm:px-4">
           <LineChart lines={lines} format={fmt} height={height} zeroLine={mode === "value" ? data.initial_capital_chf : 0}
             onHover={(date, values) => setHover({ date, values })} />
         </div>

@@ -15,6 +15,8 @@ const Research = lazy(() => import("./pages/Research"));
 const Methodology = lazy(() => import("./pages/Methodology"));
 const Journal = lazy(() => import("./pages/Journal"));
 const About = lazy(() => import("./pages/About"));
+// Development only: the font picker used to choose the platform's type.
+const FontLab = import.meta.env.DEV ? lazy(() => import("./dev/FontLab")) : null;
 
 function Loading() {
   return <Section><div className="h-[60vh] animate-pulse rounded-3xl bg-surface" /></Section>;
@@ -51,6 +53,7 @@ export default function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          {FontLab && <Suspense fallback={null}><FontLab /></Suspense>}
         </Layout>
       </LiveProvider>
     </HashRouter>

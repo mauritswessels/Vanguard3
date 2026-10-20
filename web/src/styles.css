@@ -170,8 +170,8 @@ body::before {
   }
   .display {
     font-family: var(--font-display);
-    font-weight: 400;
-    letter-spacing: -0.012em;
+    font-weight: var(--display-weight, 400);
+    letter-spacing: var(--display-tracking, -0.012em);
     line-height: 1.02;
   }
   .eyebrow {

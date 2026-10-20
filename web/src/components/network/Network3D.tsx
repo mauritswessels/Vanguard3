@@ -1,32 +1,43 @@
-/* The live network: every account and every market in one 3D scene, built
- * only from data/paper.json.
+/* The live network as a globe you can spin: every account and every market
+ * in one 3D scene, built only from data/paper.json.
  *
- *   centre      the Vanguard3 core, two gold rings turning around a light
- *   inner ring  the agents. Size = rank in the race (the leader is largest
- *               and wears a gold ring); fixed twins are wire shells beside
- *               their learner; the yardsticks are ivory and grey
- *   outer ring  the 107 markets, in five sectors by kind of asset. A
- *               market glows brighter the more agents hold it
- *   arcs        a position held that day, in the agent's colour, with light
- *               flowing from agent to market; dashed = an order queued for
- *               the next open (latest day only)
- *   dust        one speck per day an agent came close to buying a market
- *               (a near miss), so the space between them fills up over time
+ *   centre    the Vanguard3 core, two gold rings turning around a light
+ *   agents    inside the globe. Size = place in the race (the leader is
+ *             largest and wears a gold ring); fixed twins are wire shells
+ *             beside their learner; the yardsticks are ivory and grey
+ *   markets   the 107 markets on the globe's surface, in bands by kind of
+ *             asset (see SECTORS); a market glows brighter the more agents
+ *             hold it
+ *   arcs      a position held that day, in the agent's colour, with light
+ *             flowing from agent to market; dashed = an order queued for
+ *             the next open (latest day only)
+ *   dust      one speck per day an agent came close to buying a market
  *
- * Hover an agent to light up its part of the network; click it to open its
- * profile. The day slider replays the network since launch. */
+ * Drag to spin it in any direction, pinch or ⌘/Ctrl + scroll to zoom (a
+ * plain scroll still scrolls the page). Hover an agent to light up its part
+ * of the network; click it to open its profile. */
 import { Html, Line, OrbitControls, Sparkles } from "@react-three/drei";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { ORDER } from "../../lib/agents";
 import { pct } from "../../lib/format";
 import type { Agent, RunData } from "../../lib/types";
 
-const GROUPS = ["US stocks", "Stock funds (ETFs)", "Bonds and commodities", "European stocks", "Swiss stocks"];
-const R_AGENTS = 6.6;
-const R_MARKETS = 12.4;
+/** The globe's bands, top to bottom, with the tint of their markets. */
+export const SECTORS: { name: string; color: string }[] = [
+  { name: "US stocks", color: "#efe3c4" },
+  { name: "Stock funds (ETFs)", color: "#d9b46c" },
+  { name: "Bonds and commodities", color: "#9fb4c8" },
+  { name: "European stocks", color: "#b9a7e0" },
+  { name: "Swiss stocks", color: "#e79a86" },
+];
+const R_AGENTS = 5.2;
+const R_MARKETS = 11;
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const MIN_DIST = 13, MAX_DIST = 90;
 
 /** Agent colours as hex for the scene (the page's dark palette). */
 const HEX: Record<string, string> = {
@@ -35,10 +46,20 @@ const HEX: Record<string, string> = {
 };
 const GOLD = "#d4b26a";
 
+export interface NetworkApi { zoom: (factor: number) => void; reset: () => void }
+
 function seeded(text: string) {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
   return () => { h += 0x6d2b79f5; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+/** Evenly spread points on a unit sphere, top to bottom (Fibonacci lattice). */
+function sphere(n: number) {
+  return Array.from({ length: n }, (_, i) => {
+    const y = 1 - ((i + 0.5) / n) * 2, r = Math.sqrt(1 - y * y), th = i * GOLDEN;
+    return new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r);
+  });
 }
 
 /** A soft round sprite, shared by halos, flow lights and dust. */
@@ -54,56 +75,42 @@ function dot() {
 }
 
 interface Node { agent: Agent; pos: THREE.Vector3; color: string }
-interface Market { ticker: string; group: string; pos: THREE.Vector3 }
+interface Market { ticker: string; group: string; color: string; pos: THREE.Vector3 }
 
 function useLayout(d: RunData) {
   return useMemo(() => {
-    // Markets: five sectors around the outer ring, a little scattered in height.
+    // Markets on the surface: the lattice runs top to bottom, so taking the
+    // sectors in order gives each one its own band of the globe.
     const tickers = Object.keys(d.prices);
-    const byGroup = GROUPS.map((g) => tickers.filter((t) => (d.groups[t] || "US stocks") === g));
-    const extra = tickers.filter((t) => !GROUPS.includes(d.groups[t] || "US stocks"));
-    if (extra.length) byGroup[0].push(...extra);
-    const GAP = 4, slots = tickers.length + GAP * GROUPS.length;
-    const markets: Market[] = [], sectors: { name: string; pos: THREE.Vector3 }[] = [];
-    let slot = 0;
-    byGroup.forEach((list, gi) => {
-      const first = slot;
-      list.forEach((t) => {
-        const r = seeded(t), ang = ((slot + 0.5) / slots) * Math.PI * 2;
-        const rad = R_MARKETS + (r() - 0.5) * 1.6, y = (r() - 0.5) * 3.2;
-        markets.push({ ticker: t, group: GROUPS[gi], pos: new THREE.Vector3(Math.cos(ang) * rad, y, Math.sin(ang) * rad) });
-        slot++;
-      });
-      const mid = ((first + slot) / 2 / slots) * Math.PI * 2;
-      sectors.push({ name: GROUPS[gi], pos: new THREE.Vector3(Math.cos(mid) * (R_MARKETS + 2.6), -2.4, Math.sin(mid) * (R_MARKETS + 2.6)) });
-      slot += GAP;
-    });
+    const names = SECTORS.map((s) => s.name);
+    const groupOf = (t: string) => (names.includes(d.groups[t]) ? d.groups[t] : "US stocks");
+    const ordered = names.flatMap((g) => tickers.filter((t) => groupOf(t) === g));
+    const pts = sphere(ordered.length);
+    const markets: Market[] = ordered.map((t, i) => ({
+      ticker: t, group: groupOf(t), color: SECTORS[names.indexOf(groupOf(t))].color,
+      pos: pts[i].clone().multiplyScalar(R_MARKETS + (seeded(t)() - 0.5) * 0.5),
+    }));
     const marketAt = new Map(markets.map((m) => [m.ticker, m]));
 
-    // Agents: the inner ring in a fixed order; twins just outside their learner.
-    const main = d.agents.filter((a) => !a.fixed_twin)
-      .sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
-    const nodes: Node[] = [];
-    main.forEach((a, i) => {
-      const ang = (i / main.length) * Math.PI * 2 + 0.3;
-      nodes.push({ agent: a, color: HEX[a.key] || GOLD,
-        pos: new THREE.Vector3(Math.cos(ang) * R_AGENTS, Math.sin(i * 1.7) * 1.25, Math.sin(ang) * R_AGENTS) });
-    });
+    // Agents on a smaller sphere inside, in a fixed order; twins beside their learner.
+    const main = d.agents.filter((a) => !a.fixed_twin).sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
+    const inner = sphere(main.length);
+    const nodes: Node[] = main.map((a, i) => ({ agent: a, color: HEX[a.key] || GOLD, pos: inner[i].clone().multiplyScalar(R_AGENTS) }));
     d.agents.filter((a) => a.fixed_twin).forEach((a) => {
-      const lead = nodes.find((n) => n.agent.key === a.key && !n.agent.fixed_twin);
-      const base = lead ? lead.pos : new THREE.Vector3(R_AGENTS, 0, 0);
-      const ang = Math.atan2(base.z, base.x) + 0.2;
-      nodes.push({ agent: a, color: HEX[a.key] || GOLD,
-        pos: new THREE.Vector3(Math.cos(ang) * (R_AGENTS + 1.7), base.y - 0.9, Math.sin(ang) * (R_AGENTS + 1.7)) });
+      const lead = nodes.find((n) => n.agent.key === a.key);
+      const base = lead ? lead.pos.clone() : new THREE.Vector3(R_AGENTS, 0, 0);
+      const side = new THREE.Vector3(0, 1, 0).cross(base).normalize().multiplyScalar(1.1);
+      nodes.push({ agent: a, color: HEX[a.key] || GOLD, pos: base.multiplyScalar(1.28).add(side) });
     });
-    return { markets, marketAt, sectors, nodes };
+    return { markets, marketAt, nodes };
   }, [d]);
 }
 
-function arc(a: THREE.Vector3, b: THREE.Vector3, lift = 1.6) {
+/** A curve from an agent out to a market, bowing outwards like a flight path. */
+function arc(a: THREE.Vector3, b: THREE.Vector3, lift = 2.2) {
   const mid = a.clone().add(b).multiplyScalar(0.5);
-  mid.multiplyScalar(0.82).add(new THREE.Vector3(0, lift + a.distanceTo(b) * 0.06, 0));
-  return new THREE.QuadraticBezierCurve3(a, mid, b);
+  const out = mid.length() > 0.5 ? mid.clone().normalize() : new THREE.Vector3(0, 1, 0);
+  return new THREE.QuadraticBezierCurve3(a, mid.add(out.multiplyScalar(lift)), b);
 }
 
 /** Positions held by an agent at the close of a date (from its round trips). */
@@ -133,6 +140,21 @@ function Core() {
   );
 }
 
+/** A faint wire globe and its equator, so the sphere reads as a sphere. */
+function Shell() {
+  const geo = useMemo(() => new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(R_MARKETS * 0.985, 3), 1), []);
+  const ring = useMemo(() => Array.from({ length: 129 }, (_, i) => {
+    const t = (i / 128) * Math.PI * 2; return new THREE.Vector3(Math.cos(t) * R_MARKETS, 0, Math.sin(t) * R_MARKETS);
+  }), []);
+  useEffect(() => () => geo.dispose(), [geo]);
+  return (
+    <>
+      <lineSegments geometry={geo}><lineBasicMaterial color={GOLD} transparent opacity={0.045} depthWrite={false} /></lineSegments>
+      <Line points={ring} color={GOLD} lineWidth={0.6} transparent opacity={0.16} />
+    </>
+  );
+}
+
 function Markets({ markets, held, focusHeld, onHover }: {
   markets: Market[]; held: Map<string, number>; focusHeld: Set<string> | null; onHover: (t: string | null) => void;
 }) {
@@ -144,10 +166,10 @@ function Markets({ markets, held, focusHeld, onHover }: {
       const n = held.get(mk.ticker) || 0;
       const lit = focusHeld ? focusHeld.has(mk.ticker) : n > 0;
       tmp.position.copy(mk.pos);
-      tmp.scale.setScalar(0.075 + Math.min(n, 7) * 0.024 + (lit ? 0.03 : 0));
+      tmp.scale.setScalar(0.08 + Math.min(n, 7) * 0.026 + (lit ? 0.03 : 0));
       tmp.updateMatrix();
       m.setMatrixAt(i, tmp.matrix);
-      col.set(lit ? "#fbe9bd" : focusHeld ? "#4a453c" : "#a39a87").multiplyScalar(lit ? 1.6 : 1);
+      col.set(mk.color).multiplyScalar(lit ? 1.7 : focusHeld ? 0.25 : 0.55);
       m.setColorAt(i, col);
     });
     m.instanceMatrix.needsUpdate = true;
@@ -255,9 +277,8 @@ function Dust({ node, marketAt, upto, dim }: { node: Node; marketAt: Map<string,
     (node.agent.scans || []).filter(([date]) => date <= upto).forEach(([, near]) => {
       Object.entries(near).forEach(([t, c]) => {
         const m = marketAt.get(t); if (!m) return;
-        const k = 0.3 + r() * 0.6;
-        const p = node.pos.clone().lerp(m.pos, k);
-        p.x += (r() - 0.5) * 0.9 * c; p.y += (r() - 0.5) * 0.9 * c + 0.4; p.z += (r() - 0.5) * 0.9 * c;
+        const p = arc(node.pos, m.pos).getPoint(0.3 + r() * 0.6);
+        p.x += (r() - 0.5) * 0.8 * c; p.y += (r() - 0.5) * 0.8 * c; p.z += (r() - 0.5) * 0.8 * c;
         pts.push(p.x, p.y, p.z);
       });
     });
@@ -273,23 +294,11 @@ function Dust({ node, marketAt, upto, dim }: { node: Node; marketAt: Map<string,
   );
 }
 
-/** On wide screens the scene sits right of centre, leaving room for the
- *  headline; the camera still orbits the scene's own middle. */
-function Offset({ shift, lift }: { shift: number; lift: number }) {
-  const { camera, size } = useThree();
-  useLayoutEffect(() => {
-    const cam = camera as THREE.PerspectiveCamera;
-    cam.setViewOffset(size.width, size.height, -size.width * shift, size.height * lift, size.width, size.height);
-    cam.updateProjectionMatrix();
-  }, [camera, size, shift, lift]);
-  return null;
-}
-
 function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
   d: RunData; day: number; focus: string | null; setFocus: (id: string | null) => void;
   onSelect?: (a: Agent) => void; motion: boolean; labels: boolean;
 }) {
-  const { markets, marketAt, sectors, nodes } = useLayout(d);
+  const { markets, marketAt, nodes } = useLayout(d);
   const dates = d.agents[0]?.equity.map((p) => p[0]) || [d.last];
   const i = Math.min(day, dates.length - 1), date = dates[i], latest = i === dates.length - 1;
   const [hoverMarket, setHoverMarket] = useState<string | null>(null);
@@ -319,7 +328,7 @@ function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
       });
       if (latest) n.agent.pending_orders.filter((o) => o.side === "BUY").forEach((o) => {
         const m = marketAt.get(o.ticker); if (!m) return;
-        out.push({ key: n.agent.id + o.ticker + "p", agentId: n.agent.id, curve: arc(n.pos, m.pos, 2.4), color: n.color, pending: true });
+        out.push({ key: n.agent.id + o.ticker + "p", agentId: n.agent.id, curve: arc(n.pos, m.pos, 3.2), color: n.color, pending: true });
       });
     });
     return out;
@@ -336,7 +345,8 @@ function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
   return (
     <>
       <Core />
-      {motion && <Sparkles count={70} scale={[34, 12, 34]} size={1.6} speed={0.18} color={GOLD} opacity={0.35} />}
+      <Shell />
+      {motion && <Sparkles count={90} scale={[40, 40, 40]} size={1.5} speed={0.16} color={GOLD} opacity={0.3} />}
       <Markets markets={markets} held={state.heldCount} focusHeld={focusHeld} onHover={setHoverMarket} />
       {nodes.filter((n) => !n.agent.fixed_twin).map((n) => (
         <Dust key={n.agent.id} node={n} marketAt={marketAt} upto={date} dim={!!focus && focus !== n.agent.id} />
@@ -348,7 +358,7 @@ function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
           color={new THREE.Color(e.color).multiplyScalar(focus === e.agentId ? 1.9 : 1.25)}
           lineWidth={focus === e.agentId ? 1.8 : 1}
           transparent
-          opacity={focus ? (focus === e.agentId ? 0.95 : 0.04) : e.pending ? 0.5 : 0.22}
+          opacity={focus ? (focus === e.agentId ? 0.95 : 0.04) : e.pending ? 0.5 : 0.24}
           dashed={e.pending}
           dashSize={0.35}
           gapSize={0.25}
@@ -372,9 +382,10 @@ function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
           onClick={() => onSelect?.(n.agent)}
         />
       ))}
-      {labels && nodes.map((n) => {
+      {nodes.map((n) => {
         const r = state.ret.get(n.agent.id)!;
         const on = focus === n.agent.id;
+        if (!labels && !on) return null;
         return (
           <Html key={n.agent.id + "l"} position={[n.pos.x, n.pos.y + state.radius.get(n.agent.id)! + 0.42, n.pos.z]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
             <div className={`v3-tag ${on ? "on" : ""} ${focus && !on ? "dim" : ""} ${n.agent.fixed_twin && !on ? "off" : ""}`} style={{ ["--c" as string]: n.color }}>
@@ -385,63 +396,114 @@ function Scene({ d, day, focus, setFocus, onSelect, motion, labels }: {
         );
       })}
       {labels && markets.filter((m) => state.heldCount.has(m.ticker) || hoverMarket === m.ticker).map((m) => (
-        <Html key={m.ticker} position={[m.pos.x, m.pos.y + 0.45, m.pos.z]} center zIndexRange={[10, 0]} style={{ pointerEvents: "none" }}>
+        <Html key={m.ticker} position={[m.pos.x * 1.04, m.pos.y * 1.04 + 0.3, m.pos.z * 1.04]} center zIndexRange={[10, 0]} style={{ pointerEvents: "none" }}>
           <div className={`v3-mk ${hoverMarket === m.ticker ? "on" : ""} ${labelled.has(m.ticker) ? "" : "off"}`}>
             {m.ticker}
             {hoverMarket === m.ticker && <span>{holders.length ? `held by ${holders.map((h) => h.agent.name).join(", ")}` : m.group}</span>}
           </div>
         </Html>
       ))}
-      {labels && sectors.map((s) => (
-        <Html key={s.name} position={s.pos} center zIndexRange={[5, 0]} style={{ pointerEvents: "none" }}>
-          <div className="v3-sector">{s.name}</div>
-        </Html>
-      ))}
     </>
   );
 }
 
-export default function Network3D({ data, day, focus, setFocus, onSelect }: {
+/** Frames the globe for the screen's shape, and exposes zoom and reset. */
+function Rig({ controls, apiRef, wrap }: {
+  controls: RefObject<OrbitControlsImpl | null>; apiRef?: RefObject<NetworkApi | null>; wrap: RefObject<HTMLDivElement | null>;
+}) {
+  const { camera, size } = useThree();
+  const home = useRef(0);
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const half = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    // Fit the globe (radius ~12.5) in the shorter side of the screen.
+    const dist = Math.max(36, 16.2 / (half * Math.min(1, size.width / size.height)));
+    if (!home.current || Math.abs(home.current - dist) > 1) {
+      home.current = dist;
+      cam.position.setLength(dist);
+      controls.current?.update();
+    }
+  }, [camera, size, controls]);
+  useEffect(() => {
+    const zoom = (f: number) => {
+      const c = controls.current; if (!c) return;
+      const off = camera.position.clone().sub(c.target);
+      off.setLength(THREE.MathUtils.clamp(off.length() * f, MIN_DIST, MAX_DIST));
+      camera.position.copy(c.target).add(off);
+      c.update();
+    };
+    const reset = () => {
+      const c = controls.current; if (!c) return;
+      c.target.set(0, 0, 0);
+      camera.position.set(0, home.current * 0.3, home.current * 0.95).setLength(home.current);
+      c.update();
+    };
+    if (apiRef) apiRef.current = { zoom, reset };
+    // Pinch on a trackpad arrives as a wheel event with Ctrl held; a plain
+    // scroll is left to the page.
+    const el = wrap.current;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoom(Math.exp(e.deltaY * 0.01));
+    };
+    el?.addEventListener("wheel", onWheel, { passive: false });
+    return () => el?.removeEventListener("wheel", onWheel);
+  }, [camera, controls, apiRef, wrap]);
+  return null;
+}
+
+export default function Network3D({ data, day, focus, setFocus, onSelect, apiRef, explore = false, labels = true }: {
   data: RunData; day: number; focus: string | null; setFocus: (id: string | null) => void; onSelect?: (a: Agent) => void;
+  apiRef?: RefObject<NetworkApi | null>;
+  /** On touch screens the globe only takes the finger (and stops page scrolling) in explore mode. */
+  explore?: boolean;
+  labels?: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
+  const controls = useRef<OrbitControlsImpl | null>(null);
   const [visible, setVisible] = useState(true);
   const [motion] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
-  const [wide, setWide] = useState(() => window.innerWidth >= 1024);
-  useEffect(() => {
-    const on = () => setWide(window.innerWidth >= 1024);
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []);
+  const [dragging, setDragging] = useState(false);
   useEffect(() => {
     const el = wrap.current; if (!el) return;
     const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0.02 });
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  const grab = !touch || explore;
+  useEffect(() => {
+    // OrbitControls claims every touch on the canvas; give scrolling back
+    // to the page unless the visitor is exploring.
+    const el = controls.current?.domElement as HTMLElement | undefined;
+    if (el) el.style.touchAction = grab ? "none" : "pan-y";
+  });
   return (
-    <div ref={wrap} className="absolute inset-0 isolate" aria-hidden>
+    <div ref={wrap} className={`absolute inset-0 isolate ${grab ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`} aria-hidden>
       <Canvas
         frameloop={visible ? "always" : "never"}
         dpr={[1, 1.75]}
-        camera={{ position: [0, 12.5, wide ? 29.5 : 35], fov: 42, near: 0.1, far: 200 }}
+        camera={{ position: [0, 9, 30], fov: 42, near: 0.1, far: 300 }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         onPointerMissed={() => setFocus(null)}
       >
-        <Offset shift={wide ? 0.17 : 0} lift={wide ? -0.06 : 0.24} />
-        <Scene d={data} day={day} focus={focus} setFocus={setFocus} onSelect={onSelect} motion={motion} labels={wide} />
+        <Scene d={data} day={day} focus={focus} setFocus={setFocus} onSelect={onSelect} motion={motion} labels={labels} />
         <OrbitControls
+          ref={controls}
+          makeDefault
           enableZoom={false}
           enablePan={false}
-          enableRotate={!touch}
-          autoRotate={motion && !focus}
-          autoRotateSpeed={0.32}
+          enableRotate={grab}
+          rotateSpeed={0.7}
+          autoRotate={motion && !focus && !dragging}
+          autoRotateSpeed={0.45}
           enableDamping
-          dampingFactor={0.06}
-          minPolarAngle={Math.PI * 0.22}
-          maxPolarAngle={Math.PI * 0.56}
+          dampingFactor={0.07}
+          onStart={() => setDragging(true)}
+          onEnd={() => setDragging(false)}
         />
+        <Rig controls={controls} apiRef={apiRef} wrap={wrap} />
         <EffectComposer multisampling={0}>
           <Bloom mipmapBlur intensity={0.95} luminanceThreshold={0.62} luminanceSmoothing={0.25} radius={0.72} />
           <Vignette offset={0.22} darkness={0.72} />

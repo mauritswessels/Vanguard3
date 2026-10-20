@@ -121,5 +121,5 @@ export function LineChart({ lines, format, height = 380, onHover, zeroLine, clas
     c.timeScale().fitContent();
   }, [lines, theme, zeroLine]);
 
-  return <div ref={el} className={className} style={{ height }} />;
+  return <div ref={el} className={`w-full min-w-0 overflow-hidden ${className || ""}`} style={{ height }} />;
 }
