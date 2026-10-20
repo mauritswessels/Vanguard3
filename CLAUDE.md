@@ -14,23 +14,23 @@ Read the section you need there instead of exploring the whole repo.
   report"), so a local checkout falls behind within a day. Run
   `git pull --ff-only` before editing and rebase on `origin/main` before
   pushing.
-- **Python.** On macOS the command is `python3`; run everything through
-  `.venv/bin/python`. Tests need `requirements.txt` (pandas, NumPy,
-  yfinance). `requirements-ibkr.txt` alone is not enough. CI uses Python
-  3.12.
+- **Python.** Run everything through `.venv/bin/python`. CI uses Python
+  3.12, and so does the Mac's `.venv` (the Mac's own `python3` is a newer
+  version). The `.venv` needs both `requirements.txt` and
+  `requirements-ibkr.txt`.
 
 ## Commands
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -t .   # all tests, offline
+.venv/bin/python -m unittest discover -s tests -t .   # all tests, offline (~2 min)
 .venv/bin/python main.py --source synthetic --seed 7 --days 730   # offline backtest
 .venv/bin/python walk_forward.py                      # tune on the past, test blind
 .venv/bin/python ibkr_bridge.py                       # IBKR plan only, sends nothing
 ```
 
-Two tests in `tests/test_ibkr_schedule.py` fail on macOS because
-`ibkr_morning.sh` uses GNU `date -d` (it runs on the Ubuntu server). CI on
-Ubuntu is the reference.
+Shell scripts (`ibkr_morning.sh`,
+`server/*.sh`) must work with both Linux and macOS tools, because the
+tests run them on both.
 
 ## Rules that keep the simulation honest
 
