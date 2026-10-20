@@ -213,6 +213,21 @@ NEWS_OPUS_PARAMS = {
 }
 
 # ---------------------------------------------------------------------------
+# Skill or luck study (luck_study.py)
+# ---------------------------------------------------------------------------
+LUCK_PARAMS = {
+    "monkeys": 300,              # random-pick accounts, each with its own dice
+    "years": 5,                  # past prices replayed
+    "edge": 0.10,                # lead a year worth spotting (10% is a lot)
+    "alpha": 0.05,               # accepted chance of calling luck skill
+    "power": 0.80,               # chance of spotting a real edge of that size
+    "block_days": 20,            # the bootstrap keeps runs of days together
+    "resamples": 2000,           # bootstrap repeats
+    "min_days": 20,              # fewer live sessions: always "can't tell yet"
+    "seed": 2026,
+}
+
+# ---------------------------------------------------------------------------
 # Interactive Brokers paper account (ibkr_bridge.py, runs on your computer)
 # ---------------------------------------------------------------------------
 IBKR_PARAMS = {

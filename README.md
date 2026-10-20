@@ -17,6 +17,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -t .
 .venv/bin/python walk_forward.py              # tune on the past, test blind
 .venv/bin/python main.py --days 1825 --dashboard   # refresh dashboard backtest
+.venv/bin/python luck_study.py                # skill or luck: everyone against 300 monkeys
 ```
 
 ## Live paper trading and dashboard
@@ -83,6 +84,25 @@ at random under the same rules as the agents (10 positions of 10%, same
 costs; each evening a holding has a 1 in 20 chance of being sold). With
 nine accounts racing, one will lead by luck alone; an agent shows skill only
 if it keeps beating the Monkey over many weeks.
+
+How many weeks? `luck_study.py` puts a number on it. It runs 300 monkeys,
+each with its own dice, over the same days as each account: over the last
+five years for every agent that can be replayed honestly (the three
+strategies with fixed settings, their learning versions re-tuned each year
+as in the walk-forward study, and the AI Learner), and live for every paper
+account from its first decision on. For each account it gives the share of
+monkeys it beat, its average lead a year over SPY with a 95% range (its own
+days reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
+when the lead is too big for luck even allowing for the number of agents
+racing (Holm's correction), **looks like luck** when the results rule out
+an edge of 10% a year, and **can't tell yet** otherwise, with how many more
+weeks of live results it would take to spot such an edge. Expect years
+rather than weeks: day-to-day swings are large next to any edge, so even
+10% a year over random picks takes well over ten years to show. The news
+agents, the Opus Learner and the Team Manager are judged on their live
+results only. The study runs every Saturday (workflow "Skill or luck",
+about 5 minutes; settings in `LUCK_PARAMS` in `config.py`) and is on the
+dashboard under Research > Skill or luck?
 
 The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are
@@ -177,6 +197,7 @@ To start over, delete `state/paper_state.json` and change
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
+| `luck_study.py` | Skill or luck: every account against hundreds of monkeys and SPY |
 | `docs/index.html` | Dashboard (GitHub Pages) reading `docs/data/*.json` |
 | `docs/lab/` | 3D AI research lab: a browser-only reinforcement-learning simulation (see below) |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |
