@@ -172,6 +172,43 @@ class BrokerTest(unittest.TestCase):
         self.assertGreaterEqual(pf.cash, 0)
 
 
+    def test_a_newer_order_replaces_one_still_waiting(self):
+        """Orders for a market with no session pile up otherwise (the Team
+        Manager re-orders each evening): only the newest one may fill."""
+        market = synthetic_market(days=60)
+        d0, d1, d2 = market.calendar[-4], market.calendar[-3], market.calendar[-2]
+        pf = Portfolio("t", 100_000)
+        broker = SimulatedBroker(pf, market)
+        broker.submit(Order("SPY", "BUY", 5, d0 - pd.Timedelta(days=1)))
+        broker.submit(Order("SPY", "BUY", 5, d0))
+        broker.submit(Order("QQQ", "BUY", 2, d0))
+        self.assertEqual(len(broker.pending), 2)
+        # A saved state from before still holds both: they are tidied too.
+        broker.load_pending([{"ticker": "SPY", "side": "BUY", "quantity": 5,
+                              "created": f"{d:%Y-%m-%d}"}
+                             for d in (d0 - pd.Timedelta(days=1), d0)]
+                            + broker.pending_to_list()[1:])
+        broker.rejected.clear()
+        fills = broker.process(d1)
+        self.assertEqual(sorted((f.ticker, f.quantity) for f in fills),
+                         [("QQQ", 2), ("SPY", 5)])
+        self.assertEqual([why for _, why in broker.rejected],
+                         ["replaced by a newer order"])
+        self.assertEqual(broker.process(d2), [])
+
+    def test_an_order_waiting_over_a_week_expires(self):
+        market = synthetic_market(days=60)
+        d = market.calendar[-2]
+        pf = Portfolio("t", 100_000)
+        broker = SimulatedBroker(pf, market)
+        broker.submit(Order("SPY", "BUY", 5, d - pd.Timedelta(days=8)))
+        broker.submit(Order("QQQ", "BUY", 2, d - pd.Timedelta(days=6)))
+        fills = broker.process(d)
+        self.assertEqual([f.ticker for f in fills], ["QQQ"])
+        self.assertEqual([(o.ticker, why) for o, why in broker.rejected],
+                         [("SPY", "expired")])
+
+
 class BacktestIntegrationTest(unittest.TestCase):
 
     @classmethod

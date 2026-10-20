@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -121,6 +122,10 @@ def main() -> None:
     start = pd.Timestamp(args.start)
     cutoff = last_completed_session()
     sim, n_new = advance(args.state, args.source, start, cutoff)
+    # The workflow skips testing and publishing when nothing is new.
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"new_sessions={n_new}\n")
 
     if sim is None:
         logger.info("Paper trading starts %s; nothing to simulate yet "

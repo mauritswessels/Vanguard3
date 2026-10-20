@@ -42,9 +42,37 @@ class ManagerTest(unittest.TestCase):
         owned = set().union(*(backed[n].portfolio.positions
                               for n in mgr.backing))
         held_today = {t for t in pf.positions}
-        # Mostly what the backed agents own (yesterday's holdings may lag).
+        # Mostly what the backed agents own.
         self.assertGreaterEqual(len(held_today & owned),
                                 len(held_today) // 2)
+
+    def test_follows_todays_decisions(self):
+        """Its targets include what the agents ordered this evening, even
+        when it is listed before them."""
+        lineup = self.lineup()
+        lineup.insert(0, lineup.pop())          # the Team Manager first
+        sim = Simulator(self.market, build_accounts(self.market, lineup))
+        mgr = sim.accounts[0].agent
+        checked = 0
+        for day in self.days[:30]:
+            sim.step(day)
+            for name in mgr.backing:
+                acc = next(a for a in sim.accounts if a.agent.name == name)
+                for o in acc.broker.pending:
+                    if o.side == "BUY" and o.created == day:
+                        self.assertIn(o.ticker, mgr._targets)
+                        checked += 1
+        self.assertGreater(checked, 0)
+
+    def test_holdings_after_orders(self):
+        from types import SimpleNamespace as NS
+        from models.manager_agent import holdings_after_orders
+        acc = NS(portfolio=NS(positions={"A": NS(quantity=10),
+                                         "B": NS(quantity=4)}),
+                 broker=NS(pending=[NS(ticker="A", side="SELL", quantity=10),
+                                    NS(ticker="B", side="BUY", quantity=1),
+                                    NS(ticker="C", side="BUY", quantity=3)]))
+        self.assertEqual(holdings_after_orders(acc), {"B": 5, "C": 3})
 
     def test_state_round_trip(self):
         sim = Simulator(self.market, build_accounts(self.market,

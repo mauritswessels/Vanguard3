@@ -4,8 +4,13 @@ name: Daily paper trading
 
 on:
   schedule:
-    # 21:30 UTC = 17:30 New York in summer, 16:30 in winter.
-    - cron: "30 21 * * 1-5"
+    # The prices must be downloaded after New York has closed (16:00 there,
+    # plus 30 minutes) but before midnight in Zurich: after that, Yahoo
+    # leaves out the European markets' day. GitHub often starts a run 15-30
+    # minutes late, so there are two runs; the one before the close, or the
+    # one after a successful run, finds nothing new and stops early.
+    - cron: "40 20 * * 1-5"   # summer: 22:40 Zurich, 16:40 New York
+    - cron: "40 21 * * 1-5"   # winter: 22:40 Zurich, 16:40 New York
   workflow_dispatch: {}
 
 permissions:
@@ -31,21 +36,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
-        run: python -m unittest discover -s tests -t .
-
+      # Prices first (see the schedule above). Nothing is published unless
+      # the tests below pass.
       - name: Advance paper accounts
+        id: advance
         env:
           # Only the News Analyst uses it; without it that agent just waits.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python daily_run.py
 
+      - name: Run tests
+        if: steps.advance.outputs.new_sessions != '0'
+        run: python -m unittest discover -s tests -t .
+
       - name: Refresh 5-year backtest
+        if: steps.advance.outputs.new_sessions != '0'
         continue-on-error: true
         run: python main.py --source yfinance --days 1825 --dashboard --no-save
 
       - name: Commit results
+        if: steps.advance.outputs.new_sessions != '0'
         run: |
           git config user.name "vanguard3-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

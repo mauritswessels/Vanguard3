@@ -24,6 +24,9 @@ from engine.portfolio import Portfolio, TradeRecord
 
 logger = logging.getLogger(__name__)
 
+#: Calendar days an order may wait for its market to open before it expires.
+MAX_WAIT_DAYS = 7
+
 
 @dataclass(frozen=True)
 class Order:
@@ -67,9 +70,16 @@ class SimulatedBroker(BaseBroker):
         self.rejected: list[tuple[Order, str]] = []
 
     def submit(self, order: Order) -> None:
+        # A new decision on a market replaces an older order still waiting
+        # there (its market has had no session since).
+        for o in [o for o in self.pending if o.ticker == order.ticker
+                  and o.created < order.created]:
+            self.pending.remove(o)
+            self._reject(o, "replaced by a newer order")
         self.pending.append(order)
 
     def process(self, date: pd.Timestamp) -> list[TradeRecord]:
+        self._tidy(date)
         # Orders submitted today are only eligible from tomorrow's open.
         # An order for a market with no session today (a local holiday)
         # waits for that market's next open instead of expiring.
@@ -86,6 +96,24 @@ class SimulatedBroker(BaseBroker):
             if fill is not None:
                 fills.append(fill)
         return fills
+
+    def _tidy(self, date: pd.Timestamp) -> None:
+        """Drop waiting orders that are out of date: one replaced by a newer
+        decision on the same market (``submit`` does this too; saved states
+        from before it did may still hold such pairs), or one still unfilled
+        after ``MAX_WAIT_DAYS`` (longer than any market holiday)."""
+        newest: dict[str, pd.Timestamp] = {}
+        for o in self.pending:
+            newest[o.ticker] = max(newest.get(o.ticker, o.created), o.created)
+        keep = []
+        for o in self.pending:
+            if o.created < newest[o.ticker]:
+                self._reject(o, "replaced by a newer order")
+            elif (date - o.created).days > MAX_WAIT_DAYS:
+                self._reject(o, "expired")
+            else:
+                keep.append(o)
+        self.pending = keep
 
     def _execute(self, order: Order, date: pd.Timestamp):
         price = self.market.open_panel.at[date, order.ticker]

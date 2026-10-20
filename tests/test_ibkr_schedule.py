@@ -18,6 +18,7 @@ FAKE_PYTHON = """#!/bin/bash
 # Stands in for ".venv/bin/python ibkr_bridge.py --send" (and the chart).
 if [ "$1" = telegram_chart.py ]; then
     echo png > "$2"
+    [ "$3" = --why ] && echo "Why the top 3 hold what they hold" > "$4"
     echo "The race, day 5"
     exit 0
 fi
@@ -198,11 +199,15 @@ class MorningScriptTest(unittest.TestCase):
         self.assertIn("text=Vanguard3: Done: 2 of 3 orders placed; "
                       "not accepted: EWZ.", sent)
         # Then the race chart, with its caption.
+        self.assertIn("https://api.telegram.org/bot123:abc/sendPhoto", sent)
+        self.assertIn("photo=@ibkr_logs/race.png", sent)
+        self.assertIn("caption=The race, day 5", sent)
+        # Then why the top three hold what they hold.
         self.assertEqual(self.curled[-1],
-                         "https://api.telegram.org/bot123:abc/sendPhoto")
+                         "https://api.telegram.org/bot123:abc/sendMessage")
         self.assertIn("chat_id=42", self.curled)
-        self.assertIn("photo=@ibkr_logs/race.png", self.curled)
-        self.assertIn("caption=The race, day 5", self.curled)
+        self.assertIn("text@ibkr_logs/why.txt", self.curled)
+        self.assertLess(sent.index("sendPhoto"), sent.rindex("sendMessage"))
 
 
 if __name__ == "__main__":
