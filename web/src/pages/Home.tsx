@@ -9,12 +9,13 @@ import { LineChart, type Line } from "../components/charts/LineChart";
 import { RaceChart } from "../components/charts/RaceChart";
 import { Sparkline } from "../components/charts/Sparkline";
 import { useChartTheme } from "../components/charts/useChartTheme";
+import { PairRows } from "../components/HeadToHead";
 import type { NetworkApi } from "../components/network/Network3D";
-import { Badge, Container, Delta, Empty, Section, Stat, Swatch, cx } from "../components/ui";
+import { Container, Delta, Empty, Section, Stat, Swatch, cx } from "../components/ui";
 import { badge, color, ranked } from "../lib/agents";
 import { useLive } from "../lib/data";
 import { chf, date, dateShort, nextRunLabel, pct, share, signedChf } from "../lib/format";
-import { drawdownCurve, exposure, range } from "../lib/metrics";
+import { drawdownCurve, exposure, pairs, range } from "../lib/metrics";
 import type { Agent, RunData } from "../lib/types";
 
 const Network3D = lazy(() => import("../components/network/Network3D"));
@@ -59,7 +60,9 @@ export default function Home() {
       <Section className="pt-0">
         <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
           <LatestMoves d={d} />
-          <Twins d={d} />
+          <Panel eyebrow="Experiments" title="Head to head" right={<Link to="/analytics" className="text-[12.5px] text-gold hover:text-gold-2">Details →</Link>}>
+            <PairRows list={pairs(d)} />
+          </Panel>
         </div>
       </Section>
     </>
@@ -391,31 +394,6 @@ function LatestMoves({ d }: { d: RunData }) {
           </li>
         ))}
       </ul>
-    </Panel>
-  );
-}
-
-/* ---------- learning vs fixed twins ---------- */
-
-function Twins({ d }: { d: RunData }) {
-  const pairs = d.agents.filter((a) => a.learning && !a.fixed_twin)
-    .map((a) => [a, d.agents.find((b) => b.fixed_twin && b.key === a.key)] as const).filter((p): p is readonly [Agent, Agent] => !!p[1]);
-  const rows = pairs.flatMap(([a, b]) => [{ agent: a, value: a.stats.total_return }, { agent: b, value: b.stats.total_return }]);
-  const reviews = pairs.reduce((n, [a]) => n + (a.learning_log?.length || 0), 0);
-  return (
-    <Panel eyebrow="Experiment" title="Learning vs fixed twins" right={<Badge>{reviews ? `${reviews} reviews` : "first review next month"}</Badge>}>
-      <Bars rows={rows} format={(v) => pct(v)} />
-      <div className="mt-5 grid gap-1.5 border-t border-line pt-4">
-        {pairs.map(([a, b]) => {
-          const diff = a.stats.final_equity_chf - b.stats.final_equity_chf;
-          return (
-            <div key={a.id} className="flex items-center justify-between text-[12.5px]">
-              <span className="flex items-center gap-2 text-ink-2"><Swatch agent={a} size={8} />{a.name} vs its twin</span>
-              <Badge tone={diff > 0.5 ? "up" : diff < -0.5 ? "down" : "neutral"}>{Math.abs(diff) < 0.5 ? "even" : `${signedChf(diff)} CHF`}</Badge>
-            </div>
-          );
-        })}
-      </div>
     </Panel>
   );
 }

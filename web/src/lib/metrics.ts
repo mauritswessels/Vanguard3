@@ -300,3 +300,86 @@ export function compareSummary(A: AgentStats, B: AgentStats, r: Range): string[]
   }
   return s;
 }
+
+// ---------- head to head ----------
+/** Two-sided 95% t quantiles for 1..30 degrees of freedom (normal beyond). */
+const T95 = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 2.18, 2.16, 2.14, 2.13,
+  2.12, 2.11, 2.10, 2.09, 2.09, 2.08, 2.07, 2.07, 2.06, 2.06, 2.06, 2.05, 2.05, 2.05, 2.04];
+const t95 = (df: number) => (df < 1 ? NaN : df <= 30 ? T95[df - 1] : 1.96);
+
+/** The close an account first decided at (its first activity), or the
+ *  launch: from then on it was trading. */
+export function joined(a: Agent, d: RunData): string {
+  return a.activity[0]?.date || d.start;
+}
+
+export interface Pair {
+  a: Agent; b: Agent; from: string; days: number;
+  /** A's lead over B in percentage points of each account, over the same days. */
+  lead: number;
+  /** [date, A's return minus B's] since the common start. */
+  path: Point[];
+  /** Average daily gap, as a yearly figure, with its 95% range. */
+  edge: number; low: number; high: number;
+  /** "a" or "b" once the range excludes zero, else null. */
+  ahead: "a" | "b" | null;
+  /** Rough extra trading days needed to tell the gap from zero if it holds. */
+  daysNeeded: number | null;
+}
+
+/** A against B on exactly the same days (from when both were trading).
+ *  The daily difference of two accounts in the same markets moves far less
+ *  than either account, so a real gap shows much sooner than a lead over
+ *  the market does. */
+export function headToHead(a: Agent, b: Agent, d: RunData): Pair {
+  const from = [joined(a, d), joined(b, d)].sort()[1];
+  const ea = new Map(a.equity), eb = new Map(b.equity);
+  const dates = a.equity.map((p) => p[0]).filter((t) => t >= from && eb.has(t));
+  const diffs: number[] = [], path: Point[] = [];
+  let ga = 1, gb = 1;
+  for (let i = 0; i < dates.length; i++) {
+    if (i === 0) { path.push([dates[0], 0]); continue; }
+    const ra = ea.get(dates[i])! / ea.get(dates[i - 1])! - 1;
+    const rb = eb.get(dates[i])! / eb.get(dates[i - 1])! - 1;
+    diffs.push(ra - rb);
+    ga *= 1 + ra; gb *= 1 + rb;
+    path.push([dates[i], ga - gb]);
+  }
+  const n = diffs.length, m = mean(diffs), s = std(diffs);
+  const half = n > 1 ? t95(n - 1) * s / Math.sqrt(n) : NaN;
+  const edge = m * PERIODS, low = (m - half) * PERIODS, high = (m + half) * PERIODS;
+  const ahead = isFinite(low) && low > 0 ? "a" : isFinite(high) && high < 0 ? "b" : null;
+  const need = isFinite(s) && Math.abs(m) > 1e-9 ? Math.ceil((1.96 * s / Math.abs(m)) ** 2) - n : null;
+  return { a, b, from, days: n, lead: ga - gb, path, edge, low, high, ahead, daysNeeded: need != null && need > 0 ? need : null };
+}
+
+/** The race's built-in experiments: the same idea with one thing changed. */
+export const PAIRS: { a: string; b: string; question: string }[] = [
+  { a: "news_opus", b: "news", question: "Does a smarter model trade better?" },
+  { a: "learner_opus", b: "learner", question: "Does an AI reviewer help a learning model?" },
+  { a: "trend", b: "trend-fixed", question: "Does monthly learning pay? (Trend)" },
+  { a: "reversion", b: "reversion-fixed", question: "Does monthly learning pay? (Bargain Hunter)" },
+  { a: "volatility", b: "volatility-fixed", question: "Does monthly learning pay? (Volatility)" },
+];
+
+export function pairs(d: RunData): (Pair & { question: string })[] {
+  const by = new Map(d.agents.map((x) => [x.id, x]));
+  return PAIRS.filter((p) => by.has(p.a) && by.has(p.b))
+    .map((p) => ({ ...headToHead(by.get(p.a)!, by.get(p.b)!, d), question: p.question }));
+}
+
+// ---------- cost of intelligence ----------
+/** What each Claude-driven account spent on the model and earned since it
+ *  joined, in CHF. Cost is the account's own estimate from token counts. */
+export function aiCosts(d: RunData) {
+  const usd = d.fx?.USD?.length ? d.fx.USD[d.fx.USD.length - 1][1] : NaN;
+  return d.agents.filter((a) => a.ai && (a.ai as { est_cost_usd?: number }).est_cost_usd != null).map((a) => {
+    const ai = a.ai as { est_cost_usd?: number; calls?: number; model?: string };
+    const costChf = (ai.est_cost_usd || 0) * usd;
+    const profit = a.stats.final_equity_chf - d.initial_capital_chf;
+    return {
+      agent: a, model: ai.model || "", calls: ai.calls || 0, costUsd: ai.est_cost_usd || 0, costChf,
+      profit, perChf: costChf > 0 ? profit / costChf : NaN, perCall: ai.calls ? costChf / ai.calls : NaN,
+    };
+  });
+}

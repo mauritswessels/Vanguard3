@@ -4,13 +4,14 @@ import { ArrowLeft, ArrowRight, History } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ActivityFeed, TripCard, VerdictBadge } from "../components/agent";
+import { PairCard } from "../components/HeadToHead";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Badge, Container, Delta, Empty, Section, Segmented, Stat, Swatch, cx } from "../components/ui";
 import { badge, color, info, ranked } from "../lib/agents";
 import { useJSON, useLive } from "../lib/data";
 import { chf, date, dateShort, num, pct, plural, share, signedChf, swissTime } from "../lib/format";
-import { curve, range, stats } from "../lib/metrics";
+import { aiCosts, curve, pairs, range, stats } from "../lib/metrics";
 import type { Agent, LearnerAI, NewsAI, Point, RunData, SkillData } from "../lib/types";
 
 export default function AgentProfile() {
@@ -66,7 +67,11 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
         <Stat label="Largest drop" value={pct(a.stats.max_drawdown)} sub="from a peak" />
         <Stat label="Fills" value={a.stats.trades} sub={`${share(st.book.cashPct)} in cash now`} />
         <Stat label="Win rate" value={a.stats.win_rate == null ? "–" : share(a.stats.win_rate)} sub={plural(st.closed, "closed position")} />
-        <Stat label="Costs paid" value={chf(a.stats.commissions_chf + a.stats.slippage_fx_chf)} sub="fees, slippage, FX" />
+        {(() => {
+          const ai = aiCosts(d).find((c) => c.agent.id === a.id);
+          return ai ? <Stat label="Claude cost" value={`${num(ai.costChf, 2)} CHF`} sub={isFinite(ai.perChf) ? `${num(ai.perChf, 0)} CHF profit per CHF` : `${ai.calls} calls`} />
+            : <Stat label="Costs paid" value={chf(a.stats.commissions_chf + a.stats.slippage_fx_chf)} sub="fees, slippage, FX" />;
+        })()}
       </Container>
 
       <Section className="pt-4">
@@ -92,6 +97,15 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
           </div>
         </div>
       </Section>
+
+      {(() => {
+        const mine = pairs(d).filter((p) => p.a.id === a.id || p.b.id === a.id);
+        return mine.length > 0 && (
+          <Section className="pt-0">
+            <div className="grid gap-4 md:grid-cols-2">{mine.map((p) => <PairCard key={p.a.id + p.b.id} p={p} question={p.question} />)}</div>
+          </Section>
+        );
+      })()}
 
       {verdict && verdict.summary.length > 0 && (
         <Section className="pt-0">

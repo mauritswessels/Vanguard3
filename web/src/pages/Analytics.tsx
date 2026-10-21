@@ -4,18 +4,19 @@ import { AlertTriangle, Info } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { LineChart, type Line } from "../components/charts/LineChart";
+import { AiCostTable, PairCard } from "../components/HeadToHead";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Delta, Empty, Section, Segmented, Swatch, cx } from "../components/ui";
 import { ORDER } from "../lib/agents";
 import { useLive } from "../lib/data";
 import { chf, num, pct, share, signedChf } from "../lib/format";
 import {
-  all, alerts, compareSummary, curve, drawdownCurve, exposure, MIN_RETURNS, range, RANGES, stats,
+  all, alerts, compareSummary, curve, drawdownCurve, exposure, MIN_RETURNS, pairs, range, RANGES, stats,
   type AgentStats, type Range, type RangeKind,
 } from "../lib/metrics";
 import type { RunData } from "../lib/types";
 
-type Tab = "performance" | "risk" | "compare";
+type Tab = "performance" | "pairs" | "risk" | "compare";
 
 export default function Analytics() {
   const d = useLive();
@@ -38,10 +39,12 @@ export default function Analytics() {
       </Section>
       <Section className="pt-0">
         <div className="glass sticky top-16 z-30 mb-8 flex flex-wrap items-center justify-between gap-2 rounded-2xl p-2">
-          <Segmented label="View" value={tab} options={[["performance", "Performance"], ["risk", "Risk"], ["compare", "Compare two"]]} onChange={setTab} />
-          <Segmented label="Time range" value={kind} options={RANGES} onChange={setKind} />
+          <Segmented label="View" value={tab} options={[["performance", "Performance"], ["pairs", "Head to head"], ["risk", "Risk"], ["compare", "Compare two"]]} onChange={setTab} />
+          {tab === "pairs" ? <span className="px-3 text-[12.5px] text-muted">Each pair on the days both were trading</span>
+            : <Segmented label="Time range" value={kind} options={RANGES} onChange={setKind} />}
         </div>
         {tab === "performance" && <Performance d={d} r={r} />}
+        {tab === "pairs" && <HeadToHead d={d} />}
         {tab === "risk" && <Risk d={d} r={r} />}
         {tab === "compare" && <Compare d={d} r={r} />}
       </Section>
@@ -97,6 +100,27 @@ function Performance({ d, r }: { d: RunData; r: Range }) {
         <div className="eyebrow mb-1 text-gold">Drawdowns</div>
         <p className="mb-3 text-[13px] text-muted">How far each account was below its own previous high, day by day, over {r.label}.</p>
         <LineChart lines={dd} format={(v) => pct(v, 1)} height={300} zeroLine={0} />
+      </div>
+    </div>
+  );
+}
+
+function HeadToHead({ d }: { d: RunData }) {
+  return (
+    <div className="grid gap-10">
+      <div>
+        <p className="mb-5 max-w-3xl text-[14.5px] text-ink-2">
+          The race has experiments built in: the same idea with one thing changed. Comparing each pair day by day, on the same markets, cancels most
+          of the market's noise, so a real difference shows long before a lead over the S&amp;P 500 would.
+        </p>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {pairs(d).map((p) => <PairCard key={p.a.id + p.b.id} p={p} question={p.question} />)}
+        </div>
+      </div>
+      <div>
+        <h2 className="display mb-2 text-[2rem]">The cost of intelligence</h2>
+        <p className="mb-5 max-w-3xl text-[14.5px] text-ink-2">What each Claude-driven account has paid for the model, estimated from its token counts, against what it has earned since it joined.</p>
+        <AiCostTable d={d} />
       </div>
     </div>
   );

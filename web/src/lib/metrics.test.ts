@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { hydrate } from "./data";
-import { all, range, stats } from "./metrics";
-import type { RunData } from "./types";
+import { aiCosts, all, headToHead, pairs, range, stats } from "./metrics";
+import type { Agent, RunData } from "./types";
 
 const load = (name: string): RunData =>
   hydrate(JSON.parse(readFileSync(resolve(import.meta.dirname, `../../../docs/data/${name}.json`), "utf8")));
@@ -34,5 +34,37 @@ describe("ranges", () => {
       expect(isFinite(s.ret)).toBe(true);
       expect(s.start).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("head to head", () => {
+  const d = load("paper");
+  const base = d.agents[0];
+  const clone = (equity: Agent["equity"]): Agent => ({ ...base, id: "x", equity, activity: base.activity });
+
+  it("an account against itself is level, and not called either way", () => {
+    const p = headToHead(base, base, d);
+    expect(p.lead).toBeCloseTo(0, 12);
+    expect(p.ahead).toBeNull();
+  });
+
+  it("measures the gap only over the days both were trading", () => {
+    const late = { ...clone(base.equity), activity: [{ date: base.equity[4][0], fills: [], signals: [] }] };
+    const p = headToHead(base, late, d);
+    expect(p.from).toBe(base.equity[4][0]);
+    expect(p.days).toBe(base.equity.length - 5);
+  });
+
+  it("a steady daily lead is called once the range clears zero", () => {
+    const up = clone(base.equity.map(([t], i) => [t, 100000 * 1.002 ** i]));
+    const flat = clone(base.equity.map(([t], i) => [t, 100000 * (1 + (i % 2 ? 0.0005 : -0.0005))]));
+    const p = headToHead(up, flat, d);
+    expect(p.lead).toBeGreaterThan(0);
+    expect(p.ahead).toBe("a");
+  });
+
+  it("finds the race's built-in pairs and the Claude costs", () => {
+    expect(pairs(d).length).toBeGreaterThanOrEqual(3);
+    for (const c of aiCosts(d)) expect(c.costChf).toBeGreaterThanOrEqual(0);
   });
 });
