@@ -97,11 +97,23 @@ race between the two shows whether a smarter model trades better.
 It also checks once around midday (`midday_news.py`, workflow "Midday news
 check", weekdays 14:37 UTC, while New York and Europe are both open). That
 run first fills last evening's orders at the morning's open, reads the news
-again with live Yahoo prices (about 15 minutes delayed) and asks Claude
-whether anything changed. Changes fill at once at the live price, with the
-usual costs; a market that is closed at that moment waits for the evening.
-Only the two news agents' accounts are touched. Like everything else it is a
-simulation: no broker is contacted.
+again with live prices and asks Claude whether anything changed. How a
+change trades depends on how fresh its market's price is:
+
+- **Real-time price** (US markets, from Finnhub when `FINNHUB_API_KEY` is
+  set): it fills at once at that price.
+- **Delayed price** (Yahoo, about 15 minutes old: all Swiss and European
+  markets, and US ones when Finnhub has no quote): a real order cannot trade
+  at a price from 15 minutes ago, so it becomes a **market-on-close** order.
+  The evening run fills it at that day's official closing price, before it
+  marks the day and before the agents decide. If the market has no session
+  that day (a holiday), the order lapses with a reason; it never fills at an
+  open or on a later day. The dashboard's activity marks such fills
+  `at_close` ("at the close, ordered at midday").
+- **Market closed now**: the change waits for the evening check.
+
+Every fill pays the usual costs. Only the two news agents' accounts are
+touched. Like everything else it is a simulation: no broker is contacted.
 
 A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
 at random under the same rules as the agents (10 positions of 10%, same
@@ -213,7 +225,8 @@ zone Europe/Zurich, grace time 1 hour): put
 
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the
-backup, and covers Swiss and European markets), and the brief adds each US
+backup, and covers Swiss and European markets, whose midday trades fill at
+the close), and the brief adds each US
 company's latest news from Finnhub (`finnhub_feed.py`).
 
 The dashboard also shows what each agent is doing right now: for every
@@ -245,7 +258,7 @@ To start over, delete `state/paper_state.json` and change
 | `config.py` | Capital, costs, watchlist + currencies, strategy parameters |
 | `data_manager.py` | Data Fetching Engine: `DataProvider` interface, `YFinanceProvider`, `SyntheticProvider`, CSV cache, aligned `MarketData` |
 | `engine/portfolio.py` | CHF cash, positions, fills, trade log, cost model (2 CHF/fill, slippage, FX spread), metrics |
-| `engine/broker.py` | `BaseBroker` interface and `SimulatedBroker` (market-on-open fills) |
+| `engine/broker.py` | `BaseBroker` interface and `SimulatedBroker` (market-on-open fills, and market-on-close fills for the midday check) |
 | `engine/metrics.py` | Sharpe, Sortino, max drawdown, CAGR, volatility |
 | `models/base_agent.py` | `BaseAgent`: `prepare`, `calculate_signals`, `execute_trade`, sizing |
 | `models/indicators.py` | Causal EMA, SMA, RSI, ATR, ADX, Bollinger, Donchian |
@@ -266,7 +279,7 @@ To start over, delete `state/paper_state.json` and change
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
 | `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
 | `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
-| `midday_news.py` | News agents' midday check: live prices, trades fill at once |
+| `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |
 | `telegram_chart.py` | Race chart and top three for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `learning.py` | Monthly self-tuning for the live learning agents |
@@ -314,7 +327,10 @@ Agents decide after the close of day *t* using data up to *t*. Orders fill
 at the **open of day t+1** with 5 bp adverse slippage, a 2 bp CHF/USD
 conversion spread and a flat 2 CHF commission. Buys are scaled down to
 available cash; cash can never go negative. Positions are marked at the
-close in CHF using the daily USDCHF rate.
+close in CHF using the daily USDCHF rate. The one exception is the midday
+check's market-on-close orders (see the News Analyst above): they fill at
+the close of the day they were placed, with the same costs, just before
+that day is marked.
 
 Backtests use Yahoo's dividend- and split-adjusted prices. The live paper
 accounts are paid each dividend in cash on its ex-date, after the tax a
