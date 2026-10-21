@@ -15,6 +15,11 @@
 #                               pinged after every run; healthchecks.io then
 #                               warns you when a morning passes without one
 #                               (the server is down, or the run is stuck)
+#   PUBLISH_REPO=git@github.com:...  (and PUBLISH_BRANCH, PUBLISH_KEY)
+#                               after the orders, put the paper account's
+#                               summary on GitHub for the website
+#                               (ibkr_summary.py, server/publish.sh;
+#                               server/setup.sh --publish sets these)
 
 cd "$(dirname "$0")" || exit 1
 mkdir -p ibkr_logs
@@ -26,6 +31,7 @@ NTFY_TOPIC=""
 TELEGRAM_TOKEN=""
 TELEGRAM_CHAT_ID=""
 HEALTHCHECK_URL=""
+PUBLISH_REPO=""
 if [ -f ibkr_morning.env ]; then
     . ./ibkr_morning.env
 fi
@@ -110,6 +116,22 @@ last=$(echo "$output" | grep -v '^Saved to' | tail -n 1)
 # Warnings (old results, orders that did not fill) come along.
 found=$(echo "$output" | grep '^Warning:' | sort -u)
 warnings=$(printf '%s\n%s' "$warnings" "$found" | sed '/^$/d')
+
+# The paper account next to the simulated agent, for the website. Only
+# after a run that placed its orders: nothing here can change them, and a
+# problem only adds a line to the message.
+if [ "$status" -eq 0 ] && [ -n "$PUBLISH_REPO" ]; then
+    if published=$(limit 300 .venv/bin/python ibkr_summary.py 2>&1 &&
+            limit 120 bash server/publish.sh ibkr_logs/public/ibkr.json 2>&1)
+    then
+        echo "$published"
+    else
+        echo "$published"
+        why=$(echo "$published" | sed '/^$/d' | tail -n 1)
+        warnings=$(printf '%s\n%s' "$warnings" "Could not publish the \
+account summary for the website: ${why:-no reason given}" | sed '/^$/d')
+    fi
+fi
 [ -n "$warnings" ] && last="$last
 $warnings"
 if [ "$status" -eq 0 ]; then

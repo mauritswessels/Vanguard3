@@ -253,6 +253,7 @@ IBKR_PARAMS = {
     "change_currency": True,     # change francs into dollars/euros, don't borrow
     "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
                     "Vanguard3/main/docs/data/paper.json"),
+    "summary_days": 750,         # mornings the website summary keeps (ibkr_summary.py)
 }
 
 # IBKR does not sell US-listed funds to Swiss and EU private investors (they

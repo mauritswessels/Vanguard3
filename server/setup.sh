@@ -9,6 +9,10 @@
 # It installs Docker and Python, asks once for the IBKR paper login, starts
 # IB Gateway (IBKR's trading app for servers) and plans the weekday runs.
 # Running it again is safe. To type in a new login: setup.sh --login
+#
+# To show the paper account on the website, run it once more with
+# --publish: it makes a deploy key that may write to one GitHub repository
+# and shows how to add it there (server/publish.sh then uses it).
 
 set -euo pipefail
 
@@ -16,6 +20,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
 APT_DIR="${APT_DIR:-/etc/apt/apt.conf.d}"
+KEY_DIR="${KEY_DIR:-/root/.ssh}"
+DATA_REPO="mauritswessels/vanguard3-ibkr-data"
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -24,11 +30,81 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+publish_setup() {
+    # A deploy key may write to one repository only, so the data gets its
+    # own: this server can never change the code, its workflows or secrets.
+    local key="$KEY_DIR/vanguard3_publish" settings="$REPO/ibkr_morning.env"
+    local name
+    if [ ! -f "$settings" ]; then
+        echo "Run the setup without --publish first." >&2
+        exit 1
+    fi
+    say "Publishing the paper account for the website"
+    read -r -p "GitHub repository for it [$DATA_REPO]: " name
+    name="${name:-$DATA_REPO}"
+    if [[ ! "$name" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+        echo "That doesn't look like owner/name. Run this again." >&2
+        exit 1
+    fi
+    mkdir -p "$KEY_DIR"
+    chmod 700 "$KEY_DIR"
+    [ -f "$key" ] || ssh-keygen -q -t ed25519 -N "" -C "vanguard3-server" \
+        -f "$key"
+    chmod 600 "$key"
+    # Keep the other settings (the Telegram token among them) private.
+    chmod 600 "$settings"
+    grep -v '^PUBLISH_' "$settings" > "$settings.new" || true
+    printf 'PUBLISH_REPO=git@github.com:%s.git\nPUBLISH_BRANCH=ibkr-data\n' \
+        "$name" >> "$settings.new"
+    printf 'PUBLISH_KEY=%s\n' "$key" >> "$settings.new"
+    mv "$settings.new" "$settings"
+    chmod 600 "$settings"
+    cat <<EOF
+
+Two steps on GitHub, signed in as the owner of $name:
+
+1. Make the repository, if it does not exist yet: https://github.com/new
+   Repository name: ${name#*/}   Public   (no README, nothing else)
+   > Create repository
+
+2. Let this server write to it: https://github.com/$name/settings/keys
+   > Add deploy key
+   Title: Vanguard3 server
+   Key:   $(cat "$key.pub")
+   Tick "Allow write access" > Add key
+
+The key gives write access to $name only. Its private half
+stays on this server ($key).
+
+EOF
+    read -r -p "Press Enter once both are done. " _
+    if ! out=$(bash "$HERE/publish.sh" --check 2>&1); then
+        echo "$out"
+        cat >&2 <<EOF
+
+GitHub did not let the key push yet. Check that the repository exists, that
+the key is added to it with "Allow write access" ticked, then run:
+  bash $HERE/setup.sh --publish
+EOF
+        exit 1
+    fi
+    say "Done"
+    echo "After every weekday-morning run the paper account's summary goes to"
+    echo "  https://raw.githubusercontent.com/$name/ibkr-data/ibkr.json"
+    echo "(the branch appears with the first run). A problem with it never"
+    echo "stops the orders; it only adds a line to the morning message."
+}
+
+if [ "${1:-}" = "--publish" ]; then
+    publish_setup
+    exit 0
+fi
+
 say "Installing Docker and Python (a minute or two)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q docker.io docker-compose-v2 python3-venv git curl \
-    unattended-upgrades
+    openssh-client unattended-upgrades
 timedatectl set-timezone Europe/Zurich
 
 say "Security updates by themselves"
@@ -187,4 +263,6 @@ Useful commands on this server:
   tail -n 40 $REPO/ibkr_logs/morning.log
                                           what the last runs did
   docker logs --tail 30 ib-gateway        what IB Gateway is doing
+  bash $HERE/setup.sh --publish
+                                          show the paper account on the website
 EOF
