@@ -68,6 +68,17 @@ evening at most, about 0.05 USD (`LEARNER_OPUS_PARAMS` in `config.py`); like
 the News Analyst it needs the `ANTHROPIC_API_KEY` secret and only trades on
 the newest session.
 
+The model learns from what the account did. A pick Opus turns down or leaves
+out is learned as a hold, and so is every pick on an evening without a
+review (catching up, no key, a failed call). It used to learn each pick as
+if it had been placed. Opus cannot be replayed honestly, so this was
+checked over the last 5 years with a stand-in reviewer that approves picks
+at random, on 40 seeds. With half the picks approved the median return went
+from +16% to +30%; with a quarter, from +22% to +36%; with one in ten, from
++32% to +52%. It trades a little more (724 fills instead of 631 at one in
+two) and wins on about two seeds in three. This says nothing about whether
+Opus itself chooses well.
+
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and
 the economy, plus each stock's latest quarterly results (Yahoo Finance), and
