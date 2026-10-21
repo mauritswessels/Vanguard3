@@ -47,6 +47,17 @@ practice mode (deciding and learning, but placing no orders) until
 `LEARNER_PARAMS["live_from"]` in `config.py`. Accounts added to the lineup
 after launch join automatically on the next daily run.
 
+Two trading rules stop it from churning. Its random tries (5% of decisions,
+there so it keeps learning) are learned on paper and never traded, and it
+keeps every holding at least 10 sessions (`explore_on_paper` and `min_hold`
+in `LEARNER_PARAMS`). A sell it wants sooner counts as a hold, so the model
+learns from what the account really did. Without these rules it bought and
+sold the next day almost every time: replayed over the last 5 years it made
+8,108 fills, paid about 49,500 CHF in costs and lost 64.5%. With them the
+same replay makes 678 fills, pays about 6,300 CHF and gains 27%. Over 10
+random seeds the median is +31% and every seed gains. That is still behind
+buy-and-hold SPY (+63%) and the typical random-pick monkey (+44%).
+
 Its twin, the **Opus Learner** (`models/opus_learner_agent.py`), runs the
 same learning model but lets Claude Opus check its picks: once per evening it
 reads the model's proposed sells and its best proposed buys, with recent
@@ -56,6 +67,17 @@ whether an AI reviewer improves a simple learning model. One Opus call per
 evening at most, about 0.05 USD (`LEARNER_OPUS_PARAMS` in `config.py`); like
 the News Analyst it needs the `ANTHROPIC_API_KEY` secret and only trades on
 the newest session.
+
+The model learns from what the account did. A pick Opus turns down or leaves
+out is learned as a hold, and so is every pick on an evening without a
+review (catching up, no key, a failed call). It used to learn each pick as
+if it had been placed. Opus cannot be replayed honestly, so this was
+checked over the last 5 years with a stand-in reviewer that approves picks
+at random, on 40 seeds. With half the picks approved the median return went
+from +16% to +30%; with a quarter, from +22% to +36%; with one in ten, from
++32% to +52%. It trades a little more (724 fills instead of 631 at one in
+two) and wins on about two seeds in three. This says nothing about whether
+Opus itself chooses well.
 
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and

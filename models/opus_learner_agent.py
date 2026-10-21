@@ -10,15 +10,18 @@ short brief on the model's picks and approves or turns down each one.
   factors, and a few headlines per market.
 * Only approved trades are placed. A pick Opus leaves out counts as turned
   down. The usual cap of ``max_positions`` holdings still applies.
-* The model keeps learning from its own picks either way (it can see what
-  a pick would have earned), so the learning stays the same as the AI
-  Learner's; what changes is which trades actually happen.
+* The model learns from what the account did. A pick that is not placed
+  is learned as a hold, as the AI Learner does with a sell its minimum
+  holding time blocks. Learning a turned-down buy as if bought left the
+  model reasoning from holdings the account did not have. Random tries are
+  still learned on paper.
 
 One Opus call per evening at most, and none when the model proposes
 nothing. Sessions replayed while catching up after a missed run are not
 traded (today's headlines would not match them). Without
 ``ANTHROPIC_API_KEY``, or when the call fails, it trades nothing that day
-and says why on the dashboard.
+and says why on the dashboard. On those evenings too, every pick is
+learned as a hold.
 
 The reasons shown are Opus's own stated reasons, not a guaranteed account
 of how it reached its answer.
@@ -38,7 +41,7 @@ import config
 from claude_api import call_claude
 from engine.portfolio import Portfolio
 from models.base_agent import Action, Signal
-from models.learner_agent import LearnerAgent
+from models.learner_agent import ACTIONS, HOLD, LearnerAgent
 
 logger = logging.getLogger("vanguard3.opus_learner")
 
@@ -134,6 +137,32 @@ class OpusLearnerAgent(LearnerAgent):
     def calculate_signals(self, date: pd.Timestamp,
                           portfolio: Portfolio) -> list[Signal]:
         proposed = super().calculate_signals(date, portfolio)
+        approved = self.reviewed(proposed, date, portfolio)
+        # The model learns from what the account did, not from what it
+        # wanted: a pick that is not placed is learned as a hold. Otherwise a
+        # turned-down buy is learned as bought and the next evening starts
+        # from a holding the account does not have (a turned-down sell the
+        # same way round). This covers evenings with no review too (catching
+        # up, no key, a failed call, test prices): nothing is traded then,
+        # so everything is learned as a hold. Random tries are never
+        # proposed, so they are still learned on paper; that keeps the model
+        # learning about buys and sells even when Opus approves nothing.
+        placed = {s.ticker for s in approved}
+        for s in proposed:
+            if s.ticker not in placed:
+                self.learn_as_held(s.ticker)
+        return approved
+
+    def learn_as_held(self, ticker: str) -> None:
+        """Record tonight's decision on ``ticker`` as a hold."""
+        m = self.memory[ticker]
+        m["a"], m["pos"] = HOLD, m["prev"]
+        self.shadow[ticker] = m["prev"]
+        self.last_decisions[ticker]["action"] = ACTIONS[HOLD]
+
+    def reviewed(self, proposed: list[Signal], date: pd.Timestamp,
+                 portfolio: Portfolio) -> list[Signal]:
+        """The proposed trades Opus approves tonight (none without a review)."""
         if date != self.market.calendar[-1]:
             return []                       # catching up: no news for the past
         if self.market.source == "synthetic":
