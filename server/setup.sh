@@ -46,7 +46,7 @@ systemctl enable --now docker
 say "Preparing the bridge"
 [ -x "$REPO/.venv/bin/python" ] || python3 -m venv "$REPO/.venv"
 "$REPO/.venv/bin/pip" install --quiet --disable-pip-version-check \
-    -r "$REPO/requirements-ibkr.txt"
+    --require-hashes -r "$REPO/requirements-ibkr.txt"
 
 new_login=""
 if [ "${1:-}" = "--login" ] || [ ! -s "$HERE/.env" ] ||

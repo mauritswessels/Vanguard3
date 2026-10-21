@@ -1,0 +1,17 @@
+# Once a month, one pull request with newer versions of the Python packages.
+# Dependabot rebuilds requirements.txt and requirements-ibkr.txt from the
+# .in files with pip-compile, hashes included. The tests run on the pull
+# request; nothing changes until it is merged. The IBKR bridge runs on main
+# the next morning, so merge with care.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      python-packages:
+        patterns: ["*"]
+    commit-message:
+      prefix: "Update Python packages"

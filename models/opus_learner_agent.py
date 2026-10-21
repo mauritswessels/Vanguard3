@@ -38,7 +38,7 @@ import time
 import pandas as pd
 
 import config
-from claude_api import call_claude
+from claude_api import call_claude, reply_text
 from engine.portfolio import Portfolio
 from models.base_agent import Action, Signal
 from models.learner_agent import ACTIONS, HOLD, LearnerAgent
@@ -77,12 +77,8 @@ def ask_opus(brief: str, model: str, effort: str,
         "output_config": {"effort": effort},
         "system": SYSTEM,
         "messages": [{"role": "user", "content": brief}],
-    }, key, timeout=180)
-    if reply.get("stop_reason") == "refusal":
-        raise RuntimeError("the model declined to answer")
-    text = "".join(b.get("text", "") for b in reply.get("content", [])
-                   if b.get("type") == "text")
-    review = parse_review(text)
+    }, key, timeout=180, purpose="Opus Learner")
+    review = parse_review(reply_text(reply))
     review["usage"] = reply.get("usage", {})
     review["model"] = reply.get("model", model)
     return review

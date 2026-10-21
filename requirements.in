@@ -1,0 +1,7 @@
+# The packages the simulation needs, with the oldest versions it works with.
+# requirements.txt pins the exact versions (and their file hashes) that are
+# installed; rebuild it from this file as the README says ("Updating the
+# pinned packages").
+yfinance>=0.2.40
+pandas>=2.0
+numpy>=1.24
