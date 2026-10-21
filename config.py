@@ -92,9 +92,11 @@ FX_TICKERS = {
 # Ticker used for the passive buy-and-hold benchmark on the scoreboard.
 BENCHMARK_TICKER = "SPY"
 
-# Competitors, by registry key (see models/__init__.py). The benchmark runs
-# as a normal agent so it pays the same costs as everyone else.
-AGENT_LINEUP = ["trend", "reversion", "volatility", "benchmark"]
+# Competitors, by registry key (see models/__init__.py). The two yardsticks
+# (SPY, and an equal share of every watched market) run as normal agents so
+# they pay the same costs as everyone else.
+AGENT_LINEUP = ["trend", "reversion", "volatility", "benchmark",
+                "equal_weight"]
 
 # ---------------------------------------------------------------------------
 # Simulation window

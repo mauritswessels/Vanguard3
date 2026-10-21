@@ -30,7 +30,12 @@ PART_FIELDS = {
     "excess_vs_monkey_low", "excess_vs_monkey_high", "p_vs_monkeys",
     "p_vs_monkeys_adjusted", "weeks_needed", "verdict_vs_spy",
     "excess_vs_spy", "excess_vs_spy_low", "excess_vs_spy_high", "p_vs_spy",
-    "p_vs_spy_adjusted", "weeks_needed_vs_spy", "returns_by_start_day"}
+    "p_vs_spy_adjusted", "weeks_needed_vs_spy", "returns_by_start_day",
+    # Added with the equal-weight yardstick (nothing above changed).
+    "equal_weight_return", "verdict_vs_equal_weight",
+    "excess_vs_equal_weight", "excess_vs_equal_weight_low",
+    "excess_vs_equal_weight_high", "p_vs_equal_weight",
+    "p_vs_equal_weight_adjusted", "weeks_needed_vs_equal_weight"}
 
 #: A short watchlist (SPY plus shares in all three currencies).
 WATCH = {t: config.WATCHLIST[t] for t in [
@@ -164,7 +169,7 @@ class ReplayTest(unittest.TestCase):
     def test_fixed_and_learning_versions_race_the_same_days(self):
         res = self.part["results"]
         self.assertEqual(set(res), {"trend-fixed", "trend", "benchmark",
-                                    "monkey"})
+                                    "equal_weight", "monkey"})
         self.assertEqual(self.part["tested"], 2)
         self.assertEqual(len(self.part["monkey_returns"]), S["monkeys"])
         self.assertEqual(res["trend"]["first"], res["trend-fixed"]["first"])
@@ -194,6 +199,9 @@ class ReplayTest(unittest.TestCase):
     def test_yardsticks_are_shown_but_not_judged(self):
         res = self.part["results"]
         self.assertIsNone(res["benchmark"]["spy"])
+        self.assertIsNone(res["equal_weight"]["equal_weight"])
+        self.assertNotIn("verdict", res["benchmark"]["equal_weight"])
+        self.assertIn(res["trend"]["equal_weight"]["verdict"], ls.VERDICTS)
         self.assertNotIn("verdict", res["monkey"]["monkey"])
         self.assertNotIn("verdict", res["benchmark"]["monkey"])
         self.assertIn(res["trend"]["monkey"]["verdict"], ls.VERDICTS)
@@ -210,7 +218,8 @@ class ReplayTest(unittest.TestCase):
         self.assertEqual(set(data["verdict_meanings"]), set(VERDICTS))
         self.assertEqual(len(data["past"]["monkey_returns"]), S["monkeys"])
         rows = {r["id"]: r for r in data["accounts"]}
-        self.assertEqual(list(rows)[-2:], ["benchmark", "monkey"])
+        self.assertEqual(list(rows)[-3:], ["benchmark", "equal_weight",
+                                           "monkey"])
         trend = rows["trend"]
         self.assertEqual(set(trend), ACCOUNT_FIELDS)
         self.assertEqual(set(trend["past"]), PART_FIELDS)
@@ -228,6 +237,12 @@ class ReplayTest(unittest.TestCase):
         self.assertIn("Started on 3 different days", trend["summary"][0])
         self.assertEqual(len(data["past"]["start_days"]), 3)
         self.assertIsNone(spy["past"]["returns_by_start_day"])
+        mix = rows["equal_weight"]
+        self.assertTrue(mix["yardstick"])
+        self.assertIsNone(mix["past"]["excess_vs_equal_weight"])
+        self.assertIsNotNone(trend["past"]["equal_weight_return"])
+        self.assertIn(trend["past"]["verdict_vs_equal_weight"], VERDICTS)
+        self.assertIn("equal share of every watched market", data["method"])
 
 
 class LiveTest(unittest.TestCase):
@@ -250,14 +265,18 @@ class LiveTest(unittest.TestCase):
         cls.s = {**S, "min_days": 40}
         cls.part = ls.live(cls.state, cls.market, cls.s)
 
-    def test_each_account_counts_from_its_first_decision(self):
+    def test_each_account_counts_from_the_day_it_joined(self):
+        """Not from its first trade: waiting in cash after joining is a
+        choice, and it counts."""
         res = self.part["results"]
         self.assertEqual(self.part["order"],
                          ["benchmark", "trend", "monkey", "trend-fixed"])
         self.assertEqual(self.part["tested"], 2)
         late = res["trend-fixed"]
-        self.assertGreaterEqual(pd.Timestamp(late["since"]), self.days[30])
-        self.assertLess(late["sessions"], 30)
+        self.assertEqual(late["since"], self.days[30].strftime("%Y-%m-%d"))
+        self.assertEqual(late["sessions"], 29)
+        self.assertEqual(res["trend"]["since"],
+                         self.days[0].strftime("%Y-%m-%d"))
         self.assertEqual(res["trend"]["last"],
                          self.days[-1].strftime("%Y-%m-%d"))
 
@@ -280,6 +299,27 @@ class LiveTest(unittest.TestCase):
         self.assertEqual(report["as_of"], self.days[-1].strftime("%Y-%m-%d"))
         self.assertTrue(rows["monkey"]["summary"][-1].startswith("Live:"))
         self.assertEqual(list(rows)[-2:], ["benchmark", "monkey"])
+        self.assertIn("equal share of every market", rows["trend"]["summary"][-1])
+
+    def test_each_account_meets_an_equal_mix_started_on_its_day(self):
+        res = self.part["results"]
+        for i in ("trend", "trend-fixed", "benchmark"):
+            self.assertIsNotNone(res[i]["equal_weight_return"], i)
+            self.assertIsNotNone(res[i]["equal_weight"]["per_year"], i)
+        # Each join date has its own mix, so the two returns differ.
+        self.assertNotEqual(res["trend"]["equal_weight_return"],
+                            res["trend-fixed"]["equal_weight_return"])
+        self.assertIn(res["trend"]["equal_weight"]["verdict"], ls.VERDICTS)
+
+    def test_states_without_join_dates_still_work(self):
+        """Saved before join dates were recorded: every account but the
+        known late joiners counts from its first session."""
+        state = json.loads(json.dumps(self.state))
+        for a in state["accounts"]:
+            del a["joined"]
+        part = ls.live(state, self.market, self.s)
+        self.assertEqual(part["results"]["trend"]["since"],
+                         self.days[0].strftime("%Y-%m-%d"))
 
     def test_news_agents_explain_why_there_is_no_replay(self):
         row = {"id": "news", "key": "news", "name": "News Analyst",

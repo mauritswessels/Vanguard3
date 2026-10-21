@@ -4,6 +4,11 @@
 the JSON the static dashboard in ``docs/`` reads. Keeping the export in one
 place means backtests, walk-forward studies and the daily paper-trading job
 all produce the same shape of data.
+
+Accounts join the live race on different days, so a return since each
+account's own start is not a fair ranking: one that joined after a fall
+skipped it. ``same_days`` therefore measures every account against each
+yardstick over exactly the sessions both have been trading.
 """
 
 from __future__ import annotations
@@ -68,11 +73,47 @@ def print_scoreboard(sim: Simulator, heading: str) -> None:
               "not the strategies.")
 
 
+#: Yardsticks every account is compared with over the same days, by
+#: dashboard id: buy-and-hold SPY and an equal share of every market.
+YARDSTICKS = ("benchmark", "equal_weight")
+
+
+def same_days(acc, ref, last: pd.Timestamp) -> dict | None:
+    """``acc`` against the yardstick account ``ref`` over the sessions both
+    have been trading: from the close of the later join date to ``last``.
+
+    Both returns are counted from that close, so neither side gets credit
+    for days the other was not in the race. ``None`` for the yardstick
+    itself, or while either has not joined.
+    """
+    if ref is None or ref is acc or acc.joined is None or ref.joined is None:
+        return None
+    since = max(acc.joined, ref.joined)
+    mine = acc.portfolio.equity_curve.loc[since:last]
+    theirs = ref.portfolio.equity_curve.loc[since:last]
+    days = mine.index.intersection(theirs.index)
+    if len(days) == 0:
+        return None
+    a = float(mine[days[-1]] / mine[days[0]] - 1)
+    b = float(theirs[days[-1]] / theirs[days[0]] - 1)
+    return {"name": ref.agent.name, "from": _day(days[0]),
+            "to": _day(days[-1]), "days": len(days) - 1,
+            "return": a, "yardstick_return": b, "difference": a - b}
+
+
+def _day(d: pd.Timestamp | None) -> str | None:
+    return d.strftime("%Y-%m-%d") if d is not None else None
+
+
 def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
                       extra: dict | None = None) -> dict:
     """Everything the dashboard needs to draw one view (backtest or paper)."""
     market, last = sim.market, sim.last_date
     prices_chf = market.close_chf(last)
+    refs = {}
+    for acc in sim.accounts:
+        refs.setdefault(agent_key(acc.agent), acc)
+    refs = {y: refs.get(y) for y in YARDSTICKS}
     agents = []
     for acc in sim.accounts:
         pf = acc.portfolio
@@ -107,6 +148,11 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             "style": acc.agent.style,
             "benchmark": acc.agent.benchmark,
             "params": acc.agent.params,
+            # First session it could trade; the days before are not its own.
+            "joined": _day(acc.joined),
+            # Against each yardstick over the days both were trading.
+            "same_days": {y: same_days(acc, ref, last)
+                          for y, ref in refs.items()},
             "stats": pf.performance(),
             "equity": [[d.strftime("%Y-%m-%d"), round(v, 2)]
                        for d, v in pf.equity_curve.items()],
@@ -155,6 +201,10 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
                   "slippage_bps": config.SLIPPAGE_BPS,
                   "fx_bps": config.FX_CONVERSION_BPS},
         "currencies": market.currencies,
+        # The yardsticks of ``same_days``, with the day each joined.
+        "yardsticks": {y: {"name": ref.agent.name, "joined": _day(ref.joined)}
+                       if ref is not None else None
+                       for y, ref in refs.items()},
         "groups": {t: journal.asset_group(t) for t in market.tickers},
         "agents": agents,
         "prices": prices,

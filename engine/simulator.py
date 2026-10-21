@@ -33,6 +33,17 @@ from models.base_agent import Action, BaseAgent
 
 STATE_VERSION = 1
 
+#: Saved states from before 21 Oct 2026 do not say when each account
+#: joined. These live accounts joined after the race had begun (found in
+#: the history of state/paper_state.json); every other account of such a
+#: state joined on its first session (see ``joined_before_records``).
+JOINED_BEFORE_RECORDS = {
+    ("manager", "Team Manager"): "2026-10-12",
+    ("monkey", "Monkey"): "2026-10-12",
+    ("news_opus", "News Analyst (Opus)"): "2026-10-14",
+    ("learner_opus", "Opus Learner"): "2026-10-15",
+}
+
 
 @dataclass
 class Account:
@@ -43,6 +54,11 @@ class Account:
     broker: SimulatedBroker
     #: Days on which the agent did something: signals, orders and fills.
     activity: list[dict] = field(default_factory=list)
+    #: First session the account could trade (``None`` until then). An
+    #: account added later has starting cash on the days before, and the
+    #: AI Learners practise without orders until their ``live_from``, so
+    #: only the days from here on are its own.
+    joined: pd.Timestamp | None = None
 
 
 def build_accounts(market: MarketData,
@@ -85,6 +101,8 @@ class Simulator:
                 a.agent, "uses_team", False)):
             if getattr(acc.agent, "uses_team", False):
                 acc.agent.team = self.accounts   # the Team Manager
+            if acc.joined is None and acc.agent.trades_on(date):
+                acc.joined = date
             seen = len(acc.broker.rejected)
             if self.corporate_actions:
                 self._pay_dividends(acc, date)
@@ -189,6 +207,8 @@ class Simulator:
             "accounts": [{
                 "agent": agent_key(acc.agent),
                 "name": acc.agent.name,
+                "joined": (acc.joined.strftime("%Y-%m-%d")
+                           if acc.joined is not None else None),
                 "learning": acc.agent.learning,
                 "learning_log": acc.agent.learning_log,
                 "params": acc.agent.params,
@@ -215,11 +235,26 @@ class Simulator:
             pf = Portfolio.from_dict(a["portfolio"])
             broker = SimulatedBroker(pf, market)
             broker.load_pending(a["pending_orders"])
-            accounts.append(Account(agent, pf, broker, a["activity"]))
+            joined = (pd.Timestamp(a["joined"]) if a.get("joined")
+                      else None if "joined" in a
+                      else joined_before_records(a, agent))
+            accounts.append(Account(agent, pf, broker, a["activity"], joined))
         sim = cls(market, accounts, tuner)
         if data["last_date"]:
             sim.last_date = pd.Timestamp(data["last_date"])
         return sim
+
+
+def joined_before_records(saved: dict, agent: BaseAgent
+                          ) -> pd.Timestamp | None:
+    """Join date of an account saved before join dates were recorded: its
+    first session (the dates of its equity curve), or the later date in
+    ``JOINED_BEFORE_RECORDS``, and not before the agent may trade."""
+    days = sorted(pd.Timestamp(d) for d in saved["portfolio"]["equity"])
+    late = JOINED_BEFORE_RECORDS.get((saved["agent"], saved.get("name")))
+    if late and days and days[0] <= pd.Timestamp(late) <= days[-1]:
+        days = [d for d in days if d >= pd.Timestamp(late)]
+    return next((d for d in days if agent.trades_on(d)), None)
 
 
 def decision_context(agent, signals, date, portfolio) -> list[dict]:
