@@ -47,6 +47,17 @@ practice mode (deciding and learning, but placing no orders) until
 `LEARNER_PARAMS["live_from"]` in `config.py`. Accounts added to the lineup
 after launch join automatically on the next daily run.
 
+Two trading rules stop it from churning. Its random tries (5% of decisions,
+there so it keeps learning) are learned on paper and never traded, and it
+keeps every holding at least 10 sessions (`explore_on_paper` and `min_hold`
+in `LEARNER_PARAMS`). A sell it wants sooner counts as a hold, so the model
+learns from what the account really did. Without these rules it bought and
+sold the next day almost every time: replayed over the last 5 years it made
+8,108 fills, paid about 49,500 CHF in costs and lost 64.5%. With them the
+same replay makes 678 fills, pays about 6,300 CHF and gains 27%. Over 10
+random seeds the median is +31% and every seed gains. That is still behind
+buy-and-hold SPY (+63%) and the typical random-pick monkey (+44%).
+
 Its twin, the **Opus Learner** (`models/opus_learner_agent.py`), runs the
 same learning model but lets Claude Opus check its picks: once per evening it
 reads the model's proposed sells and its best proposed buys, with recent

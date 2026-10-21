@@ -162,6 +162,8 @@ LEARNER_PARAMS = {
     "lr": 0.01,                  # learning rate of each daily update
     "gamma": 0.9,                # how much tomorrow's value counts today
     "epsilon": 0.05,             # share of random decisions, to keep learning
+    "explore_on_paper": True,    # random decisions are learned from, not traded
+    "min_hold": 10,              # keep each holding at least this many sessions
     "trade_cost": 0.1,           # reward penalty (in %) per change of position
     "pretrain_years": 3,         # practice on this much history before day one
     "pretrain_epochs": 3,
