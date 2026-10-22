@@ -11,7 +11,7 @@ const FAMILIES: { family: Family; title: string; text: string }[] = [
   { family: "Reinforcement learning", title: "Learning machines", text: "A small model that teaches itself by trial and error, updating after every close." },
   { family: "Claude AI", title: "Claude, reading the world", text: "Large language models that read the news and company results, or check another model's picks, and explain every decision." },
   { family: "Manager", title: "The manager", text: "An agent that picks agents instead of markets." },
-  { family: "Yardstick", title: "The yardsticks", text: "Not competitors but the bar to clear: the S&P 500, and a monkey picking at random to show how far luck alone goes." },
+  { family: "Yardstick", title: "The yardsticks", text: "Not competitors but the bar to clear: the S&P 500, every market in equal shares, and a monkey picking at random to show how far luck alone goes." },
 ];
 
 export default function Agents() {

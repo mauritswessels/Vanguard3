@@ -15,9 +15,14 @@ twin) only:
    markets when ``FINNHUB_API_KEY`` is set; Yahoo, about 15 minutes
    delayed, for the rest and as the backup),
 3. asks Claude whether anything has changed enough to act on,
-4. trades those changes at once at the live price, with the same costs as
-   every other fill. A market that is closed right now is left for the
-   evening check.
+4. trades those changes, with the same costs as every other fill:
+
+   * a market with a real-time price (Finnhub) fills at once at that price;
+   * a market open now whose price is delayed (Yahoo: all Swiss and
+     European markets, and US ones without Finnhub) gets a market-on-close
+     order instead, which the evening run fills at that day's official
+     close (a real order cannot trade at a price 15 minutes old);
+   * a market that is closed right now is left for the evening check.
 
 Everything is simulated: no broker is contacted and no real order is
 placed. The other accounts are not touched; the evening run carries on as
@@ -58,9 +63,10 @@ SPLIT_LIKE = (0.6, 1.6)
 def intraday_quotes(symbols: list[str], now: pd.Timestamp) -> dict:
     """Today's open and latest price per symbol, from 5-minute Yahoo bars.
 
-    Returns ``{symbol: {"open", "last", "time", "live"}}``. ``open`` is
-    ``None`` when the market has not traded today (not open yet, or a
-    holiday); ``live`` says whether it is trading right now.
+    Returns ``{symbol: {"open", "last", "time", "live", "realtime"}}``.
+    ``open`` is ``None`` when the market has not traded today (not open
+    yet, or a holiday); ``live`` says whether it is trading right now.
+    Yahoo's prices are about 15 minutes old, so ``realtime`` is False.
     """
     import yfinance as yf
     raw = yf.download(symbols, period="1d", interval="5m", group_by="ticker",
@@ -79,13 +85,14 @@ def intraday_quotes(symbols: list[str], now: pd.Timestamp) -> dict:
         today = df[idx.normalize() == now.normalize()]
         if today.empty:
             out[s] = {"open": None, "last": float(df["Close"].iloc[-1]),
-                      "time": None, "live": False}
+                      "time": None, "live": False, "realtime": False}
             continue
         t_last = idx[idx.normalize() == now.normalize()][-1]
         out[s] = {"open": float(today["Open"].iloc[0]),
                   "last": float(today["Close"].iloc[-1]),
                   "time": t_last.isoformat(),
-                  "live": now - t_last <= pd.Timedelta(minutes=LIVE_MINUTES)}
+                  "live": now - t_last <= pd.Timedelta(minutes=LIVE_MINUTES),
+                  "realtime": False}
     return out
 
 
@@ -96,7 +103,9 @@ def _line(agent, t: str, last: pd.Timestamp, q: dict | None) -> str:
         return "not trading today so far; up to the last close: " + history
     prev = float(agent.market.close_panel.at[last, t])
     move = q["last"] / prev - 1 if prev else 0.0
-    state = "market open now" if q["live"] else "market closed now"
+    state = ("market closed now" if not q["live"] else
+             "market open now, real-time price" if q.get("realtime") else
+             "market open now, price about 15 minutes old")
     return (f"now {q['last']:.2f} {agent.market.currencies[t]} "
             f"({move:+.1%} today, {state}); up to the last close: {history}")
 
@@ -105,9 +114,10 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
                  fx_now: dict[str, float], key: str = "news") -> dict:
     """Run one news agent's midday check on a restored simulator.
 
-    ``quotes`` comes from :func:`intraday_quotes`; ``fx_now`` maps a
-    currency to the CHF value of one unit right now; ``key`` picks the
-    agent (``"news"`` or ``"news_opus"``).
+    ``quotes`` comes from :func:`intraday_quotes` (and Finnhub, whose
+    quotes are marked ``realtime``); ``fx_now`` maps a currency to the CHF
+    value of one unit right now; ``key`` picks the agent (``"news"`` or
+    ``"news_opus"``).
     """
     acc = next((a for a in sim.accounts if agent_key(a.agent) == key), None)
     if acc is None:
@@ -135,9 +145,17 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
     def live(t: str) -> bool:
         return bool((quotes.get(t) or {}).get("live")) and not jumped(t)
 
+    def realtime(t: str) -> bool:
+        return live(t) and bool(quotes[t].get("realtime"))
+
     # 1. Last evening's orders filled at this morning's open (minus any
     #    replaced by a newer one or waiting too long, as in the evening).
+    #    Close orders from an earlier check today (a manual re-run) give
+    #    way to this one's decisions.
     broker._tidy(day)
+    for o in [o for o in broker.pending if o.kind == "close"]:
+        broker.pending.remove(o)
+        broker._reject(o, "replaced by a newer order")
     fills = []
     due = sorted((o for o in broker.pending if opened(o.ticker)),
                  key=lambda o: o.side != "SELL")
@@ -162,9 +180,11 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
     before = ", ".join(f"{t} {v['weight']:.0%}"
                        for t, v in agent.targets.items() if v["weight"] > 0)
     note = (
-        f"MIDDAY CHECK, {now.strftime('%H:%M')} UTC. Prices are live (some up to "
-        "15 minutes delayed). Changes in a market marked 'market open now' "
-        "fill at once; the rest wait for this evening's check.\n"
+        f"MIDDAY CHECK, {now.strftime('%H:%M')} UTC. Prices are live (some about "
+        "15 minutes old). A change in a market with a real-time price fills "
+        "at once; in one whose price is about 15 minutes old it fills at "
+        "today's closing price; in a closed market it waits for this "
+        "evening's check.\n"
         f"Your targets from the last evening check: {before or 'none'}.\n"
         "Keep those targets unless today's news or price moves give a clear "
         "reason to change. Reply in the same JSON format, listing every "
@@ -178,16 +198,31 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
               agent.status.replace("No decision today", "Midday check failed"))
     agent.status = evening_status
 
-    # 4. Trade the changes in markets that are open now.
+    # 4. Trade the changes in markets that are open now: at once where the
+    #    price is real-time, at today's close where it is delayed.
     signals = agent.target_signals(pf) if ok else []
-    orders, waiting = [], []
+    orders, waiting, at_close = [], [], []
     costs = pf.costs
+    # Estimated proceeds of sells at the close; only buys at the same close
+    # can use them (those fill after the sells).
+    proceeds = 0.0
     for sig in (s for s in signals if s.action is Action.SELL):
-        if not live(sig.ticker):
-            waiting.append(sig.ticker)
+        t = sig.ticker
+        if not live(t):
+            waiting.append(t)
             continue
-        o = Order(sig.ticker, "SELL", pf.quantity(sig.ticker), day, sig.reason)
-        f = broker.fill_at(o, day, price(sig.ticker), fx(sig.ticker))
+        if not realtime(t):
+            qty = pf.quantity(t)
+            o = Order(t, "SELL", qty, day, sig.reason, kind="close")
+            broker.submit(o)
+            proceeds += (qty * costs.sell_price_chf(price(t), fx(t),
+                                                    market.currencies[t])
+                         - costs.commission_chf)
+            orders.append(o)
+            at_close.append(t)
+            continue
+        o = Order(t, "SELL", pf.quantity(t), day, sig.reason)
+        f = broker.fill_at(o, day, price(t), fx(t))
         if f is not None:
             orders.append(o)
             fills.append(f)
@@ -202,10 +237,23 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
             waiting.append(t)
             continue
         budget += promised.pop(t, 0.0)        # this order replaces it
+        closing = not realtime(t)
         unit = costs.buy_price_chf(price(t), fx(t), market.currencies[t])
         qty = agent.position_size(sig, day, equity, unit)
-        qty = min(qty, int(max(budget - costs.commission_chf, 0) // unit))
+        free = budget + (proceeds if closing else 0.0)
+        qty = min(qty, int(max(free - costs.commission_chf, 0) // unit))
         if qty <= 0 or qty * unit < config.MIN_ORDER_CHF:
+            continue
+        if closing:
+            # Cash is checked again at the close; until then it is promised.
+            o = Order(t, "BUY", qty, day, sig.reason, kind="close")
+            broker.submit(o)
+            cost = qty * unit + costs.commission_chf
+            used = min(cost, proceeds)
+            proceeds -= used
+            budget -= cost - used
+            orders.append(o)
+            at_close.append(t)
             continue
         o = Order(t, "BUY", qty, day, sig.reason)
         f = broker.fill_at(o, day, price(t), fx(t))
@@ -223,16 +271,20 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
         for s in entry["signals"]:
             if s["ticker"] in waiting:
                 s["note"] = "market closed now, left for the evening"
+            elif s["ticker"] in at_close:
+                s["note"] = ("price about 15 minutes old: ordered for "
+                             "today's close")
         acc.activity.append(entry)
 
     agent.midday = {
         "time": now.tz_convert("UTC").isoformat(timespec="minutes"),
         "ok": ok, "status": status, "view": agent.view if ok else "",
-        "opening_fills": len(opening), "trades": len(orders),
-        "waiting": waiting,
+        "opening_fills": len(opening), "trades": len(orders) - len(at_close),
+        "at_close": at_close, "waiting": waiting,
     }
-    logger.info("Midday: %s; %d opening fill(s), %d new trade(s), "
-                "%d left for the evening", status, len(opening), len(orders),
+    logger.info("Midday: %s; %d opening fill(s), %d trade(s) at once, "
+                "%d ordered for the close, %d left for the evening", status,
+                len(opening), len(orders) - len(at_close), len(at_close),
                 len(waiting))
     return agent.midday
 
@@ -283,7 +335,7 @@ def main() -> None:
         us = [t for t in market.tickers if t in config._US_STOCKS
               or t in config._FUNDS]
         live_us = finnhub_feed.quotes(us, now, LIVE_MINUTES)
-        quotes.update(live_us)
+        quotes.update({t: {**q, "realtime": True} for t, q in live_us.items()})
         logger.info("Finnhub real-time prices for %d of %d US markets",
                     len(live_us), len(us))
         if live_us:

@@ -30,7 +30,8 @@ PART_FIELDS = {
     "excess_vs_monkey_low", "excess_vs_monkey_high", "p_vs_monkeys",
     "p_vs_monkeys_adjusted", "weeks_needed", "verdict_vs_spy",
     "excess_vs_spy", "excess_vs_spy_low", "excess_vs_spy_high", "p_vs_spy",
-    "p_vs_spy_adjusted", "weeks_needed_vs_spy", "returns_by_start_day"}
+    "p_vs_spy_adjusted", "weeks_needed_vs_spy", "returns_by_start_day",
+    "window", "in_sample"}
 
 #: A short watchlist (SPY plus shares in all three currencies).
 WATCH = {t: config.WATCHLIST[t] for t in [
@@ -216,6 +217,8 @@ class ReplayTest(unittest.TestCase):
         self.assertEqual(set(trend["past"]), PART_FIELDS)
         self.assertIn(trend["verdict"], VERDICTS)
         self.assertEqual(trend["verdict_from"], "past prices")
+        self.assertEqual((trend["past"]["window"], trend["past"]["in_sample"]),
+                         ("recent", False))
         self.assertEqual(rows["trend-fixed"]["key"], "trend")
         self.assertTrue(0 <= trend["past"]["percentile_vs_monkeys"] <= 1)
         self.assertIsNone(trend["past"]["weeks_needed"])
@@ -225,9 +228,72 @@ class ReplayTest(unittest.TestCase):
         self.assertIsNone(spy["verdict"])
         self.assertIsNone(spy["past"]["excess_vs_spy"])
         self.assertTrue(trend["summary"][0].startswith("Past 1 year:"))
+        # Too little history to go back before the tuning years: the fixed
+        # settings are judged on the recent years, flagged, and never
+        # decide their own verdict.
+        self.assertIsNone(data["past_before_tuning"])
+        fixed = rows["trend-fixed"]
+        self.assertEqual((fixed["past"]["window"], fixed["past"]["in_sample"]),
+                         ("recent", True))
+        self.assertEqual(fixed["verdict"], "can't tell yet")
+        self.assertIsNone(fixed["verdict_from"])
+        self.assertIn("flatters it", fixed["summary"][0])
         self.assertIn("Started on 3 different days", trend["summary"][0])
         self.assertEqual(len(data["past"]["start_days"]), 3)
         self.assertIsNone(spy["past"]["returns_by_start_day"])
+
+
+class BeforeTuningTest(unittest.TestCase):
+    """Enough history: fixed settings are judged on the years before they
+    were picked, the learning version on the recent years."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.market = synthetic(days=8 * 365, seed=6)
+        cls.s = {**S, "tuned_since": "2024-06-28"}
+        cls.part = ls.replay(cls.market, cls.s, keys=("trend",),
+                             grids={"trend": {"adx_threshold": [25.0]}},
+                             train_years=1)
+        cls.report = ls.build_report(cls.part, None, cls.s, "synthetic")
+
+    def test_only_long_enough_prices_reach_back(self):
+        self.assertEqual(ls.before_tuning_end(self.market, self.s),
+                         pd.Timestamp("2024-06-27"))
+        self.assertIsNone(ls.before_tuning_end(synthetic(), self.s))
+        self.assertIsNone(ls.before_tuning_end(
+            self.market, {**self.s, "tuned_since": None}))
+
+    def test_fixed_settings_are_judged_before_they_were_picked(self):
+        res = self.part["results"]
+        fixed, learning = res["trend-fixed"], res["trend"]
+        self.assertEqual((fixed["window"], fixed["in_sample"]),
+                         ("before_tuning", False))
+        self.assertLess(pd.Timestamp(fixed["last"]),
+                        pd.Timestamp(self.s["tuned_since"]))
+        self.assertEqual(fixed["last"], "2024-06-27")
+        self.assertEqual((learning["window"], learning["in_sample"]),
+                         ("recent", False))
+        self.assertEqual(learning["last"], "2026-06-30")
+        self.assertEqual(self.part["tested"], 2)
+        early = self.part["before_tuning"]
+        self.assertEqual(len(early["monkey_returns"]), S["monkeys"])
+        self.assertEqual(early["tuned_since"], "2024-06-28")
+
+    def test_report_names_the_years_and_lets_them_decide(self):
+        rows = {r["id"]: r for r in self.report["accounts"]}
+        fixed = rows["trend-fixed"]
+        self.assertEqual(fixed["verdict_from"], "past prices")
+        self.assertEqual(fixed["verdict"], fixed["past"]["verdict"])
+        self.assertEqual(fixed["past"]["to"], "2024-06-27")
+        self.assertEqual(fixed["past"]["from"],
+                         self.report["past_before_tuning"]["from"])
+        self.assertIn("before its settings were picked", fixed["summary"][0])
+        self.assertNotIn("flatters", fixed["summary"][0])
+        early = self.report["past_before_tuning"]
+        self.assertEqual(set(early), {
+            "from", "to", "monkeys", "agents_tested", "years", "days",
+            "start_days", "tuned_since", "monkey_returns"})
+        self.assertEqual(rows["trend"]["past"]["to"], self.report["past"]["to"])
 
 
 class LiveTest(unittest.TestCase):

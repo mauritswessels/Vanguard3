@@ -50,6 +50,16 @@ export default function Home() {
           </Panel>
         </div>
       </Section>
+      {d.report_cards && d.report_cards.accounts.some((r) => r.graded_5) && (
+        <Section className="pt-0">
+          <Panel eyebrow="Report cards" title="Average edge of each agent's calls, 5 days later"
+            right={<Link to="/analytics" className="text-[12.5px] text-gold hover:text-gold-2">All report cards →</Link>}>
+            <Bars rows={d.report_cards.accounts.filter((r) => r.graded_5 && r.avg_edge_5 != null)
+              .map((r) => ({ agent: d.agents.find((a) => a.id === r.id)!, value: r.avg_edge_5!, note: `${share(r.hit_rate_5)} of ${r.graded_5} right` }))
+              .filter((r) => r.agent)} format={(v) => pct(v, 1)} />
+          </Panel>
+        </Section>
+      )}
       <Section className="pt-0">
         <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
           <Drawdowns d={d} />
@@ -218,7 +228,10 @@ function Headline({ d }: { d: RunData }) {
   const leader = ranked(racing)[0];
   const spy = d.agents.find((a) => a.key === "benchmark");
   const monkey = d.agents.find((a) => a.key === "monkey");
-  const beatSpy = racing.filter((a) => spy && a.stats.final_equity_chf > spy.stats.final_equity_chf).length;
+  // Over the days both were trading when the results have it (newer files),
+  // so an agent that joined after a fall gets no credit for missing it.
+  const beatSpy = racing.filter((a) => a.same_days?.benchmark ? a.same_days.benchmark.difference > 0
+    : spy && a.stats.final_equity_chf > spy.stats.final_equity_chf).length;
   const beatMonkey = racing.filter((a) => monkey && a.stats.final_equity_chf > monkey.stats.final_equity_chf).length;
   const fills = d.agents.reduce((n, a) => n + a.trades.length, 0);
   const queued = d.agents.reduce((n, a) => n + a.pending_orders.length, 0);
@@ -310,6 +323,7 @@ function Standings({ d }: { d: RunData }) {
   const rows = ranked(d.agents);
   let rank = 0;
   const dayChange = (a: Agent) => { const e = a.equity; return e.length < 2 ? null : e[e.length - 1][1] - e[e.length - 2][1]; };
+  const fair = d.agents.some((a) => a.same_days?.benchmark);
   return (
     <Section id="standings" className="pt-0">
       <Title eyebrow="Standings" title="Leaderboard" right={<Link to="/agents" className="text-[13px] text-gold hover:text-gold-2">All agents →</Link>} />
@@ -321,6 +335,7 @@ function Standings({ d }: { d: RunData }) {
               <th className="py-3.5 font-medium">Agent</th>
               <th className="py-3.5 text-right font-medium">Value CHF</th>
               <th className="py-3.5 text-right font-medium">Return</th>
+              {fair && <th className="py-3.5 text-right font-medium" title="Against the S&P 500 over the days both were trading">vs SPY, same days</th>}
               <th className="py-3.5 text-right font-medium">Last day</th>
               <th className="py-3.5 text-right font-medium">Max drop</th>
               <th className="py-3.5 text-right font-medium">Fills</th>
@@ -348,6 +363,8 @@ function Standings({ d }: { d: RunData }) {
                   </td>
                   <td className="tabular py-3 text-right font-medium">{chf(a.stats.final_equity_chf)}</td>
                   <td className="py-3 text-right"><Delta value={a.stats.total_return} className="font-medium">{pct(a.stats.total_return)}</Delta></td>
+                  {fair && <td className="py-3 text-right" title={a.same_days?.benchmark ? `${a.same_days.benchmark.days} days from ${a.same_days.benchmark.from}` : undefined}>
+                    {a.same_days?.benchmark ? <Delta value={a.same_days.benchmark.difference}>{pct(a.same_days.benchmark.difference)}</Delta> : <span className="text-faint">–</span>}</td>}
                   <td className="py-3 text-right"><Delta value={dc}>{signedChf(dc)}</Delta></td>
                   <td className="tabular py-3 text-right text-ink-2">{a.stats.max_drawdown ? pct(a.stats.max_drawdown) : "0%"}</td>
                   <td className="tabular py-3 text-right text-ink-2">{a.stats.trades}</td>

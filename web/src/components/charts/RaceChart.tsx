@@ -28,7 +28,7 @@ export function RaceChart({ data, height = 400, compact = false }: { data: RunDa
     id: a.id,
     points: curve(a, data, r, mode),
     color: theme.series(a.key),
-    style: a.key === "monkey" ? "dotted" : a.fixed_twin || a.key === "benchmark" ? "dashed" : "solid",
+    style: a.key === "monkey" ? "dotted" : a.fixed_twin || a.benchmark ? "dashed" : "solid",
     width: a.fixed_twin || a.benchmark ? 1 : 2,
     hidden: hidden.has(a.id),
   })), [agents, data, r.from, r.to, mode, theme, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -69,7 +69,7 @@ export function RaceChart({ data, height = 400, compact = false }: { data: RunDa
               </li>
             );
           })}
-          <li className="mt-2 px-2 text-[11.5px] leading-relaxed text-faint">Dashed: fixed twins and buy-and-hold SPY. Dotted: the Monkey. Click a name to hide its line.</li>
+          <li className="mt-2 px-2 text-[11.5px] leading-relaxed text-faint">Dashed: fixed twins and the buy-and-hold yardsticks. Dotted: the Monkey. Click a name to hide its line.</li>
         </ul>
       </div>
     </div>

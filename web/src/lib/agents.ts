@@ -96,6 +96,15 @@ export const INFO: Record<string, AgentInfo> = {
     ],
     rules: ["100% in SPY from day one", "Never trades", "Same costs as the agents"],
   },
+  equal_weight: {
+    tagline: "The wider yardstick: every market in equal shares.",
+    family: "Yardstick",
+    thinks: [
+      "Buy & Hold All Markets splits its account into equal shares of every watched market on its first evening, buys them at the next open and never trades again. It pays the same costs as everyone else.",
+      "The agents trade US, Swiss and European markets in francs, so part of any gap to the S&P 500 is just the US against Europe. This yardstick answers a fairer question: did an agent beat the average market it could have bought?",
+    ],
+    rules: ["An equal share of every watched market", "Bought once, never rebalanced", "Same costs as the agents"],
+  },
   monkey: {
     tagline: "The luck yardstick: picks at random.",
     family: "Yardstick",
@@ -118,7 +127,7 @@ export function hex(key: string, el: Element = document.documentElement) {
 }
 
 /** The order agents are listed in when not ranked. */
-export const ORDER = ["trend", "reversion", "volatility", "learner", "learner_opus", "news", "news_opus", "manager", "benchmark", "monkey"];
+export const ORDER = ["trend", "reversion", "volatility", "learner", "learner_opus", "news", "news_opus", "manager", "benchmark", "equal_weight", "monkey"];
 
 export const isYardstick = (a: Agent) => a.benchmark;
 export const learns = (a: Agent) => a.learning || !!a.ai;

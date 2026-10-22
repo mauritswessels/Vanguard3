@@ -9,7 +9,7 @@ import { useChartTheme } from "../components/charts/useChartTheme";
 import { Delta, Empty, Section, SectionHead, Swatch, cx } from "../components/ui";
 import { useJSON } from "../lib/data";
 import { chf, date, num, pct, share } from "../lib/format";
-import type { RunData, SkillData, WalkForwardData } from "../lib/types";
+import type { RunData, SkillData, SkillWindow, WalkForwardData } from "../lib/types";
 
 export default function Research() {
   return (
@@ -60,7 +60,18 @@ function Skill() {
         <Empty>The first results of this study appear after its next run.</Empty>
       ) : (
         <div className="grid gap-6">
-          {s.past && <MonkeyHistogram s={s} />}
+          {s.past && (() => {
+            const before = s.past_before_tuning;
+            const isBefore = (a: SkillData["accounts"][number]) => a.past?.window === "before_tuning";
+            return (
+              <div className={before ? "grid gap-6 xl:grid-cols-2" : ""}>
+                <MonkeyHistogram win={s.past} title={before ? "The learning versions, on the last five years" : "The agents that can be replayed"}
+                  accounts={s.accounts.filter((a) => !isBefore(a) && !a.past?.in_sample)} />
+                {before && <MonkeyHistogram win={before} title="Fixed settings and the AI Learner, on the years before their settings were picked"
+                  accounts={s.accounts.filter(isBefore)} />}
+              </div>
+            );
+          })()}
           <div className="grid gap-3 md:grid-cols-3">
             {(Object.entries(s.verdict_meanings) as [keyof SkillData["verdict_meanings"], string][]).map(([v, text]) => (
               <div key={v} className="card p-5"><VerdictBadge verdict={v} /><p className="mt-3 text-[13px] text-muted">{text.replace(/\s*\(see settings\.edge\)/, ` (${share(s.settings.edge)} a year)`)}</p></div>
@@ -71,7 +82,7 @@ function Skill() {
               <thead>
                 <tr className="whitespace-nowrap border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
                   <th className="py-3.5 pl-5 font-medium">Account</th><th className="py-3.5 font-medium">Verdict</th>
-                  <th className="py-3.5 pr-4 text-right font-medium">5 years: beat monkeys</th><th className="py-3.5 pr-4 text-right font-medium">5 years: vs SPY a year</th>
+                  <th className="py-3.5 pr-4 text-right font-medium">Past: beat monkeys</th><th className="py-3.5 pr-4 text-right font-medium">Past: vs SPY a year</th>
                   <th className="py-3.5 pr-4 text-right font-medium">Live days</th><th className="py-3.5 pr-5 text-right font-medium">Live: beat monkeys</th>
                 </tr>
               </thead>
@@ -80,7 +91,8 @@ function Skill() {
                   <tr key={a.id} className="border-b border-line align-top last:border-0">
                     <td className="py-3.5 pl-5"><Link to={`/agents/${a.id}`} className="flex items-center gap-2.5 hover:text-gold"><Swatch agent={{ key: a.key, fixed_twin: a.fixed_twin, benchmark: false }} />{a.name}</Link></td>
                     <td className="py-3.5"><VerdictBadge verdict={a.verdict} /><div className="mt-1 text-[11.5px] text-faint">{a.verdict_from ? `from ${a.verdict_from}` : ""}</div></td>
-                    <td className="tabular py-3.5 pr-4 text-right text-ink-2">{a.past ? share(a.past.percentile_vs_monkeys) : "–"}</td>
+                    <td className="tabular py-3.5 pr-4 text-right text-ink-2">{a.past ? share(a.past.percentile_vs_monkeys) : "–"}
+                      {a.past && <div className="text-[11.5px] text-faint">{years(a.past)}{a.past.in_sample ? " · in-sample, not counted" : ""}</div>}</td>
                     <td className="py-3.5 pr-4 text-right">{a.past ? <Delta value={a.past.excess_vs_spy}>{pct(a.past.excess_vs_spy, 1)}</Delta> : "–"}
                       {a.past && <div className="tabular text-[11.5px] text-faint">{pct(a.past.excess_vs_spy_low, 0)} to {pct(a.past.excess_vs_spy_high, 0)}</div>}</td>
                     <td className="tabular py-3.5 pr-4 text-right text-ink-2">{a.live ? a.live.days : "–"}</td>
@@ -98,36 +110,40 @@ function Skill() {
   );
 }
 
-/** Where the agents' five-year returns fall among the monkeys' (the luck distribution). */
-function MonkeyHistogram({ s }: { s: SkillData }) {
+const years = (w: { from: string; to: string }) => `${w.from.slice(0, 4)}–${w.to.slice(2, 4)}`;
+
+/** Where the agents' returns fall among the monkeys' over one window of
+ *  years (the luck distribution). */
+function MonkeyHistogram({ win, accounts, title }: { win: SkillWindow; accounts: SkillData["accounts"]; title: string }) {
   const theme = useChartTheme();
   const [hover, setHover] = useState<number | null>(null);
-  const past = s.past!;
-  const agents = s.accounts.filter((a) => a.past && !a.yardstick && !a.fixed_twin);
-  const spy = s.accounts.find((a) => a.past)?.past?.spy_return;
-  const vals = [...past.monkey_returns, ...agents.map((a) => a.past!.return), ...(spy != null ? [spy] : [])];
+  const agents = accounts.filter((a) => a.past && !a.yardstick);
+  const spy = agents[0]?.past?.spy_return;
+  const vals = [...win.monkey_returns, ...agents.map((a) => a.past!.return), ...(spy != null ? [spy] : [])];
   const lo = Math.floor(Math.min(...vals) * 10) / 10, hi = Math.ceil(Math.max(...vals) * 10) / 10;
   const BINS = 32, step = (hi - lo) / BINS;
   const bins = useMemo(() => {
     const b = Array.from({ length: BINS }, (_, i) => ({ from: lo + i * step, to: lo + (i + 1) * step, n: 0 }));
-    past.monkey_returns.forEach((v) => { b[Math.min(BINS - 1, Math.floor((v - lo) / step))].n++; });
+    win.monkey_returns.forEach((v) => { b[Math.min(BINS - 1, Math.floor((v - lo) / step))].n++; });
     return b;
-  }, [past, lo, step]);
+  }, [win, lo, step]);
   const W = 1000, H = 260, PAD = 34, top = 56;
   const X = (v: number) => PAD + ((v - lo) / (hi - lo)) * (W - 2 * PAD);
   const maxN = Math.max(...bins.map((b) => b.n));
   const Y = (n: number) => H - PAD - (n / maxN) * (H - PAD - top);
-  const ticks = Array.from({ length: Math.round((hi - lo) / 0.25) + 1 }, (_, i) => lo + i * 0.25).filter((t) => t <= hi + 1e-9);
+  const tick = hi - lo > 2 ? 0.5 : 0.25;
+  const ticks = Array.from({ length: Math.round((hi - lo) / tick) + 1 }, (_, i) => lo + i * tick).filter((t) => t <= hi + 1e-9);
   return (
-    <div className="card p-6">
+    <div className="card min-w-0 p-6">
       <div className="mb-2 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="eyebrow text-gold">{past.monkeys} monkeys, {past.years} years</div>
-          <p className="mt-1 max-w-2xl text-[13px] text-muted">Each bar counts monkeys whose random picks earned that return from {date(past.from)} to {date(past.to)}. The coloured lines are the agents over the same days; the dashed line is SPY.</p>
+          <div className="eyebrow text-gold">{years(win)} · {win.monkeys} monkeys</div>
+          <h3 className="mt-1 text-[16px] font-medium">{title}</h3>
+          <p className="mt-1 max-w-2xl text-[13px] text-muted">Each bar counts monkeys whose random picks earned that return from {date(win.from)} to {date(win.to)}. The coloured lines are the agents over the same days; the dashed line is SPY.</p>
         </div>
         <div className="text-[12.5px] text-ink-2">{hover != null ? `${bins[hover].n} monkeys earned ${pct(bins[hover].from, 0)} to ${pct(bins[hover].to, 0)}` : "Hover a bar"}</div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Histogram of the monkeys' five-year returns, with each agent's return marked">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Histogram of the monkeys' returns ${years(win)}, with each agent's return marked`}>
         {bins.map((b, i) => (
           <rect key={i} x={X(b.from) + 1} y={Y(b.n)} width={Math.max(1, X(b.to) - X(b.from) - 2)} height={H - PAD - Y(b.n)} rx={3}
             fill={hover === i ? theme.gold : theme.faint} opacity={hover === i ? 0.9 : 0.55}
@@ -139,14 +155,14 @@ function MonkeyHistogram({ s }: { s: SkillData }) {
         {spy != null && <text x={X(spy) + 5} y={top - 22} fontSize="11" fill={theme.text}>SPY</text>}
         {agents.map((a, i) => (
           <g key={a.id}>
-            <line x1={X(a.past!.return)} x2={X(a.past!.return)} y1={top - 6 + i * 9} y2={H - PAD} stroke={theme.series(a.key)} strokeWidth={2} />
-            <circle cx={X(a.past!.return)} cy={top - 6 + i * 9} r={4} fill={theme.series(a.key)} />
+            <line x1={X(a.past!.return)} x2={X(a.past!.return)} y1={top - 6 + i * 9} y2={H - PAD} stroke={theme.series(a.key)} strokeWidth={2} strokeDasharray={a.fixed_twin ? "4 3" : undefined} />
+            <circle cx={X(a.past!.return)} cy={top - 6 + i * 9} r={4} fill={a.fixed_twin ? "none" : theme.series(a.key)} stroke={theme.series(a.key)} strokeWidth={2} />
           </g>
         ))}
       </svg>
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12.5px] text-ink-2">
         {agents.map((a) => (
-          <span key={a.id} className="flex items-center gap-2"><Swatch agent={{ key: a.key, fixed_twin: false, benchmark: false }} size={8} />{a.name} {pct(a.past!.return, 0)}
+          <span key={a.id} className="flex items-center gap-2"><Swatch agent={{ key: a.key, fixed_twin: a.fixed_twin, benchmark: false }} size={8} />{a.name} {pct(a.past!.return, 0)}
             <span className="text-faint">· beat {share(a.past!.percentile_vs_monkeys)}</span></span>
         ))}
       </div>

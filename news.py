@@ -31,7 +31,7 @@ from email.utils import parsedate_to_datetime
 
 import config
 import finnhub_feed
-from claude_api import call_claude
+from claude_api import call_claude, reply_text
 
 #: Single companies (funds have no quarterly results).
 STOCKS = set(config._US_STOCKS + config._SWISS_STOCKS + config._EURO_STOCKS)
@@ -246,12 +246,15 @@ def ask_claude(brief: dict, holdings: dict[str, float], cash_pct: float,
             + f"Universe: {', '.join(brief['markets'])}\n"
             f"Current holdings (share of account): {held}; cash {cash_pct:.1%}\n\n"
             + brief_text(brief))
+    # Claude thinks before it answers, and the thinking counts towards
+    # max_tokens: a typical decision uses 500-1,500 tokens in all, so 8,000
+    # leaves room for a long evening without a reply cut off half-way.
     reply = call_claude({
-        "model": model, "max_tokens": 4000,
+        "model": model, "max_tokens": 8000,
         "system": SYSTEM.format(max_w=max_w, max_total=max_total),
         "messages": [{"role": "user", "content": user}],
-    }, key, timeout=120)
-    text = "".join(b.get("text", "") for b in reply.get("content", []))
+    }, key, timeout=180, purpose="News Analyst")
+    text = reply_text(reply)
     decision = parse_decision(text, list(brief["markets"]), max_w, max_total)
     decision["usage"] = reply.get("usage", {})
     decision["model"] = reply.get("model", model)

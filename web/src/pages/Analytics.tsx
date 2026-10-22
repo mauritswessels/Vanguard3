@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { AiCostTable, PairCard } from "../components/HeadToHead";
+import { ReportCardTable } from "../components/ReportCard";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Delta, Empty, Section, Segmented, Swatch, cx } from "../components/ui";
 import { ORDER } from "../lib/agents";
@@ -16,7 +17,7 @@ import {
 } from "../lib/metrics";
 import type { RunData } from "../lib/types";
 
-type Tab = "performance" | "pairs" | "risk" | "compare";
+type Tab = "performance" | "pairs" | "cards" | "risk" | "compare";
 
 export default function Analytics() {
   const d = useLive();
@@ -39,12 +40,21 @@ export default function Analytics() {
       </Section>
       <Section className="pt-0">
         <div className="glass sticky top-16 z-30 mb-8 flex flex-wrap items-center justify-between gap-2 rounded-2xl p-2">
-          <Segmented label="View" value={tab} options={[["performance", "Performance"], ["pairs", "Head to head"], ["risk", "Risk"], ["compare", "Compare two"]]} onChange={setTab} />
-          {tab === "pairs" ? <span className="px-3 text-[12.5px] text-muted">Each pair on the days both were trading</span>
+          <Segmented label="View" value={tab} options={[["performance", "Performance"], ["pairs", "Head to head"], ["cards", "Report cards"], ["risk", "Risk"], ["compare", "Compare two"]]} onChange={setTab} />
+          {tab === "pairs" || tab === "cards" ? <span className="px-3 text-[12.5px] text-muted">{tab === "pairs" ? "Each pair on the days both were trading" : "Every trade, graded against SPY"}</span>
             : <Segmented label="Time range" value={kind} options={RANGES} onChange={setKind} />}
         </div>
         {tab === "performance" && <Performance d={d} r={r} />}
         {tab === "pairs" && <HeadToHead d={d} />}
+        {tab === "cards" && (
+          <div className="grid gap-5">
+            <p className="max-w-3xl text-[14.5px] text-ink-2">
+              Every trade is graded 5 and 20 trading days after it fills: a buy is right if the market then did better than the S&amp;P 500,
+              a sell if it did worse. The edge is that gap. Calls pile up much faster than days, so timing skill shows here long before it shows in returns.
+            </p>
+            <ReportCardTable d={d} />
+          </div>
+        )}
         {tab === "risk" && <Risk d={d} r={r} />}
         {tab === "compare" && <Compare d={d} r={r} />}
       </Section>
@@ -59,6 +69,8 @@ function Performance({ d, r }: { d: RunData; r: Range }) {
   const theme = useChartTheme();
   const S = useMemo(() => all(d, r).sort((x, y) => y.ret - x.ret), [d, r]);
   const agent = (id: string) => d.agents.find((a) => a.id === id)!;
+  // Newer files compare every account with SPY over the days both traded.
+  const fair = d.agents.some((a) => a.same_days?.benchmark);
   const dd: Line[] = d.agents.map((a) => ({
     id: a.id, points: drawdownCurve(a, d, r), color: theme.series(a.key),
     style: a.key === "monkey" ? "dotted" : a.fixed_twin || a.benchmark ? "dashed" : "solid", width: a.fixed_twin || a.benchmark ? 1 : 2,
@@ -69,8 +81,8 @@ function Performance({ d, r }: { d: RunData; r: Range }) {
         <table className="w-full min-w-[1000px] text-[13.5px]">
           <thead>
             <tr className="whitespace-nowrap border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
-              {["Account", "Return", "Profit CHF", "Volatility", "Sharpe", "Max drop", "Win rate", "Profit factor", "Fills", "Fees CHF", "Invested"].map((h, i) => (
-                <th key={h} className={cx("py-3.5 font-medium", i === 0 ? "pl-5 text-left" : "pr-4 text-right", i === 10 && "pr-5")}>{h}</th>
+              {["Account", "Return", ...(fair ? ["vs SPY, same days"] : []), "Profit CHF", "Volatility", "Sharpe", "Max drop", "Win rate", "Profit factor", "Fills", "Fees CHF", "Invested"].map((h, i, all) => (
+                <th key={h} className={cx("py-3.5 font-medium", i === 0 ? "pl-5 text-left" : "pr-4 text-right", i === all.length - 1 && "pr-5")}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -79,6 +91,10 @@ function Performance({ d, r }: { d: RunData; r: Range }) {
               <tr key={s.id} className="border-b border-line last:border-0 hover:bg-surface-2">
                 <td className="py-3 pl-5"><Link to={`/agents/${s.id}`} className="flex items-center gap-2.5 hover:text-gold"><Swatch agent={agent(s.id)} />{s.name}</Link></td>
                 <td className="py-3 pr-4 text-right"><Delta value={s.ret} className="font-medium">{pct(s.ret)}</Delta></td>
+                {fair && <td className="py-3 pr-4 text-right">{(() => {
+                  const x = agent(s.id).same_days?.benchmark;
+                  return x ? <Delta value={x.difference}>{pct(x.difference)}</Delta> : <span className="text-faint">–</span>;
+                })()}</td>}
                 <td className="py-3 pr-4 text-right"><Delta value={s.pnl}>{signedChf(s.pnl)}</Delta></td>
                 <td className="tabular py-3 pr-4 text-right text-ink-2">{s.enough ? share(s.vol, 1) : "–"}</td>
                 <td className="tabular py-3 pr-4 text-right text-ink-2">{ratio(s, s.sharpe)}</td>

@@ -42,7 +42,7 @@ const MIN_DIST = 13, MAX_DIST = 90;
 /** Agent colours as hex for the scene (the page's dark palette). */
 const HEX: Record<string, string> = {
   trend: "#3987e5", reversion: "#d95926", volatility: "#199e70", manager: "#c98500", news: "#d55181",
-  learner: "#1aa31a", news_opus: "#9085e9", learner_opus: "#e66767", benchmark: "#e9e1cf", monkey: "#9a9384",
+  learner: "#1aa31a", news_opus: "#9085e9", learner_opus: "#e66767", benchmark: "#e9e1cf", equal_weight: "#9fb4c8", monkey: "#9a9384",
 };
 const GOLD = "#d4b26a";
 

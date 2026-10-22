@@ -143,6 +143,7 @@ export function ActivityFeed({ a, limit = 20 }: { a: Agent; limit?: number }) {
                 <span className="tabular text-muted">{f.quantity} @ {num(f.price, 2)}</span>
                 {f.side === "SELL" && f.pnl_chf != null && <Delta value={f.pnl_chf}>{signedChf(f.pnl_chf)} CHF</Delta>}
                 {f.at_open && <span className="text-[12px] text-faint">at the open, ordered the evening before</span>}
+                {f.at_close && <span className="text-[12px] text-faint">at the close, ordered at midday</span>}
               </li>
             ))}
             {day.signals.filter((s) => !s.ordered).slice(0, 6).map((s, j) => (

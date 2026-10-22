@@ -212,6 +212,116 @@ class BrokerTest(unittest.TestCase):
                          [("SPY", "expired")])
 
 
+class CloseOrderTest(unittest.TestCase):
+    """Orders the midday check places for that day's close."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.market = synthetic_market(days=60)
+        cls.d0, cls.d1 = cls.market.calendar[-3], cls.market.calendar[-2]
+
+    def setUp(self):
+        self.pf = Portfolio("t", 100_000)
+        self.broker = SimulatedBroker(self.pf, self.market)
+
+    def test_fills_at_that_days_close_never_at_an_open(self):
+        self.broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, kind="close"))
+        self.assertEqual(self.broker.process(self.d0), [])   # not the open
+        [fill] = self.broker.process_close(self.d0)
+        self.assertEqual(fill.date, self.d0)
+        self.assertAlmostEqual(fill.market_price,
+                               self.market.bars["NOVN.SW"].at[self.d0, "Close"])
+        self.assertEqual(fill.commission_chf, config.COMMISSION_PER_TRADE_CHF)
+        self.assertEqual(self.broker.pending, [])
+
+    def test_a_later_day_does_not_fill_it(self):
+        """Neither the next open nor the next close: it lapses."""
+        self.broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, kind="close"))
+        self.assertEqual(self.broker.process(self.d1), [])
+        self.assertEqual(self.broker.process_close(self.d1), [])
+        self.assertEqual(self.pf.trades, [])
+        self.assertEqual([why for _, why in self.broker.rejected],
+                         ["the day it was ordered for had passed"])
+
+    def test_a_holiday_lapses_with_a_reason(self):
+        """The forward-filled close of a market with no session that day
+        must not be used as a fill price."""
+        bars = dict(self.market.bars)
+        bars["NOVN.SW"] = bars["NOVN.SW"].drop(self.d0)
+        market = MarketData(bars=bars, fx=self.market.fx,
+                            currencies=self.market.currencies, source="test")
+        broker = SimulatedBroker(self.pf, market)
+        broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, kind="close"))
+        self.assertEqual(broker.process_close(self.d0), [])
+        self.assertEqual([why for _, why in broker.rejected],
+                         ["its market was closed that day"])
+
+    def test_sells_first_so_their_money_pays_for_buys(self):
+        """An account nearly all in one Swiss stock swaps it for another."""
+        bars = self.market.bars
+        pf = Portfolio("t", 10_000)
+        before = self.market.calendar[-4]
+        held = int(9_900 // pf.costs.buy_price_chf(
+            bars["NOVN.SW"].at[before, "Close"], 1.0, "CHF"))
+        pf.buy(before, "NOVN.SW", "CHF", held,
+               bars["NOVN.SW"].at[before, "Close"], 1.0, "seed")
+        want = int(5_000 // bars["UBSG.SW"].at[self.d0, "Close"])
+        self.assertGreater(want * bars["UBSG.SW"].at[self.d0, "Close"],
+                           pf.cash)
+        broker = SimulatedBroker(pf, self.market)
+        broker.submit(Order("UBSG.SW", "BUY", want, self.d0, kind="close"))
+        broker.submit(Order("NOVN.SW", "SELL", held, self.d0, kind="close"))
+        fills = broker.process_close(self.d0)
+        self.assertEqual([(f.side, f.quantity) for f in fills],
+                         [("SELL", held), ("BUY", want)])
+        self.assertGreaterEqual(pf.cash, 0)
+
+    def test_saved_and_restored_with_its_kind(self):
+        self.broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, kind="close"))
+        self.broker.submit(Order("SPY", "BUY", 3, self.d0))
+        saved = json.loads(json.dumps(self.broker.pending_to_list()))
+        other = SimulatedBroker(self.pf, self.market)
+        other.load_pending(saved)
+        self.assertEqual(other.pending, self.broker.pending)
+        self.assertEqual([o.kind for o in other.pending], ["close", "open"])
+        # States saved before orders had a kind hold open orders.
+        for o in saved:
+            del o["kind"]
+        other.load_pending(saved)
+        self.assertEqual([o.kind for o in other.pending], ["open", "open"])
+
+    def test_a_split_keeps_it_an_order_for_the_close(self):
+        self.broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, kind="close"))
+        self.broker.split("NOVN.SW", 2.0)
+        self.assertEqual([(o.quantity, o.kind) for o in self.broker.pending],
+                         [(20, "close")])
+
+    def test_the_evening_run_fills_it_before_marking_the_day(self):
+        sim = Simulator(self.market, build_accounts(
+            self.market, [make_agent("benchmark")]))
+        sim.run(self.market.calendar[:-3])
+        acc = sim.accounts[0]
+        acc.broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, "midday",
+                                kind="close"))
+        acc.broker.submit(Order("UBSG.SW", "BUY", 10, self.d1, "midday",
+                                kind="close"))
+        sim.step(self.d0)
+        pf = acc.portfolio
+        self.assertIn("NOVN.SW", pf.positions)
+        self.assertAlmostEqual(pf.equity_curve.loc[self.d0],
+                               pf.equity(self.market.close_chf(self.d0)))
+        [fill] = [f for f in acc.activity[-1]["fills"]
+                  if f["ticker"] == "NOVN.SW"]
+        self.assertTrue(fill["at_close"])
+        # The next day's order waits for its own close.
+        self.assertEqual([(o.ticker, o.kind) for o in acc.broker.pending],
+                         [("UBSG.SW", "close")])
+
+    def test_an_unknown_kind_is_refused(self):
+        with self.assertRaises(ValueError):
+            Order("SPY", "BUY", 1, self.d0, kind="limit")
+
+
 class WaitingOrderTest(unittest.TestCase):
     """Orders still waiting for their market (a holiday there)."""
 

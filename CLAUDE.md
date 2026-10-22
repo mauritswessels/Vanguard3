@@ -18,6 +18,10 @@ Read the section you need there instead of exploring the whole repo.
   3.12, and so does the Mac's `.venv` (the Mac's own `python3` is a newer
   version). The `.venv` needs both `requirements.txt` and
   `requirements-ibkr.txt`.
+- **Pinned packages.** Both `.txt` files are pip-compile lock files with
+  hashes, built from `requirements.in` and `requirements-ibkr.in`, and
+  installed with `--require-hashes`. Change the `.in` file and rebuild
+  (README, "Pinned packages"); never edit the `.txt` files by hand.
 
 ## Commands
 
@@ -62,9 +66,10 @@ tests run them on both.
 - **News agents** decide only for the newest session and cannot be
   backtested, because the model already knows how past markets went.
 - **Rule-based agents stay pure pandas/NumPy**, with no LLM calls.
-- **Bot output is not hand-edited:** `state/paper_state.json` and
-  `docs/data/*.json`. These files are large (`backtest.json` is about 4 MB),
-  so pull out the part you need with Python instead of reading them whole.
+- **Bot output is not hand-edited:** `state/paper_state.json`,
+  `state/briefs/` (the archive of Claude calls) and `docs/data/*.json`.
+  These files are large (`backtest.json` is about 4 MB), so pull out the
+  part you need with Python instead of reading them whole.
 - **Accounts are matched by agent key and name.** Adding one to
   `paper_lineup()` in `learning.py` opens a fresh account on the next run.
   Renaming a live agent does the same and leaves the old account running,
@@ -73,7 +78,11 @@ tests run them on both.
 ## Claude API and money
 
 - Every Claude call goes through `claude_api.call_claude` (plain `urllib`,
-  no SDK). Keep it that way: no new dependencies.
+  no SDK). Keep it that way: no new dependencies. Give it a `purpose` so
+  the call is archived in `state/briefs/`, and read the answer with
+  `claude_api.reply_text`, which turns a cut-off or declined reply into a
+  clear error. Tests that go through `call_claude` with a purpose must
+  point `claude_archive.FOLDER` at a temporary folder.
 - Models and rough per-token prices live in `config.py` (`NEWS_PARAMS`,
   `NEWS_OPUS_PARAMS`, `LEARNER_OPUS_PARAMS`). The weekly report uses
   `NEWS_PARAMS["model"]`.

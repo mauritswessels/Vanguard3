@@ -30,6 +30,7 @@ import math
 import pandas as pd
 
 import config
+from engine import grading
 from engine.portfolio import Portfolio
 from models import indicators as ind
 from models.base_agent import Action, BaseAgent, Signal
@@ -163,48 +164,27 @@ class NewsAgent(BaseAgent):
         return int(math.floor(equity * w / unit_cost_chf))
 
     # -- report card and memory ---------------------------------------------
-    HORIZONS = (5, 20)          # trading days after a trade when it is graded
+    HORIZONS = grading.HORIZONS   # trading days after a trade when it is graded
 
     def report_card(self, trades, date: pd.Timestamp) -> dict:
         """Grade every past trade against the S&P 500 (SPY).
 
         A buy was right if the market then beat SPY; a sell was right if it
         then lagged SPY. Each trade is graded after 5 and after 20 trading
-        days, comparing price moves in each market's own currency from the
-        fill price. Uses only prices up to ``date``.
+        days by the shared grader (``engine.grading``), the same one every
+        account's report card uses. Uses only prices up to ``date``.
         """
-        cal = self.market.calendar
-        cal = cal[cal <= date]
-        panel = self.market.close_panel
-        bench = config.BENCHMARK_TICKER
-        calls = []
-        for tr in trades:
-            if tr.date not in cal:
-                continue
-            i = cal.get_loc(tr.date)
-            call = {"date": tr.date.strftime("%Y-%m-%d"), "ticker": tr.ticker,
-                    "side": tr.side}
-            for h in self.HORIZONS:
-                # A market that failed to download today has no column.
-                if (i + h >= len(cal) or bench not in panel
-                        or tr.ticker not in panel):
-                    continue
-                later = cal[i + h]
-                move = float(panel.at[later, tr.ticker]) / tr.market_price - 1
-                spy = (float(panel.at[later, bench])
-                       / float(panel.at[tr.date, bench]) - 1)
-                edge = (move - spy) * (1 if tr.side == "BUY" else -1)
-                if math.isfinite(edge):
-                    call[f"edge_{h}"] = round(edge, 4)
-            calls.append(call)
-        card = {"calls": calls[-40:]}
+        fills = [{"date": t.date, "ticker": t.ticker, "side": t.side,
+                  "decided": getattr(t, "decided", None)} for t in trades]
+        calls = grading.grade_fills(fills, self.market, date)
+        keep = ("date", "ticker", "side") + tuple(
+            f"edge_{h}" for h in self.HORIZONS)
+        card = {"calls": [{k: c[k] for k in keep if k in c}
+                          for c in calls[-40:]]}
+        numbers = grading.stats(calls)
         for h in self.HORIZONS:
-            edges = [c[f"edge_{h}"] for c in calls if f"edge_{h}" in c]
-            card[f"graded_{h}"] = len(edges)
-            card[f"hit_rate_{h}"] = (round(sum(e > 0 for e in edges)
-                                           / len(edges), 3) if edges else None)
-            card[f"avg_edge_{h}"] = (round(sum(edges) / len(edges), 4)
-                                     if edges else None)
+            for k in ("graded", "hit_rate", "avg_edge"):
+                card[f"{k}_{h}"] = numbers[f"{k}_{h}"]
         return card
 
     def memory_text(self) -> str:

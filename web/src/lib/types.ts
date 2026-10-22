@@ -92,6 +92,8 @@ export interface DayFill {
   price: number;
   pnl_chf?: number | null;
   at_open?: boolean;
+  /** Ordered at midday in a market without a real-time price, filled at that day's close. */
+  at_close?: boolean;
 }
 
 export interface Rejected {
@@ -223,6 +225,26 @@ export interface Stats {
   cash_chf: number;
 }
 
+/* Report cards (engine/grading.py): every fill graded against SPY after 5
+ * and 20 trading days. An edge above zero is a right call. */
+export interface GradeStats {
+  graded_5: number; hit_rate_5: number | null; avg_edge_5: number | null; median_edge_5?: number | null;
+  graded_20: number; hit_rate_20: number | null; avg_edge_20: number | null; median_edge_20?: number | null;
+}
+
+export interface ReportCard extends GradeStats {
+  calls: number;
+  pending: number;
+  by_side: { buy: GradeStats; sell: GradeStats };
+  recent: { date: string; ticker: string; side: "BUY" | "SELL"; decided?: string | null; edge_5?: number; edge_20?: number }[];
+}
+
+/** One account against a yardstick over the days both were trading (reporting.py same_days). */
+export interface SameDays {
+  name: string; from: string; to: string; days: number;
+  return: number; yardstick_return: number; difference: number;
+}
+
 export interface Agent {
   id: string;
   key: string;
@@ -246,6 +268,12 @@ export interface Agent {
   team: Team | null;
   scans: [string, Record<string, number>][] | null;
   events?: { date: string; chf?: number }[];
+  /** Newer files: every fill graded against SPY. */
+  report_card?: ReportCard | null;
+  /** Newer files: the first session it could trade. */
+  joined?: string | null;
+  /** Newer files: against each yardstick ("benchmark", "equal_weight") over the same days. */
+  same_days?: Record<string, SameDays | null>;
 }
 
 export interface RunData {
@@ -263,6 +291,14 @@ export interface RunData {
   agents: Agent[];
   prices: Record<string, Point[]>;
   fx: Record<string, Point[]>;
+  /** Newer files: all accounts' report cards side by side. */
+  report_cards?: {
+    as_of: string; horizons: number[]; benchmark: string;
+    accounts: ({ id: string; name: string } & Pick<GradeStats, "graded_5" | "hit_rate_5" | "avg_edge_5" | "graded_20" | "hit_rate_20" | "avg_edge_20">)[];
+    pooled: GradeStats;
+  };
+  /** Newer files: the yardsticks of same_days, with the day each joined. */
+  yardsticks?: Record<string, { name: string; joined: string | null } | null>;
 }
 
 export interface WeeklyData {
@@ -319,6 +355,16 @@ export interface SkillPart {
   p_vs_spy_adjusted: number;
   weeks_needed: number | null;
   weeks_needed_vs_spy: number | null;
+  /** Which years: "recent" (the last 5), "before_tuning" (the years before
+   *  the settings were picked) or "live". Missing in older files. */
+  window?: "recent" | "before_tuning" | "live";
+  /** Judged on years its settings were picked from: kept out of the verdict. */
+  in_sample?: boolean;
+}
+
+export interface SkillWindow {
+  from: string; to: string; years: number; days: number; monkeys: number; agents_tested: number;
+  monkey_returns: number[]; tuned_since?: string | null;
 }
 
 export interface SkillData {
@@ -328,7 +374,9 @@ export interface SkillData {
   method: string;
   verdict_meanings: Record<Verdict, string>;
   settings: { monkeys: number; years: number; edge: number; alpha: number; min_days: number; [k: string]: number };
-  past: { from: string; to: string; years: number; days: number; monkeys: number; agents_tested: number; monkey_returns: number[] } | null;
+  past: SkillWindow | null;
+  /** The years before the fixed settings were picked (newer files only). */
+  past_before_tuning?: SkillWindow | null;
   live: { from: string; to: string; monkeys: number; agents_tested: number } | null;
   accounts: {
     id: string; key: string; name: string; fixed_twin: boolean; yardstick: boolean;

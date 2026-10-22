@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ActivityFeed, TripCard, VerdictBadge } from "../components/agent";
 import { PairCard } from "../components/HeadToHead";
+import { ReportCardPanel } from "../components/ReportCard";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Badge, Container, Delta, Empty, Section, Segmented, Stat, Swatch, cx } from "../components/ui";
@@ -62,11 +63,23 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
       </section>
 
       <Container className="grid grid-cols-2 gap-3 py-8 md:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Rank" value={a.benchmark ? "Yardstick" : `${rank} of ${racing.length}`} />
-        <Stat label="vs S&P 500" value={<Delta value={vsSpy}>{vsSpy == null ? "–" : (vsSpy >= 0 ? "+" : "−") + Math.abs(vsSpy * 100).toFixed(2) + " pts"}</Delta>} />
-        <Stat label="Largest drop" value={pct(a.stats.max_drawdown)} sub="from a peak" />
-        <Stat label="Fills" value={a.stats.trades} sub={`${share(st.book.cashPct)} in cash now`} />
-        <Stat label="Win rate" value={a.stats.win_rate == null ? "–" : share(a.stats.win_rate)} sub={plural(st.closed, "closed position")} />
+        <Stat label="Rank" value={a.benchmark ? "Yardstick" : `${rank} of ${racing.length}`} sub={a.joined && a.joined > d.start ? `joined ${dateShort(a.joined)}` : undefined} />
+        {(() => {
+          // Against each yardstick over the days both were trading (newer
+          // files); older ones only have the return since each start.
+          const fair = a.same_days?.benchmark;
+          const v = fair ? fair.difference : vsSpy;
+          return <Stat label="vs S&P 500" value={<Delta value={v}>{v == null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(2) + " pts"}</Delta>}
+            sub={fair ? `same ${plural(fair.days, "day")} since ${dateShort(fair.from)}` : "since each started"} />;
+        })()}
+        {a.same_days?.equal_weight
+          ? <Stat label="vs all markets" value={<Delta value={a.same_days.equal_weight.difference}>{(a.same_days.equal_weight.difference >= 0 ? "+" : "−") + Math.abs(a.same_days.equal_weight.difference * 100).toFixed(2) + " pts"}</Delta>}
+              sub={`equal shares, same ${plural(a.same_days.equal_weight.days, "day")}`} />
+          : <Stat label="Largest drop" value={pct(a.stats.max_drawdown)} sub="from a peak" />}
+        <Stat label="Win rate" value={a.stats.win_rate == null ? "–" : share(a.stats.win_rate)} sub={`${plural(st.closed, "closed position")} · ${a.stats.trades} fills`} />
+        {a.report_card?.graded_5
+          ? <Stat label="Calls right" value={share(a.report_card.hit_rate_5)} sub={`of ${a.report_card.graded_5}, after 5 days vs SPY`} />
+          : <Stat label="Largest drop" value={pct(a.stats.max_drawdown)} sub={`from a peak · ${share(st.book.cashPct)} cash`} />}
         {(() => {
           const ai = aiCosts(d).find((c) => c.agent.id === a.id);
           return ai ? <Stat label="Claude cost" value={`${num(ai.costChf, 2)} CHF`} sub={isFinite(ai.perChf) ? `${num(ai.perChf, 0)} CHF profit per CHF` : `${ai.calls} calls`} />
@@ -127,6 +140,8 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
           <Learning a={a} d={d} />
         </div>
       </Section>
+
+      {a.report_card && <Section className="pt-0"><ReportCardPanel a={a} /></Section>}
 
       <Section className="pt-0"><TradeChart d={d} a={a} /></Section>
 

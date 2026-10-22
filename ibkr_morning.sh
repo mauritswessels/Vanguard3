@@ -75,8 +75,11 @@ if ! limit 120 git pull --ff-only --quiet; then
     warnings="Warning: could not update from GitHub, so this run used older code."
     echo "$warnings"
 fi
+# Exact versions, each file checked against its hash in
+# requirements-ibkr.txt: a new or tampered release on PyPI never reaches
+# this computer by itself.
 limit 600 .venv/bin/pip install --quiet --disable-pip-version-check \
-    -r requirements-ibkr.txt
+    --require-hashes -r requirements-ibkr.txt
 
 # Just after the computer wakes up, the network or TWS may need a moment.
 for attempt in 1 2 3; do
@@ -127,7 +130,6 @@ fi
 # On Telegram, the race chart follows, then why the top three hold what
 # they hold (telegram_chart.py).
 if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-    .venv/bin/pip install --quiet --disable-pip-version-check matplotlib &&
     chart="ibkr_logs/race.png" && reasons="ibkr_logs/why.txt" &&
     caption=$(.venv/bin/python telegram_chart.py "$chart" --why "$reasons") &&
     curl -fsS -m 60 -F "chat_id=$TELEGRAM_CHAT_ID" -F "photo=@$chart" \

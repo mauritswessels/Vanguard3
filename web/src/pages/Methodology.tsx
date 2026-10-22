@@ -62,7 +62,8 @@ export default function Methodology() {
         <article>
           <Part id="question" title="The question">
             <p>Can a trading agent beat the market, and beat luck? Not in a backtest tuned on the past, where almost anything can be made to look good, but live, day after day, with every cost paid and every decision recorded before the outcome is known.</p>
-            <p>Thirteen accounts race on the same terms. Some follow classic hand-written rules, one teaches itself by reinforcement learning, and some ask a large language model (Claude) to read the news. Two yardsticks set the bar: the S&amp;P 500, and a monkey picking at random.</p>
+            <p>{d ? d.agents.length : "Thirteen"} accounts race on the same terms. Some follow classic hand-written rules, one teaches itself by reinforcement learning, and some ask a large language model (Claude) to read the news. Yardsticks set the bar: the S&amp;P 500,{d?.agents.some((a) => a.key === "equal_weight") ? " every market in equal shares," : ""} and a monkey picking at random.</p>
+            <p>Accounts joined the race on different days, so each one is compared with the yardsticks only over the days both were trading: an account that joined after a fall does not get credit for having missed it.</p>
           </Part>
           <Part id="accounts" title="The accounts">
             <p>Every account starts with {chf(d?.initial_capital_chf ?? 100000)} CHF of paper money, trades the same {markets} markets (large US, Swiss and euro-area shares, plus index, sector, bond and commodity funds, all tradable at Interactive Brokers) and pays the same costs. Only the way it decides differs.</p>
@@ -74,7 +75,7 @@ export default function Methodology() {
               {[
                 ["After the New York close", "About 22:40 in Zurich, GitHub Actions downloads the day's closing prices and exchange rates. Every agent decides using only data up to that close, and its orders wait for the next open."],
                 ["At each market's open", "Waiting orders fill at the next opening price, plus slippage. A market that does not open (a holiday) keeps its orders waiting, for up to a week."],
-                ["Around midday", "The two news agents read the news again with live prices, while New York and Europe are both open. A change of mind fills at once at the live price, with the usual costs."],
+                ["Around midday", "The two news agents read the news again with live prices, while New York and Europe are both open. A change of mind in a US market fills at once at the real-time price; in a Swiss or European market, whose free quote is about 15 minutes old, it becomes an order for that day's close, as a real broker would take it. The usual costs apply."],
                 ["Every Saturday", "Claude is handed the week's facts (returns, trades and stated reasons) and writes the plain-language weekly report. It describes; it decides nothing."],
               ].map(([t, x], i) => (
                 <li key={t} className="relative grid grid-cols-[28px_1fr] gap-4 pb-6 last:pb-0">
@@ -112,11 +113,13 @@ export default function Methodology() {
           <Part id="ai" title="The Claude agents">
             <p>The News Analysts read hundreds of headlines each evening, on every market and on politics and the economy, plus each company's latest quarterly results, and ask Claude for a target share of the account per market with a stated reason. Limits are fixed in code: at most 15% in one market and 90% invested. Two identical agents differ only in the model, Sonnet or Opus, to test whether a smarter model trades better.</p>
             <p>These agents <em>cannot be backtested</em>: the model already knows how past markets turned out, so any replay would be contaminated. They only decide for the newest session, and their record starts on their first live day.</p>
-            <p>The reasons shown are the model's own stated reasons, not a guaranteed account of how it reached its answer. Each call is graded against the S&amp;P 500 after 5 and 20 trading days, and Claude sees this report card every time it decides.</p>
+            <p>The reasons shown are the model's own stated reasons, not a guaranteed account of how it reached its answer. Every call Claude is asked and every answer it gives is archived word for word, so any decision can be checked later. If a reply is cut off or declined, the agent says so and sits out that day rather than guessing.</p>
+            <p>Every agent's trades, not only Claude's, are graded against the S&amp;P 500 after 5 and 20 trading days: a buy is right if the market then beat SPY, a sell if it did worse. These report cards show timing skill long before account returns can, and the news agents see their own card every time they decide.</p>
           </Part>
           <Part id="skill" title="Measuring skill">
             <p>With this many accounts, one will lead by luck alone. So every account is compared with 300 monkeys trading at random under the same rules and costs, over exactly the same days, and with buy-and-hold SPY.</p>
             <p>A lead counts as skill only when luck explains it less than 1 time in 20 <em>after allowing for the number of agents racing</em> (Holm's correction). It looks like luck when the results rule out an edge worth having (10% a year). Everything in between is honestly labelled “can't tell yet”, with an estimate of how many more weeks it would take to know. Ranges come from a block bootstrap of each account's own days.</p>
+            <p>Settings are never judged on the years they were picked from. The fixed settings and the AI Learner's rules were chosen after looking at 2018–2026, so their past test runs on 2013–2018 instead; the learning versions pick their settings blind each year, so they are tested on the last five years.</p>
             <p><Link to="/research#skill" className="text-gold">See the current verdicts →</Link></p>
           </Part>
           <Part id="limits" title="Limitations">
