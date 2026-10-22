@@ -22,7 +22,7 @@ import pandas as pd
 
 import config
 from engine.portfolio import Portfolio
-from engine import journal
+from engine import grading, journal
 from engine.simulator import Simulator
 from models import agent_key
 
@@ -114,7 +114,7 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
     for acc in sim.accounts:
         refs.setdefault(agent_key(acc.agent), acc)
     refs = {y: refs.get(y) for y in YARDSTICKS}
-    agents = []
+    agents, graded = [], []
     for acc in sim.accounts:
         pf = acc.portfolio
         positions = []
@@ -133,13 +133,16 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             })
         key = agent_key(acc.agent)
         twin = "(fixed)" in acc.agent.name
+        aid = key + ("-fixed" if twin else "")
         rows = journal.fills(pf, acc.activity)
         trips = journal.round_trips(
             rows, pf.equity_curve, pf.positions, prices_chf, pf.initial_cash,
             last, [e for e in pf.events if e["kind"] == "split"]
         ) if mode == "paper" else []
+        calls = grading.grade_fills(rows, market, last)
+        graded.append((aid, acc.agent.name, calls))
         agents.append({
-            "id": key + ("-fixed" if twin else ""),
+            "id": aid,
             "key": key,
             "learning": acc.agent.learning,
             "fixed_twin": twin,
@@ -166,6 +169,9 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             "trips": [_by_reference(t, rows) for t in trips],
             # Dividends received and share splits.
             "events": pf.events,
+            # Every fill graded against SPY 5 and 20 trading days later
+            # (engine/grading.py).
+            "report_card": grading.report_card(calls),
             "activity": [_slim_day(day) for day in acc.activity[-ACTIVITY_DAYS:]],
             "pending_orders": acc.broker.pending_to_list(),
             # What each rule is waiting for at the last close.
@@ -207,6 +213,8 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
                        for y, ref in refs.items()},
         "groups": {t: journal.asset_group(t) for t in market.tickers},
         "agents": agents,
+        # All accounts' report cards side by side.
+        "report_cards": grading.summary(graded, last),
         "prices": prices,
         "fx": fx,
     }

@@ -1111,6 +1111,11 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   const VERDICT_CLASS = { "skill": "skill", "can't tell yet": "unclear", "looks like luck": "luck" };
   const verdictChip = v => v ? `<span class="verdict v-${VERDICT_CLASS[v]}"><i aria-hidden="true"></i>${esc(v)}</span>` : "";
   const share = v => Math.round(v * 100) + "%";
+  // Accounts judged on the recent years (the others on the years before their settings were picked).
+  const recentPast = a => a.past && (a.past.window || "recent") === "recent";
+  const pastNote = p => p.window === "before_tuning"
+    ? `<span class="range">${p.from.slice(0, 4)}–${p.to.slice(2, 4)}</span>`
+    : p.in_sample ? `<span class="range">tuned on these years</span>` : "";
 
   function renderLuck(d) {
     const h = d.past, l = d.live, s = d.settings;
@@ -1128,14 +1133,14 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
       <span class="muted" style="font-size:.85rem">Return over the past ${h.years} years (${fmtDate(ts(h.from))} – ${fmtDate(ts(h.to))}):
         bars count the ${h.monkeys} monkeys, lines mark each replayed account</span></div>
       <div class="panel" style="display:grid;gap:10px;padding-top:10px"><div class="luck-chart" id="luck-chart"></div>
-      <div class="legend">${d.accounts.filter(a => a.past).map(a =>
+      <div class="legend">${d.accounts.filter(recentPast).map(a =>
         `<span>${sw(a)}${esc(a.name)} <span class="num">${pct(a.past.return, 0)}</span></span>`).join("")}</div></div></section>`);
 
     const rows = d.accounts.map(a => {
       const p = a.past, q = a.live, judged = !a.yardstick;
       const beat = part => part ? share(part.percentile_vs_monkeys) : "–";
       return `<tr class="${a.yardstick ? "ref" : ""}"><td><span class="agent-name">${sw(a)}${esc(a.name)}${a.yardstick ? ' <span class="tag">ref</span>' : ""}</span></td>
-        <td class="num">${p ? beat(p) : '<span class="na">not replayed</span>'}</td>
+        <td class="num">${p ? beat(p) + pastNote(p) : '<span class="na">not replayed</span>'}</td>
         <td>${p && judged ? verdictChip(p.verdict) : ""}</td>
         <td class="num">${p && p.excess_vs_spy != null ? `<span class="${cls(p.excess_vs_spy)}">${pct(p.excess_vs_spy)}</span>
           <span class="range">${pct(p.excess_vs_spy_low, 0)} to ${pct(p.excess_vs_spy_high, 0)}</span>` : ""}</td>
@@ -1172,7 +1177,9 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
         an edge of ${edge} a year over random picks 4 times out of 5.</li>
       <li>The replay covers the three strategies with fixed settings, their learning versions (settings re-picked each year from the
         3 years before, as in the walk-forward check) and the AI Learner. Each starts on ${s.starts} days a week apart, because
-        the start day alone moves a five-year result a lot; the middle one counts. The news agents, the Opus Learner and the Team Manager
+        the start day alone moves a five-year result a lot; the middle one counts. The fixed settings and the AI Learner's rules were
+        picked by looking at prices from ${s.tuned_since ? fmtDate(ts(s.tuned_since)) : "recent years"} on, so they are judged on the
+        ${s.years} years before that (the years under "Beat"); judging them on the years they were picked on would flatter them. The news agents, the Opus Learner and the Team Manager
         cannot be replayed. The replay flatters everyone, monkeys included, because the markets were picked in 2026.</li>
     </ul></section>`);
     root.innerHTML = parts.join("");
@@ -1190,7 +1197,7 @@ footer { font-size: .78rem; color: var(--faint); border-top: 1px solid var(--lin
   // Histogram of the monkeys' returns with a marker line per replayed account.
   function luckChart(box, d) {
     const h = d.past, monkeys = h.monkey_returns;
-    const marks = d.accounts.filter(a => a.past).map(a => ({ a, r: a.past.return, beat: a.past.percentile_vs_monkeys }));
+    const marks = d.accounts.filter(recentPast).map(a => ({ a, r: a.past.return, beat: a.past.percentile_vs_monkeys }));
     const W = box.clientWidth, H = W < 560 ? 240 : 290, m = { l: 36, r: 12, t: 62, b: 26 };
     const all = monkeys.concat(marks.map(k => k.r));
     const lo0 = Math.min(...all), hi0 = Math.max(...all), span = hi0 - lo0 || 0.1;

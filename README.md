@@ -5,12 +5,14 @@ End-of-day, multi-agent paper-trading simulator. Three rule-based agents
 against the same watchlist of 108 large markets (US, Swiss and euro-area shares plus index, sector, bond and commodity funds), all tradable at Interactive Brokers; a scoreboard ranks them against two buy-and-hold yardsticks: SPY, and an equal share of every watched market.
 
 On macOS the command is `python3` (there is no `python`). Install the
-packages once into a virtual environment, then run through it:
+packages once into a virtual environment, then run through it. Use Python
+3.12, as GitHub and the cloud server do (if `python3 --version` shows a
+newer one, install 3.12 and make the environment with `python3.12`):
 
 ```bash
 cd vanguard3
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install --require-hashes -r requirements.txt
 
 .venv/bin/python main.py                      # 1-year backtest (auto data)
 .venv/bin/python main.py --source synthetic --seed 7 --days 730
@@ -19,6 +21,33 @@ python3 -m venv .venv
 .venv/bin/python main.py --days 1825 --dashboard   # refresh dashboard backtest
 .venv/bin/python luck_study.py                # skill or luck: everyone against 300 monkeys
 ```
+
+### Pinned packages
+
+`requirements.txt` (the simulation) and `requirements-ibkr.txt` (the IBKR
+bridge and its Telegram chart) pin the exact version of every package,
+down to a fingerprint (hash) of each file. Every run on GitHub, on the
+cloud server and on your Mac installs exactly the files the tests passed
+with, and pip stops if a file does not match its fingerprint. A new
+release on PyPI, broken or tampered with, cannot reach a run by itself.
+The packages the code asks for, with the oldest versions it works with,
+are listed in `requirements.in` and `requirements-ibkr.in`.
+
+Once a month Dependabot (`.github/dependabot.yml`) opens one pull request
+with newer versions. The tests run on it, and nothing changes until you
+merge it; the IBKR bridge runs on `main` the next morning, so merge with
+care. To update by hand (with Python 3.12):
+
+```bash
+.venv/bin/pip install pip-tools
+.venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements.in
+.venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements-ibkr.in
+.venv/bin/python -m pip install --require-hashes -r requirements.txt -r requirements-ibkr.txt
+.venv/bin/python -m unittest discover -s tests -t .
+```
+
+Never edit the two `.txt` files by hand. Packages both files need (such as
+numpy) must have the same version in both; a test checks that.
 
 ## Live paper trading and dashboard
 
@@ -58,6 +87,20 @@ same replay makes 678 fills, pays about 6,300 CHF and gains 27%. Over 10
 random seeds the median is +31% and every seed gains. That is still behind
 buy-and-hold SPY (+63%) and the typical random-pick monkey (+44%).
 
+A buy the model wants but the account does not make is learned as a hold
+too. The model wants to buy about 19 markets an evening and the cap of 8
+holdings leaves almost all of them out (an order that is too small or does
+not fit the cash counts the same way). It used to learn each one as bought,
+so the next evening started from a holding the account did not have.
+Replayed over the last 5 years on 100 seeds (the 10 above were a lucky
+draw), learning them as holds raised the median return from +15% to +28%,
+and 91 seeds gained instead of 79. It did better on 67 seeds. The model
+stays keener to buy, so it keeps the book fuller and trades more: 1,126
+fills instead of 828, and about 10,400 CHF in costs instead of 7,300. It
+also falls further in a bad year. In 2022 the median seed lost 13% instead
+of 7% (worse on 78 seeds), and the typical worst drop from a peak went from
+19% to 23%. Most of the gain came in the 2023 rebound.
+
 Its twin, the **Opus Learner** (`models/opus_learner_agent.py`), runs the
 same learning model but lets Claude Opus check its picks: once per evening it
 reads the model's proposed sells and its best proposed buys, with recent
@@ -79,12 +122,22 @@ from +16% to +30%; with a quarter, from +22% to +36%; with one in ten, from
 two) and wins on about two seeds in three. This says nothing about whether
 Opus itself chooses well.
 
+An approved buy the cap of 8 holdings leaves out is learned as a hold too,
+as in the AI Learner. With the stand-in approving half the picks, that
+raised the median further, from +30% to +53%, did better on 29 of 40
+seeds, and every seed gained. With a quarter approved it made no clear
+difference (better on 20 of 40 seeds), nor with one in ten (50 of 100):
+few approved buys then run into the cap.
+
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and
 the economy, plus each stock's latest quarterly results (Yahoo Finance), and
 asks Claude for target weights with a short stated reason per market. It
 needs an `ANTHROPIC_API_KEY` repository secret; without one it waits and
-the dashboard says so. It only decides for the newest session (news cannot
+the dashboard says so. A reply Claude did not finish is not traded either:
+cut off at its length limit, or declined by Claude's safety checks, the
+agent keeps its targets and the dashboard says why ("Claude's reply was cut
+off", "Claude declined: <category>"). It only decides for the newest session (news cannot
 be replayed honestly) and cannot be backtested, because the model already
 knows how past markets turned out. `python news.py` prints today's brief, and
 the manual "News check" workflow does the same on GitHub.
@@ -97,11 +150,23 @@ race between the two shows whether a smarter model trades better.
 It also checks once around midday (`midday_news.py`, workflow "Midday news
 check", weekdays 14:37 UTC, while New York and Europe are both open). That
 run first fills last evening's orders at the morning's open, reads the news
-again with live Yahoo prices (about 15 minutes delayed) and asks Claude
-whether anything changed. Changes fill at once at the live price, with the
-usual costs; a market that is closed at that moment waits for the evening.
-Only the two news agents' accounts are touched. Like everything else it is a
-simulation: no broker is contacted.
+again with live prices and asks Claude whether anything changed. How a
+change trades depends on how fresh its market's price is:
+
+- **Real-time price** (US markets, from Finnhub when `FINNHUB_API_KEY` is
+  set): it fills at once at that price.
+- **Delayed price** (Yahoo, about 15 minutes old: all Swiss and European
+  markets, and US ones when Finnhub has no quote): a real order cannot trade
+  at a price from 15 minutes ago, so it becomes a **market-on-close** order.
+  The evening run fills it at that day's official closing price, before it
+  marks the day and before the agents decide. If the market has no session
+  that day (a holiday), the order lapses with a reason; it never fills at an
+  open or on a later day. The dashboard's activity marks such fills
+  `at_close` ("at the close, ordered at midday").
+- **Market closed now**: the change waits for the evening check.
+
+Every fill pays the usual costs. Only the two news agents' accounts are
+touched. Like everything else it is a simulation: no broker is contacted.
 
 A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
 at random under the same rules as the agents (10 positions of 10%, same
@@ -125,17 +190,23 @@ on the first evening run after it was added, so it started later than the
 others; the same-days comparisons below take care of that.
 
 How many weeks? `luck_study.py` puts a number on it. It runs 300 monkeys,
-each with its own dice, over the same days as each account: over the last
-five years for every agent that can be replayed honestly (the three
-strategies with fixed settings, their learning versions re-tuned each year
-as in the walk-forward study, and the AI Learner), and live for every paper
-account from the session it joined (waiting in cash after that counts: it
-is a choice). Buy & Hold All Markets races along: in the replay it starts
-with the monkeys, and live each join date gets its own copy, started with
-cash on that day like the monkeys. For each account it gives the share of
-monkeys it beat, its average lead a year over SPY and over the equal mix of
-every market with a 95% range (its own days reshuffled in runs of 20, a
-block bootstrap), and a verdict: **skill**
+each with its own dice, over the same days as each account: on five years
+of past prices for every agent that can be replayed honestly, and live for
+every paper account from the session it joined (waiting in cash after
+that counts: it is a choice). The learning versions (re-tuned each year
+as in the walk-forward study, so their settings are picked blind) are
+replayed over the last five years. The three fixed
+settings and the AI Learner's rules were picked by looking at prices from
+8 October 2018 on (`tuned_since`), and judging them on those same years
+would flatter them, so they are replayed over the five years before that,
+against their own monkeys. If the prices do not reach back that far, they
+are replayed over the last five years, marked as in-sample, and that result
+never decides their verdict. Buy & Hold All Markets races along: in each
+replay it starts with the monkeys, and live each join date gets its own
+copy, started with cash on that day like the monkeys. For each account it
+gives the share of monkeys it beat, its average lead a year over SPY and
+over the equal mix of every market with a 95% range (its own days
+reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
 when the lead is too big for luck even allowing for the number of agents
 racing (Holm's correction), **looks like luck** when the results rule out
 an edge of 10% a year, and **can't tell yet** otherwise, with how many more
@@ -158,15 +229,17 @@ last session with results), `data_source`, `method` (the method in a few
 plain sentences), `verdict_meanings` (each verdict explained), `settings`
 (`LUCK_PARAMS`), `past` (`from`, `to`, `years`, `days`, `monkeys`,
 `agents_tested`, `start_days`, and `monkey_returns`: every monkey's
-return over those years, for a histogram), `live` (`from`, `to`, `monkeys`, `agents_tested`;
-`null` before paper trading starts), and `accounts`, one entry per account
-(racing accounts first, the three yardsticks last):
+return over those years, for a histogram), `past_before_tuning` (the same
+for the five years before `tuned_since`, plus `tuned_since`; `null` when
+the prices do not reach back that far), `live` (`from`, `to`, `monkeys`,
+`agents_tested`; `null` before paper trading starts), and `accounts`, one
+entry per account (racing accounts first, the three yardsticks last):
 
 | Field | Meaning |
 | --- | --- |
 | `id`, `key`, `name` | As in `paper.json`: `trend-fixed`, `trend`, "Trend Follower (fixed)" |
 | `fixed_twin`, `yardstick` | A fixed twin; Buy & Hold SPY, Buy & Hold All Markets or the Monkey (never judged) |
-| `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices |
+| `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices (never from an in-sample past) |
 | `verdict_from` | "live", "past prices", or `null` (no results yet, or a yardstick) |
 | `summary` | A few plain sentences: one on the past prices, one on the live results |
 | `past`, `live` | The two parts, with the same fields below (`null` when the account has none) |
@@ -184,6 +257,8 @@ Fields of `past` and `live`:
 | `p_vs_monkeys`, `p_vs_monkeys_adjusted`, `p_vs_spy`, `p_vs_spy_adjusted` | Chance of a result this good by luck alone, before and after allowing for the number of agents tested |
 | `weeks_needed`, `weeks_needed_vs_spy` | Live only, while it can't tell yet: more weeks of results needed to spot an edge of `settings.edge` a year |
 | `returns_by_start_day` | Past only, replayed agents: the return of each start-day copy, lowest first (the fields above describe the middle one) |
+| `window` | "recent" (the last years, as in `past`), "before_tuning" (as in `past_before_tuning`) or "live" |
+| `in_sample` | True when the settings were picked by looking at these same years: the result flatters the agent and does not count for its verdict |
 | `equal_weight_return`, `verdict_vs_equal_weight` | Buy & Hold All Markets over the same days, and the verdict against it |
 | `excess_vs_equal_weight`, `excess_vs_equal_weight_low`, `excess_vs_equal_weight_high` | Average lead a year over it, with its 95% range |
 | `p_vs_equal_weight`, `p_vs_equal_weight_adjusted`, `weeks_needed_vs_equal_weight` | As for SPY above |
@@ -204,9 +279,8 @@ so the race shows whether they help:
 * similar markets: skip a buy that moved almost in step (correlation above
   0.8 over 60 days) with something already owned.
 
-The News Analyst grades its own trades against SPY after 5 and 20 trading
-days. The report card is on the dashboard, and the latest graded trades go
-in front of every brief, so Claude can learn from its record.
+Every fill of every account is also graded against SPY; see
+[Report cards](#report-cards-every-trade-graded-against-spy) below.
 
 Every Saturday morning `weekly_report.py` (workflow "Weekly report") hands
 Claude the facts of the week (each account's return, trades and stated
@@ -214,6 +288,26 @@ reasons, holdings) and asks for a short report in plain words. It goes on
 the dashboard ("The week in plain words", from `docs/data/weekly.json`) and
 arrives by email as a closed GitHub issue. Claude only describes the facts;
 it decides nothing.
+
+Everything Claude reads and answers is kept word for word in
+`state/briefs/` (`claude_archive.py`), so any decision can be checked, or
+graded again, long after the dashboard's 90 days: every News Analyst
+decision (evening and midday), every Opus Learner review and every weekly
+report. Each call keeps the exact request (the model and settings, the
+system prompt and the message with the full news brief) and Claude's reply,
+with the model that answered, the tokens used and why it stopped, or the
+error when there was no reply. The API key is never saved. There is one
+compressed file per day (UTC date), such as
+`state/briefs/2026-10-21.json.xz`, about 20 to 100 KB. To read one:
+
+```bash
+.venv/bin/python claude_archive.py                     # the newest day, in short
+.venv/bin/python claude_archive.py 2026-10-21 --full   # with every text in full
+```
+
+In Python, `claude_archive.load("2026-10-21")` gives that day's calls as a
+list. If saving ever fails, the reply is used all the same and the log says
+why: trading never waits for the archive.
 
 If a run fails, a scheduled run never starts, a news agent cannot decide,
 or an order does not go through (not enough cash, or its market did not
@@ -235,7 +329,8 @@ zone Europe/Zurich, grace time 1 hour): put
 
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the
-backup, and covers Swiss and European markets), and the brief adds each US
+backup, and covers Swiss and European markets, whose midday trades fill at
+the close), and the brief adds each US
 company's latest news from Finnhub (`finnhub_feed.py`).
 
 The dashboard also shows what each agent is doing right now: for every
@@ -290,6 +385,46 @@ join date. The weekly report gets the same figures. Join dates are saved in
 are listed in `JOINED_BEFORE_RECORDS` (`engine/simulator.py`, taken from
 the history of the state file).
 
+## Report cards: every trade graded against SPY
+
+Returns need years to tell skill from luck (see `luck_study.py` above), but
+an account makes many decisions a week. `engine/grading.py` grades every
+fill of every account, buys and sells: a **buy was right** if its market
+then beat SPY, a **sell was right** if its market then did worse than SPY.
+The **edge** is that gap (0.02 = 2 percentage points, above zero = right).
+Each fill is graded twice, at the close 5 and 20 trading days after the day
+it filled. The market and SPY are measured over the same stretch, in the
+market's own currency: from the open of the fill day for an order filled at
+the open (the usual case), and from the close of the fill day for a midday
+trade, because the agent had already seen that morning. Prices are adjusted
+for dividends and splits, so a split never looks like a loss. A fill is
+**pending** until its 5 trading days have passed; nothing is graded with
+prices it could not have known on the day of the card. Trades in SPY itself
+are not graded (SPY cannot beat itself), so Buy & Hold SPY has an empty
+card, and the Monkey's card shows what random picks get.
+
+The News Analysts use the same grader for their own card (`ai.report_card`
+in `paper.json`, shown on their dashboard desk), and their latest 15 graded
+trades go in front of every brief, so Claude can learn from its record.
+
+Every account in `paper.json` and `backtest.json` has a `report_card`
+(fractions, rounded; `null` when nothing is graded yet):
+
+| Field | Meaning |
+| --- | --- |
+| `calls`, `pending` | Fills so far, and those still inside their first 5 trading days |
+| `graded_5`, `graded_20` | Fills graded after 5 and after 20 trading days |
+| `hit_rate_5`, `hit_rate_20` | Share of those that were right |
+| `avg_edge_5`, `median_edge_5`, `avg_edge_20`, `median_edge_20` | Average and middle edge |
+| `by_side` | The same numbers for `buy` and `sell` separately |
+| `recent` | The latest 20 graded fills, oldest first: `date` (filled), `decided` (the session whose data the decision used), `ticker`, `side`, `fill` (its index in `trades`), `edge_5`, `edge_20` (once graded) |
+
+At the top of each file, `report_cards` puts the accounts side by side:
+`as_of` (the last session used), `horizons` (`[5, 20]`), `benchmark`
+(`SPY`), `accounts` (each account's `id`, `name`, and `graded_`, `hit_rate_`
+and `avg_edge_` at both horizons, best average 5-day edge first) and
+`pooled` (every graded fill of every account together).
+
 ## Layout
 
 | Path | Role |
@@ -297,7 +432,7 @@ the history of the state file).
 | `config.py` | Capital, costs, watchlist + currencies, strategy parameters |
 | `data_manager.py` | Data Fetching Engine: `DataProvider` interface, `YFinanceProvider`, `SyntheticProvider`, CSV cache, aligned `MarketData` |
 | `engine/portfolio.py` | CHF cash, positions, fills, trade log, cost model (2 CHF/fill, slippage, FX spread), metrics |
-| `engine/broker.py` | `BaseBroker` interface and `SimulatedBroker` (market-on-open fills) |
+| `engine/broker.py` | `BaseBroker` interface and `SimulatedBroker` (market-on-open fills, and market-on-close fills for the midday check) |
 | `engine/metrics.py` | Sharpe, Sortino, max drawdown, CAGR, volatility |
 | `models/base_agent.py` | `BaseAgent`: `prepare`, `calculate_signals`, `execute_trade`, sizing |
 | `models/indicators.py` | Causal EMA, SMA, RSI, ATR, ADX, Bollinger, Donchian |
@@ -317,11 +452,16 @@ the history of the state file).
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
+| `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days |
 | `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
 | `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
-| `midday_news.py` | News agents' midday check: live prices, trades fill at once |
+| `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |
 | `telegram_chart.py` | Race chart and top three for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
+| `claude_api.py` | Every call to Claude: clear errors, one retry when busy, the check that a reply is finished |
+| `claude_archive.py`, `state/briefs/` | Every Claude call word for word, one file per day, and a reader |
+| `requirements.in`, `requirements-ibkr.in` | The packages the code asks for; `requirements.txt` and `requirements-ibkr.txt` pin them with hashes |
+| `.github/dependabot.yml` | A monthly pull request with newer package versions |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
 | `luck_study.py` | Skill or luck: every account against hundreds of monkeys, SPY and an equal mix of every market |
@@ -367,7 +507,10 @@ Agents decide after the close of day *t* using data up to *t*. Orders fill
 at the **open of day t+1** with 5 bp adverse slippage, a 2 bp CHF/USD
 conversion spread and a flat 2 CHF commission. Buys are scaled down to
 available cash; cash can never go negative. Positions are marked at the
-close in CHF using the daily USDCHF rate.
+close in CHF using the daily USDCHF rate. The one exception is the midday
+check's market-on-close orders (see the News Analyst above): they fill at
+the close of the day they were placed, with the same costs, just before
+that day is marked.
 
 Backtests use Yahoo's dividend- and split-adjusted prices. The live paper
 accounts are paid each dividend in cash on its ex-date, after the tax a
@@ -392,7 +535,7 @@ Precautions tick "Bypass Order Precautions for API Orders".
 Then, in this folder:
 
     python3 -m venv .venv
-    .venv/bin/pip install -r requirements-ibkr.txt
+    .venv/bin/pip install --require-hashes -r requirements-ibkr.txt
     .venv/bin/python ibkr_bridge.py           # shows the plan only
     .venv/bin/python ibkr_bridge.py --send    # places the orders
 

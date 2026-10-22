@@ -10,6 +10,21 @@ import config
 from data_manager import load_market_data
 from engine.simulator import Simulator, build_accounts
 from models import make_agent
+from models.base_agent import Action
+from models.learner_agent import BUY, DIM, HOLD, N_FEAT
+
+
+def eager(**params):
+    """An AI Learner whose model wants to buy every market it does not hold
+    and keep every one it does, and never changes its mind (no learning
+    steps, no random tries)."""
+    agent = make_agent("learner", {"live_from": "2025-01-02", "lr": 0.0,
+                                   "epsilon": 0.0, **params})
+    w = np.zeros((3, DIM))
+    w[BUY, -2:] = [-1.0, 1.0]       # holding flag, bias: 2 when not held
+    w[HOLD, -1] = 0.5
+    agent.w = w
+    return agent
 
 
 class LearnerTest(unittest.TestCase):
@@ -82,6 +97,65 @@ class LearnerTest(unittest.TestCase):
         quick = self.run_sim("2025-01-02", self.all_days, min_hold=0)
         self.assertLess(min(self.holding_times(quick.accounts[0].portfolio,
                                                self.all_days)), n + 1)
+
+    def eager_evening(self):
+        """One live evening of ``eager``: its signals and the orders placed.
+        It wants to buy every market, so the cap leaves most of them out."""
+        agent = eager()
+        agent.w[BUY, :N_FEAT] = 0.001 * np.arange(1, N_FEAT + 1)
+        sim = Simulator(self.market, build_accounts(self.market, [agent]))
+        acc, day = sim.accounts[0], self.days[0]
+        signals = agent.calculate_signals(day, acc.portfolio)
+        orders = agent.execute_trade(signals, day, acc.portfolio, acc.broker)
+        return agent, signals, orders
+
+    def test_a_buy_the_cap_leaves_out_is_learned_as_a_hold(self):
+        agent, signals, orders = self.eager_evening()
+        bought = {o.ticker for o in orders}
+        left_out = [s for s in signals if s.ticker not in bought]
+        self.assertEqual(len(bought), agent.params["max_positions"])
+        self.assertTrue(left_out)
+        for s in left_out:
+            m = agent.memory[s.ticker]
+            self.assertIs(s.action, Action.BUY)
+            self.assertEqual((m["a"], m["pos"], m["prev"]), (HOLD, 0, 0))
+            self.assertEqual(agent.shadow[s.ticker], 0)
+            self.assertEqual(agent.last_decisions[s.ticker]["action"], "HOLD")
+        # The journal still explains the buy the model wanted.
+        s = left_out[0]
+        want = agent._contributions(np.array(agent.memory[s.ticker]["phi"]),
+                                    BUY)[:3]
+        self.assertEqual(
+            [f["effect"] for f in agent.decision_details(s, self.days[0])
+             ["factors"]],
+            [round(c, 4) for _, c in want])
+
+    def test_a_placed_buy_is_learned_as_bought(self):
+        agent, signals, orders = self.eager_evening()
+        self.assertTrue(orders)
+        for o in orders:
+            m = agent.memory[o.ticker]
+            self.assertEqual(o.side, "BUY")
+            self.assertEqual((m["a"], m["pos"], m["prev"]), (BUY, 1, 0))
+            self.assertEqual(agent.shadow[o.ticker], 1)
+            self.assertEqual(agent.last_decisions[o.ticker]["action"], "BUY")
+
+    def test_buys_learned_as_holds_survive_a_restart(self):
+        agent = eager()
+        sim = Simulator(self.market, build_accounts(self.market, [agent]))
+        sim.run(self.days[:1])
+        placed = {o["ticker"] for o in sim.accounts[0].broker.pending_to_list()}
+        again = Simulator.from_dict(json.loads(json.dumps(sim.to_dict())),
+                                    self.market)
+        b = again.accounts[0].agent
+        self.assertEqual(b.memory, agent.memory)
+        self.assertEqual(b.shadow, agent.shadow)
+        self.assertTrue(placed)
+        self.assertEqual({t for t, m in b.memory.items() if m["a"] == BUY},
+                         placed)
+        self.assertGreater(len(b.memory), len(placed))
+        self.assertTrue(all(m["a"] == HOLD for t, m in b.memory.items()
+                            if t not in placed))
 
     def test_watch_note_explains_a_blocked_sell(self):
         sim = self.run_sim("2025-01-02")

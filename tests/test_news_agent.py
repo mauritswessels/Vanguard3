@@ -73,14 +73,22 @@ class NewsAgentTest(unittest.TestCase):
         fresh = NS(date=cal[-2], ticker=t, side="BUY",
                    market_price=float(panel.at[cal[-2], t]))
         card = agent.report_card([buy, sell, fresh], last)
-        move = panel.at[d5, t] / panel.at[d0, t] - 1
-        spy = panel.at[d5, "SPY"] / panel.at[d0, "SPY"] - 1
+        # Both measured from the open of the fill day (engine.grading).
+        opens = self.market.open_panel
+        move = panel.at[d5, t] / opens.at[d0, t] - 1
+        spy = panel.at[d5, "SPY"] / opens.at[d0, "SPY"] - 1
         self.assertAlmostEqual(card["calls"][0]["edge_5"], move - spy, 4)
         self.assertAlmostEqual(card["calls"][1]["edge_5"], spy - move, 4)
         self.assertNotIn("edge_5", card["calls"][2])     # too early to grade
         self.assertEqual(card["graded_5"], 2)
         self.assertEqual(card["graded_20"], 2)
         self.assertEqual(card["hit_rate_5"], 0.5)
+        # The same fields as before the shared grader: Claude reads these.
+        self.assertEqual(list(card), ["calls", "graded_5", "hit_rate_5",
+                                      "avg_edge_5", "graded_20", "hit_rate_20",
+                                      "avg_edge_20"])
+        self.assertEqual(set(card["calls"][0]),
+                         {"date", "ticker", "side", "edge_5", "edge_20"})
 
         agent.card = card
         seen = {}
@@ -219,6 +227,100 @@ class ClaudeApiTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         out, calls = self.answer(529, 529)
         self.assertIn("(529): Overloaded", str(out))
+
+    def test_reads_only_the_text_of_a_finished_reply(self):
+        import claude_api
+        reply = {"stop_reason": "end_turn", "content": [
+            {"type": "thinking", "thinking": "", "signature": "s"},
+            {"type": "text", "text": '{"a": '}, {"type": "text", "text": "1}"}]}
+        self.assertEqual(claude_api.reply_text(reply), '{"a": 1}')
+
+    def test_says_when_a_reply_was_cut_off(self):
+        import claude_api
+        for stop, why in (("max_tokens", "it reached its length limit"),
+                          ("model_context_window_exceeded",
+                           "the question was too long for it")):
+            reply = {"stop_reason": stop,
+                     "content": [{"type": "text", "text": '{"targets": {'}]}
+            with self.assertRaises(RuntimeError) as ctx:
+                claude_api.reply_text(reply)
+            self.assertEqual(str(ctx.exception),
+                             f"Claude's reply was cut off ({why})")
+
+    def test_says_when_claude_declined(self):
+        import claude_api
+        reply = {"stop_reason": "refusal", "content": [],
+                 "stop_details": {"type": "refusal", "category": "cyber",
+                                  "explanation": "..."}}
+        with self.assertRaisesRegex(RuntimeError, r"^Claude declined: cyber$"):
+            claude_api.reply_text(reply)
+        # The details are optional: the category may be null, or missing.
+        for details in ({"type": "refusal", "category": None}, None):
+            reply = {"stop_reason": "refusal", "content": [],
+                     "stop_details": details}
+            with self.assertRaisesRegex(RuntimeError,
+                                        r"^Claude declined to answer$"):
+                claude_api.reply_text(reply)
+
+
+class AskClaudeTest(unittest.TestCase):
+    """The News Analyst's call: room to think, and a clear reason when the
+    reply is not usable (the agent then sits out with that reason)."""
+
+    def ask(self, reply):
+        sent = {}
+
+        def call_claude(body, key, **kwargs):
+            sent.update(body, purpose=kwargs.get("purpose"))
+            return reply
+
+        brief = fake_brief({"SPY": "close 600.00 USD", "GLD": "close 300 USD"})
+        with mock.patch.object(news, "call_claude", call_claude):
+            out = news.ask_claude(brief, {}, 1.0, "claude-sonnet-5-5",
+                                  0.15, 0.90, api_key="k")
+        return out, sent
+
+    def test_a_finished_reply_is_parsed_with_the_usual_limits(self):
+        text = json.dumps({"market_view": "calm", "targets": {
+            "SPY": {"weight": 0.5, "reason": "steady"},
+            "XYZ": {"weight": 0.1, "reason": "not on the list"}}})
+        out, sent = self.ask({"stop_reason": "end_turn", "model": "m",
+                              "usage": {"output_tokens": 900},
+                              "content": [{"type": "thinking", "thinking": ""},
+                                          {"type": "text", "text": text}]})
+        self.assertEqual(sent["max_tokens"], 8000)
+        self.assertEqual(sent["purpose"], "News Analyst")      # archived
+        self.assertEqual(out["targets"]["SPY"]["weight"], 0.15)  # clipped
+        self.assertNotIn("XYZ", out["targets"])                 # ignored
+        self.assertEqual(out["usage"], {"output_tokens": 900})
+
+    def test_a_cut_off_reply_is_not_traded(self):
+        cut = {"stop_reason": "max_tokens", "content": [
+            {"type": "text", "text": '{"market_view": "calm", "targets": {'
+                                     '"SPY": {"weight": 0.1'}]}
+        with self.assertRaisesRegex(RuntimeError, "reply was cut off"):
+            self.ask(cut)
+
+        # In the race, the agent keeps its targets and says why.
+        market = load_market_data("synthetic", pd.Timestamp("2024-01-01"),
+                                  pd.Timestamp("2024-12-31"), seed=5)
+        market.source = "test"
+        agent = make_agent("news")
+        agent.build_brief = fake_brief
+        sim = Simulator(market, build_accounts(market, [agent]))
+        with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "k"}), \
+                mock.patch.object(news, "call_claude",
+                                  lambda body, key, **kw: cut):
+            sim.run(market.calendar[-2:])
+        acc = sim.accounts[0]
+        self.assertEqual(acc.broker.pending_to_list(), [])
+        self.assertEqual(acc.agent.status, "No decision today: Claude's reply "
+                         "was cut off (it reached its length limit)")
+
+    def test_a_declined_reply_names_the_reason(self):
+        with self.assertRaisesRegex(RuntimeError, "^Claude declined: bio$"):
+            self.ask({"stop_reason": "refusal", "content": [],
+                      "stop_details": {"category": "bio"}})
 
 
 if __name__ == "__main__":

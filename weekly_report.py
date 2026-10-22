@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
-from claude_api import call_claude
+from claude_api import call_claude, reply_text
 
 logger = logging.getLogger("vanguard3.weekly")
 
@@ -110,13 +110,16 @@ def ask_claude(facts: dict, model: str, api_key: str | None = None) -> dict:
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
+    # Claude's thinking counts towards max_tokens too: the first report
+    # used 1,437 tokens (737 of them thinking), close to the old 1,500. A
+    # report that is cut off anyway is an error, not half a report emailed.
     reply = call_claude({
-        "model": model, "max_tokens": 1500, "system": SYSTEM,
+        "model": model, "max_tokens": 4000, "system": SYSTEM,
         "messages": [{"role": "user", "content":
                       "This week's facts (returns are fractions, 0.012 = "
                       "+1.2%):\n" + json.dumps(facts, indent=1)}],
-    }, key, timeout=120)
-    text = "".join(b.get("text", "") for b in reply.get("content", []))
+    }, key, timeout=180, purpose="Weekly report")
+    text = reply_text(reply)
     if not text.strip():
         raise ValueError("Claude sent an empty report")
     return {"text": text.strip(), "model": reply.get("model", model),

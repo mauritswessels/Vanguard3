@@ -3,6 +3,7 @@
 ``Simulator.step(date)`` is one trading day for every account:
 
 1. the broker fills yesterday's orders at today's open (with all costs),
+   then the orders the midday check placed for today's close at that close,
 2. the portfolio is marked to market at today's close,
 3. the agent reads data up to today's close and submits new orders.
 
@@ -112,6 +113,9 @@ class Simulator:
                       and (self.last_date is None
                            or pd.Timestamp(e["date"]) > self.last_date)]
             fills = acc.broker.process(date)
+            # Orders placed at midday for today's close (markets whose
+            # midday price was delayed), before the day is marked.
+            closing = acc.broker.process_close(date)
             acc.portfolio.mark_to_market(date, prices_chf)
             signals = acc.agent.calculate_signals(date, acc.portfolio)
             orders = acc.agent.execute_trade(signals, date, acc.portfolio,
@@ -121,10 +125,12 @@ class Simulator:
             # Orders that did not go through (replacing one is routine).
             failed = [(o, why) for o, why in acc.broker.rejected[seen:]
                       if not why.startswith("replaced")]
-            if signals or fills or failed or events:
+            if signals or fills or closing or failed or events:
                 entry = _activity(
-                    date, signals, orders, fills,
+                    date, signals, orders, fills + closing,
                     decision_context(acc.agent, signals, date, acc.portfolio))
+                for f in entry["fills"][len(fills):]:
+                    f["at_close"] = True        # ordered at midday
                 if events:
                     entry["corporate"] = [dict(e) for e in events]
                 if failed:
@@ -132,6 +138,7 @@ class Simulator:
                         {"ticker": o.ticker, "side": o.side,
                          "quantity": o.quantity,
                          "created": o.created.strftime("%Y-%m-%d"),
+                         **({"at_close": True} if o.kind == "close" else {}),
                          "why": why} for o, why in failed]
                 acc.activity.append(entry)
         self.last_date = date
@@ -293,7 +300,9 @@ def _activity(date, signals, orders, fills, context=None) -> dict:
                      "stop": s.stop_price, **ctx}
                     for s, ctx in zip(signals, context)],
         "orders": [{"ticker": o.ticker, "side": o.side,
-                    "quantity": o.quantity} for o in orders],
+                    "quantity": o.quantity,
+                    **({"at_close": True} if o.kind == "close" else {})}
+                   for o in orders],
         "fills": [{"ticker": f.ticker, "side": f.side,
                    "quantity": f.quantity,
                    "price": round(f.exec_price, 4),
