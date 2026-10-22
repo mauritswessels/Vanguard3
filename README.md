@@ -58,6 +58,20 @@ same replay makes 678 fills, pays about 6,300 CHF and gains 27%. Over 10
 random seeds the median is +31% and every seed gains. That is still behind
 buy-and-hold SPY (+63%) and the typical random-pick monkey (+44%).
 
+A buy the model wants but the account does not make is learned as a hold
+too. The model wants to buy about 19 markets an evening and the cap of 8
+holdings leaves almost all of them out (an order that is too small or does
+not fit the cash counts the same way). It used to learn each one as bought,
+so the next evening started from a holding the account did not have.
+Replayed over the last 5 years on 100 seeds (the 10 above were a lucky
+draw), learning them as holds raised the median return from +15% to +28%,
+and 91 seeds gained instead of 79. It did better on 67 seeds. The model
+stays keener to buy, so it keeps the book fuller and trades more: 1,126
+fills instead of 828, and about 10,400 CHF in costs instead of 7,300. It
+also falls further in a bad year. In 2022 the median seed lost 13% instead
+of 7% (worse on 78 seeds), and the typical worst drop from a peak went from
+19% to 23%. Most of the gain came in the 2023 rebound.
+
 Its twin, the **Opus Learner** (`models/opus_learner_agent.py`), runs the
 same learning model but lets Claude Opus check its picks: once per evening it
 reads the model's proposed sells and its best proposed buys, with recent
@@ -78,6 +92,13 @@ from +16% to +30%; with a quarter, from +22% to +36%; with one in ten, from
 +32% to +52%. It trades a little more (724 fills instead of 631 at one in
 two) and wins on about two seeds in three. This says nothing about whether
 Opus itself chooses well.
+
+An approved buy the cap of 8 holdings leaves out is learned as a hold too,
+as in the AI Learner. With the stand-in approving half the picks, that
+raised the median further, from +30% to +53%, did better on 29 of 40
+seeds, and every seed gained. With a quarter approved it made no clear
+difference (better on 20 of 40 seeds), nor with one in ten (50 of 100):
+few approved buys then run into the cap.
 
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and
