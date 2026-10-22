@@ -148,18 +148,28 @@ class Simulator:
         ex-dividend since then."""
         if self.last_date is None:
             return
-        for t in sorted(acc.portfolio.positions):
+        pf = acc.portfolio
+        # The shares held at the last close. The midday check may have
+        # traded since (fills dated after it): a share bought on the day
+        # it goes ex-dividend earns nothing, one sold that day still does.
+        held = {t: p.quantity for t, p in pf.positions.items()}
+        for f in pf.trades:
+            if f.date > self.last_date:
+                change = f.quantity if f.side == "BUY" else -f.quantity
+                held[f.ticker] = held.get(f.ticker, 0) - change
+        for t in sorted(held):
             acts = self.market.actions.get(t)
-            if acts is None or acts.empty:
+            if acts is None or acts.empty or held[t] <= 0:
                 continue
             due = acts.loc[(acts.index > self.last_date)
                            & (acts.index <= date), "dividend"]
             for day, amount in due.items():
                 if amount > 0:
                     ccy = self.market.currencies[t]
-                    acc.portfolio.receive_dividend(
+                    pf.receive_dividend(
                         day, t, float(amount), self.market.fx_rate(t, date),
-                        config.DIVIDEND_TAX.get(ccy, 0.0))
+                        config.DIVIDEND_TAX.get(ccy, 0.0), shares=held[t],
+                        currency=ccy)
 
     def apply_splits(self) -> list[dict]:
         """Restate every account in post-split shares for the splits since

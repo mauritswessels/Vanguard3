@@ -5,7 +5,6 @@ import contextlib
 import io
 import json
 import os
-import re
 import tempfile
 import unittest
 from datetime import date, datetime, timezone

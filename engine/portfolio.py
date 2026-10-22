@@ -230,19 +230,27 @@ class Portfolio:
     # -- dividends and splits ------------------------------------------------
     def receive_dividend(self, date: pd.Timestamp, ticker: str,
                          per_share: float, fx_rate: float,
-                         tax: float = 0.0) -> dict | None:
+                         tax: float = 0.0, shares: int | None = None,
+                         currency: str | None = None) -> dict | None:
         """Pay a dividend of ``per_share`` (trading currency) on the shares
         held, converted at ``fx_rate`` (with the FX spread) and minus
-        ``tax`` (the share kept by the paying country)."""
+        ``tax`` (the share kept by the paying country).
+
+        ``shares`` (and ``currency``) override the holding: what counts is
+        what was held at the close before the share went ex-dividend, and
+        a midday trade can have changed the holding since."""
         pos = self.positions.get(ticker)
-        if pos is None or not per_share > 0:
+        if shares is None:
+            shares = pos.quantity if pos else 0
+        currency = currency or (pos.currency if pos else None)
+        if shares <= 0 or currency is None or not per_share > 0:
             return None
-        rate = fx_rate * (1 - self.costs.fx_spread(pos.currency))
-        chf = pos.quantity * per_share * rate * (1 - tax)
+        rate = fx_rate * (1 - self.costs.fx_spread(currency))
+        chf = shares * per_share * rate * (1 - tax)
         self.cash += chf
         event = {"date": date.strftime("%Y-%m-%d"), "ticker": ticker,
-                 "kind": "dividend", "shares": pos.quantity,
-                 "per_share": per_share, "currency": pos.currency,
+                 "kind": "dividend", "shares": shares,
+                 "per_share": per_share, "currency": currency,
                  "tax_pct": tax, "chf": chf}
         self.events.append(event)
         return event

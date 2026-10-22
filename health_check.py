@@ -14,7 +14,13 @@ the repository owner. It looks for:
   decision,
 * orders that did not go through in the latest session (not enough cash,
   or their market did not open for a week),
-* with ``--midday``: a News Analyst whose midday check failed today.
+* with ``--midday``: a News Analyst whose midday check failed today,
+* accounts that do not add up (``flaw_scan.state_problems``: cash, shares
+  and waiting orders that cannot be right).
+
+A run that found nothing new (``--new-sessions 0``: the evening has more
+than one run) only checks that the accounts are up to date, so the same
+problem is not sent again by every later run of the evening.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ import pandas as pd
 
 import config
 from daily_run import last_completed_session
+from flaw_scan import state_problems
 from models import CLAUDE_KEYS
 
 logger = logging.getLogger("vanguard3.health")
@@ -71,9 +78,11 @@ WHY = {"insufficient cash": "there was not enough cash",
 
 def problems(state: dict | None, expected: pd.Timestamp,
              today: pd.Timestamp | None = None,
-             midday: bool = False) -> list[str]:
+             midday: bool = False, only_late: bool = False) -> list[str]:
     """Plain-English problems with the saved paper accounts. ``midday``
-    checks the midday run instead of the evening's orders."""
+    checks the midday run instead of the evening's orders; ``only_late``
+    only whether the accounts are up to date (a run that found nothing new
+    since the last one, which reported the rest already)."""
     if not state:
         return ["The paper accounts could not be found."]
     out = []
@@ -84,6 +93,8 @@ def problems(state: dict | None, expected: pd.Timestamp,
                    "The evening run failed or did not start (or Yahoo had no "
                    "European prices for that day yet; on a European holiday "
                    "that is normal). The next successful run catches up.")
+    if only_late:
+        return out
     for acc in state["accounts"]:
         name = acc.get("name", acc["agent"])
         s = acc["agent_state"]
@@ -105,7 +116,7 @@ def problems(state: dict | None, expected: pd.Timestamp,
                     f"{name}: the order to {r['side'].lower()} {r['quantity']} "
                     f"{r['ticker']} (from {pd.Timestamp(r['created']):%a %d %b}) "
                     f"did not go through: {WHY.get(r['why'], r['why'])}.")
-    return out
+    return out + state_problems(state)
 
 
 def main() -> None:
@@ -115,13 +126,17 @@ def main() -> None:
     parser.add_argument("--midday", action="store_true",
                         help="check the midday run instead of the evening's "
                              "orders")
+    parser.add_argument("--new-sessions", default="",
+                        help="sessions the run simulated; 0 checks only "
+                             "that the accounts are up to date")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     state = (json.loads(args.state.read_text())
              if args.state.exists() else None)
     found = problems(state, latest_session(sessions=recent_sessions()),
-                     midday=args.midday)
+                     midday=args.midday,
+                     only_late=args.new_sessions.strip() == "0")
     if found:
         args.out.write_text("".join(f"- {p}\n" for p in found))
         logger.warning("Problems found:\n%s", "\n".join(found))

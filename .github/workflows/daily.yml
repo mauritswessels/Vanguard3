@@ -13,6 +13,7 @@ on:
     - cron: "40 20 * * 1-5"   # summer: 22:40 Zurich, 16:40 New York
     - cron: "5 21 * * 1-5"    # summer: a second chance before midnight
     - cron: "40 21 * * 1-5"   # winter: 22:40 Zurich, 16:40 New York
+    - cron: "10 22 * * 1-5"   # winter: a second chance before midnight
   workflow_dispatch: {}
 
 permissions:
@@ -103,7 +104,9 @@ jobs:
 
       - name: Health check
         if: always()
-        run: python health_check.py --out health.md
+        # A run that found nothing new only checks the date: the run
+        # before it reported the rest already.
+        run: python health_check.py --out health.md --new-sessions "${{ steps.advance.outputs.new_sessions }}"
 
       # Opens (or adds to) one GitHub issue; GitHub emails it to the owner.
       - name: Alert if something went wrong

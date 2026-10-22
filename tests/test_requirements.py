@@ -31,8 +31,15 @@ class RequirementsTest(unittest.TestCase):
         for name in FILES:
             found = pins(name)
             self.assertTrue(found, name)
-            for package, (version, hashes) in found.items():
+            for package, (_, hashes) in found.items():
                 self.assertGreater(hashes, 0, f"{name}: {package} has no hash")
+
+    def test_the_flaw_scan_tools_are_pinned_with_hashes(self):
+        found = pins("requirements-check.txt")
+        for package in ("ruff", "pip-audit"):
+            self.assertIn(package, found)
+        for package, (_, hashes) in found.items():
+            self.assertGreater(hashes, 0, f"{package} has no hash")
 
     def test_the_lists_hold_what_the_code_asks_for(self):
         main, ibkr = pins(FILES[0]), pins(FILES[1])

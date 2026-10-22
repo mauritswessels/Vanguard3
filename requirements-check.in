@@ -1,0 +1,7 @@
+# The tools of the weekly flaw scan (.github/workflows/flaw-scan.yml):
+# ruff looks for bugs in the Python code, pip-audit for known security
+# holes in the pinned packages. requirements-check.txt pins the exact
+# versions (and their file hashes); rebuild it from this file as the README
+# says ("Pinned packages").
+ruff
+pip-audit

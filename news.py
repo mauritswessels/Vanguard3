@@ -312,6 +312,10 @@ def parse_decision(text: str, universe: list[str], max_w: float,
             w = float(item.get("weight", 0) or 0)
         except (TypeError, ValueError):
             w = 0.0
+        if not math.isfinite(w):
+            # JSON may hold NaN: it slips past the limits below and is
+            # saved as null, which then crashes the next evening's run.
+            w = 0.0
         targets[t] = {"weight": min(max(w, 0.0), max_w),
                       "reason": str(item.get("reason", ""))[:200]}
         p = parse_probability(item.get("probability"))
