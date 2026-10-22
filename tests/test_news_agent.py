@@ -73,14 +73,22 @@ class NewsAgentTest(unittest.TestCase):
         fresh = NS(date=cal[-2], ticker=t, side="BUY",
                    market_price=float(panel.at[cal[-2], t]))
         card = agent.report_card([buy, sell, fresh], last)
-        move = panel.at[d5, t] / panel.at[d0, t] - 1
-        spy = panel.at[d5, "SPY"] / panel.at[d0, "SPY"] - 1
+        # Both measured from the open of the fill day (engine.grading).
+        opens = self.market.open_panel
+        move = panel.at[d5, t] / opens.at[d0, t] - 1
+        spy = panel.at[d5, "SPY"] / opens.at[d0, "SPY"] - 1
         self.assertAlmostEqual(card["calls"][0]["edge_5"], move - spy, 4)
         self.assertAlmostEqual(card["calls"][1]["edge_5"], spy - move, 4)
         self.assertNotIn("edge_5", card["calls"][2])     # too early to grade
         self.assertEqual(card["graded_5"], 2)
         self.assertEqual(card["graded_20"], 2)
         self.assertEqual(card["hit_rate_5"], 0.5)
+        # The same fields as before the shared grader: Claude reads these.
+        self.assertEqual(list(card), ["calls", "graded_5", "hit_rate_5",
+                                      "avg_edge_5", "graded_20", "hit_rate_20",
+                                      "avg_edge_20"])
+        self.assertEqual(set(card["calls"][0]),
+                         {"date", "ticker", "side", "edge_5", "edge_20"})
 
         agent.card = card
         seen = {}

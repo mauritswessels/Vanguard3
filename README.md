@@ -192,9 +192,8 @@ so the race shows whether they help:
 * similar markets: skip a buy that moved almost in step (correlation above
   0.8 over 60 days) with something already owned.
 
-The News Analyst grades its own trades against SPY after 5 and 20 trading
-days. The report card is on the dashboard, and the latest graded trades go
-in front of every brief, so Claude can learn from its record.
+Every fill of every account is also graded against SPY; see
+[Report cards](#report-cards-every-trade-graded-against-spy) below.
 
 Every Saturday morning `weekly_report.py` (workflow "Weekly report") hands
 Claude the facts of the week (each account's return, trades and stated
@@ -248,6 +247,46 @@ fills into positions); for "all time" it matches the Python scoreboard.
 To start over, delete `state/paper_state.json` and change
 `PAPER_START_DATE` in `config.py`.
 
+## Report cards: every trade graded against SPY
+
+Returns need years to tell skill from luck (see `luck_study.py` above), but
+an account makes many decisions a week. `engine/grading.py` grades every
+fill of every account, buys and sells: a **buy was right** if its market
+then beat SPY, a **sell was right** if its market then did worse than SPY.
+The **edge** is that gap (0.02 = 2 percentage points, above zero = right).
+Each fill is graded twice, at the close 5 and 20 trading days after the day
+it filled. The market and SPY are measured over the same stretch, in the
+market's own currency: from the open of the fill day for an order filled at
+the open (the usual case), and from the close of the fill day for a midday
+trade, because the agent had already seen that morning. Prices are adjusted
+for dividends and splits, so a split never looks like a loss. A fill is
+**pending** until its 5 trading days have passed; nothing is graded with
+prices it could not have known on the day of the card. Trades in SPY itself
+are not graded (SPY cannot beat itself), so Buy & Hold SPY has an empty
+card, and the Monkey's card shows what random picks get.
+
+The News Analysts use the same grader for their own card (`ai.report_card`
+in `paper.json`, shown on their dashboard desk), and their latest 15 graded
+trades go in front of every brief, so Claude can learn from its record.
+
+Every account in `paper.json` and `backtest.json` has a `report_card`
+(fractions, rounded; `null` when nothing is graded yet):
+
+| Field | Meaning |
+| --- | --- |
+| `calls`, `pending` | Fills so far, and those still inside their first 5 trading days |
+| `graded_5`, `graded_20` | Fills graded after 5 and after 20 trading days |
+| `hit_rate_5`, `hit_rate_20` | Share of those that were right |
+| `avg_edge_5`, `median_edge_5`, `avg_edge_20`, `median_edge_20` | Average and middle edge |
+| `by_side` | The same numbers for `buy` and `sell` separately |
+| `recent` | The latest 20 graded fills, oldest first: `date` (filled), `decided` (the session whose data the decision used), `ticker`, `side`, `fill` (its index in `trades`), `edge_5`, `edge_20` (once graded) |
+
+At the top of each file, `report_cards` puts the accounts side by side:
+`as_of` (the last session used), `horizons` (`[5, 20]`), `benchmark`
+(`SPY`), `accounts` (each account's `id`, `name`, and `graded_`, `hit_rate_`
+and `avg_edge_` at both horizons, best average 5-day edge first) and
+`pooled` (every graded fill of every account together).
+
 ## Layout
 
 | Path | Role |
@@ -274,6 +313,7 @@ To start over, delete `state/paper_state.json` and change
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
+| `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days |
 | `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
 | `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
 | `midday_news.py` | News agents' midday check: live prices, trades fill at once |
