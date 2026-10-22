@@ -10,3 +10,4 @@ ibkr_logs/
 ibkr_morning.env
 server/.env
 server/ib_password.txt
+web/node_modules/

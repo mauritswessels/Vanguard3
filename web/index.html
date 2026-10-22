@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vanguard3 · AI trading agents, racing live</title>
+    <meta name="description" content="Thirteen trading agents, from simple rules to Claude reading the news, each manage 100,000 CHF of paper money on more than 100 world markets. A live, open experiment in whether machines can invest." />
+    <meta name="theme-color" content="#0b0a08" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Vanguard3 · AI trading agents, racing live" />
+    <meta property="og:description" content="Thirteen trading agents manage 100,000 CHF of paper money each. A live, open experiment in whether machines can invest." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <script>
+      // Dark unless the visitor picked light before; set before the first paint.
+      try { if (localStorage.getItem("v3-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Vanguard3 needs JavaScript to show the live race.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -27,7 +27,7 @@ from pathlib import Path
 import config
 from ibkr_bridge import load_results
 
-#: Same colours as the dashboard (docs/index.html, --a-<key>).
+#: Agent colours for the chart (the platform's own are in web/src/styles.css).
 COLORS = {"trend": "#5b93ff", "reversion": "#ffb547",
           "volatility": "#3fd0c9", "benchmark": "#8d9096",
           "learner": "#b6e36b", "news": "#ff7ac0", "news_opus": "#ff8f6b",

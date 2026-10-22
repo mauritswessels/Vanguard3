@@ -32,6 +32,24 @@ Read the section you need there instead of exploring the whole repo.
 .venv/bin/python ibkr_bridge.py                       # IBKR plan only, sends nothing
 ```
 
+The platform (the GitHub Pages site) lives in `web/` and builds into
+`docs/`. Run these in `web/` (Node 24):
+
+```bash
+npm ci && npm test && npm run typecheck   # tests: the TS metrics vs the Python scoreboard
+npm run build                             # writes docs/index.html and docs/app/
+```
+
+- **Edit `web/src`, never `docs/index.html` or `docs/app/`**: those are build
+  output. Rebuild and commit `docs/` with every change to `web/`; the Tests
+  workflow fails a pull request whose `docs/` does not match a fresh build.
+- `web/src/lib/metrics.ts` is the platform's only source of performance and
+  risk numbers and must keep matching `engine/metrics.py`.
+- The site reads `docs/data/*.json` at runtime, so new results need no
+  rebuild. Keep the files' shapes stable (or update `web/src/lib/types.ts`).
+- Agent descriptions are in `web/src/lib/agents.ts`; the journal and About
+  texts in `web/src/content/`.
+
 Shell scripts (`ibkr_morning.sh`,
 `server/*.sh`) must work with both Linux and macOS tools, because the
 tests run them on both.
