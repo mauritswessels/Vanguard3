@@ -480,7 +480,10 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
     if unfilled:
         say(f"Warning: the orders for {', '.join(unfilled)} sent on {since} "
             "did not fill; they are sent again.")
+    # held, positions and gross only go to the log (ibkr_summary.py reads
+    # them for the website); they change no order.
     result = {"account": account, "base": base, "net_liq": net_liq,
+              "gross": gross, "positions": count, "held": held,
               "agent": p["agent"], "results_of": payload["last"],
               "plan": plan, "sent": [], "kept_in_cash": kept,
               "no_price": unpriced, "currency": fx, "not_filled": unfilled}

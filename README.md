@@ -450,7 +450,8 @@ and `avg_edge_` at both horizons, best average 5-day edge first) and
 | `models/manager_agent.py` | Team Manager: backs the agents with the best recent results |
 | `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS or IB Gateway |
 | `ibkr_schedule.py`, `ibkr_morning.sh` | Run the bridge by itself every weekday morning (Mac or cloud server) |
-| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`) |
+| `ibkr_summary.py` | The paper account next to the simulated agent, for the website (`ibkr_logs/public/ibkr.json`) |
+| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`); `publish.sh` puts the summary on GitHub |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
@@ -629,6 +630,109 @@ Useful commands on the server:
     tail -n 40 /opt/Vanguard3/ibkr_logs/morning.log
     docker logs --tail 30 ib-gateway          # what IB Gateway is doing
     bash /opt/Vanguard3/server/setup.sh --login   # type a new login
+
+### The paper account on the website
+
+The simulation fills every order at the open with fixed costs. A real
+broker does not: orders can be refused, fill late or only in part, a US
+fund is held as its European version, and prices differ a little. To show
+that gap, every morning run can publish a small summary of the paper
+account next to the simulated Team Manager.
+
+After the orders are placed, `ibkr_summary.py` reads that run's log and
+the results it copied and writes `ibkr_logs/public/ibkr.json`;
+`server/publish.sh` then pushes it to GitHub. Both run in their own steps
+after the orders, so they cannot stop or change them: a problem only adds
+one line to the morning message ("Could not publish the account summary
+for the website: ..."), and the run still counts as a success.
+
+The file goes to its own public repository (default
+`mauritswessels/vanguard3-ibkr-data`, branch `ibkr-data`), not to this
+one. The server writes with a GitHub deploy key, and a deploy key opens
+the whole repository it belongs to: in this repository it could also
+change the code, the workflows and so reach the secrets. In a repository
+of its own it can only ever change the summary. `publish.sh` also refuses
+to push to `main` or `master`, and trusts only GitHub's published server
+keys (`server/github_known_hosts`). Each morning replaces a single commit
+there; the file keeps its own history (the last 750 mornings,
+`summary_days` in `IBKR_PARAMS`). The website reads it from
+
+    https://raw.githubusercontent.com/mauritswessels/vanguard3-ibkr-data/ibkr-data/ibkr.json
+
+(GitHub serves it to any website; it can take up to five minutes to
+show a new version).
+
+Set it up once, after the server setup above:
+
+1. On the server, as root:
+
+       bash /opt/Vanguard3/server/setup.sh --publish
+
+   Press Enter to keep the suggested repository name. It makes the key
+   (`/root/.ssh/vanguard3_publish`, never in git), saves the settings in
+   `ibkr_morning.env` (`PUBLISH_REPO`, `PUBLISH_BRANCH`, `PUBLISH_KEY`)
+   and prints the two steps below with the key filled in. Leave it
+   waiting.
+2. On GitHub, make the repository at https://github.com/new: name
+   `vanguard3-ibkr-data`, Public, no README > Create repository.
+3. In that repository, Settings > Deploy keys > Add deploy key: title
+   "Vanguard3 server", paste the line starting with `ssh-ed25519` that
+   the setup printed, tick **Allow write access** > Add key.
+4. Back on the server, press Enter. The setup checks that the key may
+   push (a dry run: nothing is published yet) and says Done. The first
+   summary appears after the next morning run.
+
+To stop publishing, delete the `PUBLISH_` lines from `ibkr_morning.env`
+(and the deploy key on GitHub).
+
+Nothing personal is published: no account ID, username, password, token
+or Telegram chat, and none of IBKR's own messages, which can name the
+account (a refused order shows only IBKR's error code). Before the file is
+written it is searched for the account ID, anything shaped like an IBKR
+account ID, and every login detail and token on the server; if one turns
+up, nothing is written.
+
+Both accounts are valued at the same close: the paper account before
+that morning's orders (so at the last close), the Team Manager at the
+close whose results were copied. Returns are in francs, at the results'
+exchange rates, so the account's own currency (usually US dollars) does
+not blur the comparison. Whether an order filled is judged the next
+morning, from the account's holdings: until then it is `null`.
+
+`ibkr.json` keeps a fixed shape. Shares and returns are fractions (0.1 =
+10%), dates are `YYYY-MM-DD`, money is rounded to cents, and a value that
+is not known is `null`. At the top: `schema` (1), `generated_utc`,
+`about` (a plain sentence on what it shows), `agent` and `agent_name` (the
+copied agent), `account_currency`, `since` (the first morning the
+returns count from), `latest` (the newest morning in detail) and `history`
+(one row per morning, oldest first).
+
+Rows of `history`:
+
+| Field | Meaning |
+| --- | --- |
+| `date` | The morning of the run |
+| `results_of` | The close whose results were copied; both values are measured there |
+| `same_close` | `false` when the results were older than the last weekday close (the evening run failed, or a holiday): that row has no returns |
+| `value`, `value_chf` | The paper account's net liquidation value, in its own currency and in CHF |
+| `cash_chf`, `invested`, `positions` | Its cash (value minus positions), share invested and number of positions |
+| `sim_value_chf`, `sim_invested`, `sim_positions` | The same for the simulated agent |
+| `return`, `sim_return`, `difference` | Since the previous row with `same_close`, in CHF; `difference` = account minus simulation |
+| `return_total`, `sim_return_total`, `difference_total` | The same since `since` |
+| `holdings_gap` | Share of the account held differently from the simulation: half the sum of the differences per market (0 = the same holdings) |
+| `planned`, `sent`, `refused`, `kept_in_cash` | This morning's orders: worked out, taken by IBKR, refused, and markets left in cash |
+| `filled`, `partly_filled`, `not_filled` | What became of the orders sent, filled in the next morning (`null` until then) |
+
+`latest` has `date`, `results_of`, `same_close` and:
+
+| Field | Meaning |
+| --- | --- |
+| `real` | `value`, `currency`, `value_chf`, `cash`, `cash_chf`, `invested`, `positions`, `watchlist_positions` |
+| `sim` | `value_chf`, `cash_chf`, `invested`, `positions` |
+| `tracking` | The row's returns, `since`, `holdings_gap`, and `tracking_error_yearly`: how much the daily differences swing, scaled to a year (from 5 mornings on) |
+| `weights` | Per market, biggest first: `ticker`, `holds_as` (the European fund held instead of a US one, or `null`), `sim`, `real`, `difference` |
+| `orders` | `planned`, `sent`, `refused`; `orders` (`ticker`, `holds_as`, `side`, `quantity`, `value` in the account currency, `outcome` "sent" or "refused", `note`); `currency` (currency changes: `currency`, `side`, `amount`, `value`, `outcome`); `kept_in_cash` (`ticker`, `holds_as`, `reason`) |
+| `previous_orders` | The orders of the last earlier run and what became of them: `date`, `sent`, `filled`, `partly_filled`, `not_filled`, and `orders` (`ticker`, `holds_as`, `side`, `quantity`, `outcome`: "filled", "partly filled" or "not filled"); `null` on the first morning |
 
 ## Going live with Interactive Brokers
 
