@@ -98,3 +98,70 @@ export function ReportCardTable({ d }: { d: RunData }) {
     </div>
   );
 }
+
+/** The News Analysts' stated chances against what happened: a well
+ *  calibrated forecaster's points sit on the diagonal. */
+export function CalibrationPanel({ a }: { a: Agent }) {
+  const c = a.report_card?.calibration;
+  if (!c) return null;
+  const W = 260, H = 260, P = 34;
+  const X = (v: number) => P + v * (W - P - 10), Y = (v: number) => H - P - v * (H - P - 10);
+  const pts = c.buckets.filter((b) => b.count && b.avg_probability != null && b.came_true != null);
+  const max = Math.max(1, ...pts.map((b) => b.count));
+  return (
+    <div className="card p-7">
+      <div className="eyebrow mb-2 text-gold">Calibration</div>
+      <h2 className="display mb-2 text-[2rem]">Does its confidence mean anything?</h2>
+      <p className="text-[13.5px] text-muted">
+        With every target, Claude states the chance that the market beats the S&amp;P 500 over the next {c.horizon} trading days.
+        If it is well calibrated, about 70% of its “70%” calls come true.
+        {c.stated > c.scored ? ` ${c.stated - c.scored} stated chance${c.stated - c.scored === 1 ? " is" : "s are"} still waiting for its window.` : ""}
+      </p>
+      {c.scored ? (
+        <div className="mt-5 grid items-center gap-6 sm:grid-cols-[260px_1fr]">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[260px]" role="img" aria-label="Stated chance against how often it came true">
+            <rect x={P} y={10} width={W - P - 10} height={H - P - 10} fill="none" stroke="var(--line-2)" />
+            <line x1={X(0)} y1={Y(0)} x2={X(1)} y2={Y(1)} stroke="var(--faint)" strokeDasharray="4 4" />
+            {[0, 0.5, 1].map((t) => (
+              <g key={t}>
+                <text x={X(t)} y={H - P + 16} textAnchor="middle" fontSize="10" fill="var(--muted)">{Math.round(t * 100)}%</text>
+                <text x={P - 6} y={Y(t) + 3} textAnchor="end" fontSize="10" fill="var(--muted)">{Math.round(t * 100)}%</text>
+              </g>
+            ))}
+            <text x={(W + P) / 2} y={H - 2} textAnchor="middle" fontSize="10" fill="var(--muted)">stated chance</text>
+            {pts.map((b) => (
+              <g key={b.from}>
+                <title>{`${b.count} calls stated ${share(b.avg_probability, 0)} on average; ${share(b.came_true, 0)} came true`}</title>
+                <circle cx={X(b.avg_probability!)} cy={Y(b.came_true!)} r={4 + 8 * Math.sqrt(b.count / max)} fill="var(--gold)" fillOpacity={0.8} stroke="var(--bg)" strokeWidth={2} />
+              </g>
+            ))}
+          </svg>
+          <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-line p-4">
+                <div className="text-[12px] text-muted">Brier score (lower is better)</div>
+                <div className="tabular mt-1 text-[1.4rem] font-medium">{c.brier != null ? c.brier.toFixed(3) : "–"}</div>
+                <div className="mt-1 text-[12px] text-muted">always guessing {share(c.base_rate, 0)}: {c.base_rate_brier != null ? c.base_rate_brier.toFixed(3) : "–"}</div>
+              </div>
+              <div className="rounded-xl border border-line p-4">
+                <div className="text-[12px] text-muted">Skill over that guess</div>
+                <div className="tabular mt-1 text-[1.4rem] font-medium"><Delta value={c.skill}>{c.skill != null ? pct(c.skill, 0) : "–"}</Delta></div>
+                <div className="mt-1 text-[12px] text-muted">{c.scored} calls scored · stated {share(c.avg_probability, 0)} on average</div>
+              </div>
+            </div>
+            <ul className="grid gap-1 text-[12.5px] text-ink-2">
+              {c.buckets.map((b) => (
+                <li key={b.from} className="grid grid-cols-[90px_1fr_auto] gap-3">
+                  <span className="text-muted">{share(b.from, 0)}–{share(b.to, 0)}</span>
+                  <span>{b.count ? `${b.count} call${b.count === 1 ? "" : "s"}` : "none"}</span>
+                  <span className="tabular">{b.count && b.came_true != null ? `${share(b.came_true, 0)} came true` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : <div className="mt-5"><Empty>No stated chance is old enough to check yet: each is checked {c.horizon} trading days after its trade.</Empty></div>}
+      <p className="mt-5 text-[11.5px] text-faint">A positive skill means its chances beat always guessing the share that came true, a figure only known afterwards, so this is a sanity check rather than a fair rival.</p>
+    </div>
+  );
+}

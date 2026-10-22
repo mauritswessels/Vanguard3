@@ -6,7 +6,7 @@ import { Link } from "react-router";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { AiCostTable, PairCard } from "../components/HeadToHead";
 import { RealityCheck } from "../components/RealityCheck";
-import { ReportCardTable } from "../components/ReportCard";
+import { CalibrationPanel, ReportCardTable } from "../components/ReportCard";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Delta, Empty, Section, Segmented, Swatch, cx } from "../components/ui";
 import { ORDER } from "../lib/agents";
@@ -64,6 +64,16 @@ export default function Analytics() {
               a sell if it did worse. The edge is that gap. Calls pile up much faster than days, so timing skill shows here long before it shows in returns.
             </p>
             <ReportCardTable d={d} />
+            {d.agents.some((a) => a.report_card?.calibration) && (
+              <div className="grid gap-6">
+                {d.agents.filter((a) => a.report_card?.calibration).map((a) => (
+                  <div key={a.id}>
+                    <div className="mb-2 flex items-center gap-2 text-[13px] text-ink-2"><span className="size-2 rounded-full" style={{ background: `var(--s-${a.key})` }} />{a.name}</div>
+                    <CalibrationPanel a={a} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {tab === "risk" && <Risk d={d} r={r} />}
