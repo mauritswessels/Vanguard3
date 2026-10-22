@@ -200,13 +200,17 @@ def agent_weights(payload: dict, agent_id: str
 
 def plan_orders(weights: dict[str, float], held: dict[str, int],
                 net_liq: float, base: str, payload: dict,
-                min_trade_pct: float) -> list[dict]:
+                min_trade_pct: float, keep: frozenset = frozenset()
+                ) -> list[dict]:
     """Orders that bring the paper account to the agent's shares.
 
     ``held`` are the paper account's watchlist positions in shares,
     ``net_liq`` its value in its base currency ``base``. Changes smaller
     than ``min_trade_pct`` of the account are skipped to save fees, except
-    full exits.
+    full exits. A market with no price in the results can't be sized: it
+    is left as it is, unless the agent no longer holds it (and it is not
+    in ``keep``, the markets the agent holds but that have no price):
+    then it is sold in full at the market, which needs no price.
     """
     rate = chf_per_unit(payload, base)
     if not rate:
@@ -217,6 +221,14 @@ def plan_orders(weights: dict[str, float], held: dict[str, int],
         quote = ib_price(payload, t)
         to_chf = chf_per_unit(payload, quote[1]) if quote else None
         if not to_chf:
+            _, currency, exchange = ib_symbol(t)
+            # A US share needs a limit, and so a price (see run()).
+            if (held.get(t, 0) > 0 and t not in weights and t not in keep
+                    and exchange):
+                orders.append({"ticker": t, "side": "SELL",
+                               "quantity": held[t], "now": held[t],
+                               "target": 0, "value": 0.0,
+                               "currency": currency, "price": None})
             continue
         price, currency = quote
         unit = price * to_chf / rate           # one share, account currency
@@ -256,7 +268,7 @@ def currency_plan(plan: list[dict], cash: dict[str, float], base: str,
     ``min_value`` (account currency) are skipped."""
     flow: dict[str, float] = {}
     for o in plan:
-        if o["currency"] != base:
+        if o["currency"] != base and o["price"] is not None:
             value = o["quantity"] * o["price"]
             flow[o["currency"]] = flow.get(o["currency"], 0.0) + (
                 value if o["side"] == "BUY" else -value)
@@ -464,14 +476,15 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
             "everything a second time). Run it again in a few minutes.")
         raise SystemExit(REFUSED)
     plan = plan_orders(weights, held, net_liq, base, payload,
-                       p["min_trade_pct"])
+                       p["min_trade_pct"], keep=frozenset(unpriced))
     # IBKR cancels a US market order sent before the open when the account
     # has no paid US prices ("No market data on major exchange for market
     # order", code 202). A limit order needs none, and placed before the
     # open it fills at the opening price just the same.
     for o in plan:
         _, currency, exchange = ib_symbol(o["ticker"])
-        if p.get("us_limit_room") and currency == "USD" and not exchange:
+        if (p.get("us_limit_room") and currency == "USD" and not exchange
+                and o["price"] is not None):
             o["limit"] = limit_price(o["side"], o["price"],
                                      p["us_limit_room"])
     fx = (currency_plan(plan, cash_balances(ib, account), base, payload,
@@ -497,9 +510,10 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         say("Already matches the agent. No orders needed.")
     for o in plan:
         limit = f", limit {o['limit']:.2f} USD" if "limit" in o else ""
+        value = (f"about {o['value']:,.0f} {base}" if o["price"] is not None
+                 else "no price in the results, sold at the market")
         say(f"  {o['side']:<4} {o['quantity']:>6} {label(o['ticker']):<8} "
-            f"(holds {o['now']}, target {o['target']}, "
-            f"about {o['value']:,.0f} {base}{limit})")
+            f"(holds {o['now']}, target {o['target']}, {value}{limit})")
     since, before = last_sent(today, p.get("log_dir"))
     unfilled = not_filled(plan, before)
     if unfilled:

@@ -180,6 +180,42 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual([(o["ticker"], o["side"]) for o in plan],
                          [("MSFT", "SELL"), ("NESN.SW", "BUY")])
 
+    def test_a_fund_with_no_price_is_still_sold_when_the_agent_sold_it(self):
+        # No price for CSPX (SPY's stand-in) in the results: it can't be
+        # sized, but a full exit needs no size.
+        _, w = bridge.agent_weights(payload(), "trend")
+        held = {"SPY": 30, "AAPL": 400, "QQQ": 5}
+        plan = bridge.plan_orders(w, held, 1_000_000, "USD", payload(), 0.005)
+        got = {o["ticker"]: (o["side"], o["quantity"], o["price"])
+               for o in plan}
+        self.assertEqual(got["SPY"], ("SELL", 30, None))
+        self.assertEqual(got["QQQ"], ("SELL", 5, None))
+        # One the agent still holds (only its price is missing) stays.
+        kept = bridge.plan_orders(w, held, 1_000_000, "USD", payload(),
+                                  0.005, keep=frozenset({"SPY"}))
+        self.assertNotIn("SPY", {o["ticker"] for o in kept})
+        # A US share needs a limit, so a price: without one it waits.
+        self.assertNotIn("MSFT", {o["ticker"] for o in bridge.plan_orders(
+            w, {"MSFT": 3}, 1_000_000, "USD", {**payload(), "prices": {
+                k: v for k, v in payload()["prices"].items()
+                if k != "MSFT"}}, 0.005)})
+        # The currency plan leaves the unpriced sell out (its value is
+        # unknown) and sizes the rest as usual.
+        fx = bridge.currency_plan(plan, {}, "USD", payload(), 0.0)
+        self.assertEqual([(c["currency"], c["side"]) for c in fx],
+                         [("CHF", "BUY")])          # francs for NESN
+
+    def test_the_run_shows_an_unpriced_sell(self):
+        ib = FakeIB(positions=[position("CSPX", "USD", 30)])
+        said = []
+        out = bridge.run(ib, api, payload(), {**PARAMS, "us_limit_room": 0.05,
+                                              "change_currency": True},
+                         send=False, say=said.append)
+        [sell] = [o for o in out["plan"] if o["ticker"] == "SPY"]
+        self.assertEqual((sell["side"], sell["quantity"]), ("SELL", 30))
+        self.assertNotIn("limit", sell)
+        self.assertTrue(any("sold at the market" in line for line in said))
+
     def test_dry_run_sends_nothing(self):
         ib = FakeIB()
         out = bridge.run(ib, api, payload(), PARAMS, send=False,

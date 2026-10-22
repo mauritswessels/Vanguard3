@@ -111,13 +111,15 @@ def _line(agent, t: str, last: pd.Timestamp, q: dict | None) -> str:
 
 
 def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
-                 fx_now: dict[str, float], key: str = "news") -> dict:
+                 fx_now: dict[str, float], key: str = "news",
+                 fx_open: dict[str, float] | None = None) -> dict:
     """Run one news agent's midday check on a restored simulator.
 
     ``quotes`` comes from :func:`intraday_quotes` (and Finnhub, whose
     quotes are marked ``realtime``); ``fx_now`` maps a currency to the CHF
-    value of one unit right now; ``key`` picks the agent (``"news"`` or
-    ``"news_opus"``).
+    value of one unit right now, ``fx_open`` the same at today's first
+    price (for last evening's orders, which filled this morning); ``key``
+    picks the agent (``"news"`` or ``"news_opus"``).
     """
     acc = next((a for a in sim.accounts if agent_key(a.agent) == key), None)
     if acc is None:
@@ -133,6 +135,12 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
         if ccy == config.BASE_CURRENCY:
             return 1.0
         return fx_now.get(ccy) or market.fx_rate(t, last, "Close")
+
+    def fx_morning(t: str) -> float:
+        # Last evening's orders filled this morning: at the morning's rate,
+        # as the evening run fills its orders at the day's opening rate.
+        ccy = market.currencies[t]
+        return (fx_open or {}).get(ccy) or fx(t)
 
     def jumped(t: str) -> bool:
         q, close = quotes.get(t) or {}, market.close_panel.at[last, t]
@@ -161,7 +169,8 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
                  key=lambda o: o.side != "SELL")
     broker.pending = [o for o in broker.pending if not opened(o.ticker)]
     for o in due:
-        f = broker.fill_at(o, day, quotes[o.ticker]["open"], fx(o.ticker))
+        f = broker.fill_at(o, day, quotes[o.ticker]["open"],
+                           fx_morning(o.ticker))
         if f is not None:
             fills.append(f)
     opening = list(fills)
@@ -346,11 +355,13 @@ def main() -> None:
         return
     fx_now = {c: quotes[s]["last"] for c, s in fx_symbols.items()
               if s in quotes}
+    fx_open = {c: quotes[s]["open"] for c, s in fx_symbols.items()
+               if s in quotes and quotes[s]["open"]}
     logger.info("Live quotes for %d markets, %d trading now",
                 len(quotes), sum(q["live"] for q in quotes.values()))
 
     for key in NEWS_KEYS:
-        result = midday_check(sim, now, quotes, fx_now, key)
+        result = midday_check(sim, now, quotes, fx_now, key, fx_open)
         result["prices"] = source
         print(key, json.dumps(result, indent=2))
     if args.dry_run:

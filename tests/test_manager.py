@@ -59,6 +59,24 @@ class ManagerTest(unittest.TestCase):
         self.assertGreaterEqual(len(held_today & owned),
                                 len(held_today) // 2)
 
+    def test_a_late_joiner_is_judged_on_its_own_days_only(self):
+        # Its starting cash filled in for the days before it joined is not
+        # a result: until it has min_history days of its own, it is too new.
+        sim = Simulator(self.market, build_accounts(self.market,
+                                                    self.lineup()))
+        sim.run(self.days[:25])
+        sim.add_account(make_agent("reversion", name="Late Hunter"),
+                        self.days[0])
+        sim.run(self.days[25:50])                   # into April
+        mgr = sim.accounts[-2].agent
+        self.assertEqual(pd.Timestamp(mgr.chosen).month, 4)
+        self.assertIn("best", mgr.why)
+        self.assertNotIn("Late Hunter", mgr.backing)
+        self.assertIn("too new to judge yet: Late Hunter", mgr.why)
+        sim.run(self.days[50:])                     # May: 30 days of its own
+        self.assertEqual(pd.Timestamp(mgr.chosen).month, 5)
+        self.assertNotIn("too new", mgr.why)
+
     def test_follows_todays_decisions(self):
         """Its targets include what the agents ordered this evening, even
         when it is listed before them."""

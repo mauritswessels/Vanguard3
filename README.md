@@ -157,7 +157,8 @@ race between the two shows whether a smarter model trades better.
 
 It also checks once around midday (`midday_news.py`, workflow "Midday news
 check", weekdays 14:37 UTC, while New York and Europe are both open). That
-run first fills last evening's orders at the morning's open, reads the news
+run first fills last evening's orders at the morning's open (at the
+morning's exchange rate too), reads the news
 again with live prices and asks Claude whether anything changed. How a
 change trades depends on how fresh its market's price is:
 
@@ -178,7 +179,8 @@ touched. Like everything else it is a simulation: no broker is contacted.
 
 A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
 at random under the same rules as the agents (10 positions of 10%, same
-costs; each evening a holding has a 1 in 20 chance of being sold). With a
+costs; each evening a holding has a 1 in 20 chance of being sold; a buy
+still waiting for its market to open takes one of the 10 places). With a
 dozen accounts racing, one will lead by luck alone; an agent shows skill only
 if it keeps beating the Monkey over many weeks.
 
@@ -279,7 +281,9 @@ The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are
 35 days of results it backs every racing agent equally; after that, on the
 first trading day of each month, it backs the 3 agents with the best return
-over the last 3 months.
+over the last 3 months. Each agent counts only from the day it joined:
+one that joined less than 35 days before is too new to judge and waits
+for a later month.
 
 Three shared safety rules (`BaseAgent.guard`, off by default) can be
 switched on by the monthly review of the learning agents, which tries every
@@ -689,7 +693,9 @@ London Stock Exchange for SPY. Most trade in US dollars, follow the same
 index and differ only a little in price moves (and in how they pay
 dividends: several keep them inside the fund). The evening run looks up their prices
 on Yahoo, so the bridge can size the orders; the logs show them as
-"SPY (as CSPX)".
+"SPY (as CSPX)". A non-US market with no price that day is left as it is,
+unless the agent has sold it: then the bridge sells the whole holding at
+the market, which needs no price.
 
 Before the stock orders, the bridge changes currency (`change_currency`
 in `IBKR_PARAMS`): it works out how many US dollars, euros or francs the
