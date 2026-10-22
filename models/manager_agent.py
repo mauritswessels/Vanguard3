@@ -8,7 +8,9 @@ own, and each month it decides whom to back:
   twins and yardsticks are left out).
 * After that, on the first session of each month, it backs the ``top_n``
   agents with the best return over the last ``lookback`` sessions, in
-  equal shares.
+  equal shares. Each agent counts only from the day it joined the race;
+  one with fewer than ``min_history`` days of its own is too new to judge
+  and waits for a later month.
 
 Every evening, after the other agents have decided, it works out the mix
 of holdings that gives (the agents' holdings once their new orders fill x
@@ -36,6 +38,15 @@ def holdings_after_orders(acc) -> dict[str, int]:
         change = o.quantity if o.side == "BUY" else -o.quantity
         qty[o.ticker] = max(qty.get(o.ticker, 0) + change, 0)
     return {t: q for t, q in qty.items() if q > 0}
+
+
+def own_days(acc, date: pd.Timestamp) -> pd.Series:
+    """``acc``'s account value up to ``date``, from the day it joined (none
+    before it could trade)."""
+    curve = acc.portfolio.equity_curve.loc[:date]
+    if acc.joined is None:
+        return curve.iloc[:0]
+    return curve.loc[acc.joined:]
 
 
 class ManagerAgent(BaseAgent):
@@ -67,23 +78,31 @@ class ManagerAgent(BaseAgent):
         if not racers:
             return
         p = self.params
-        curves = {a.agent.name: a.portfolio.equity_curve.loc[:date]
-                  for a in racers}
-        days = min(len(c) for c in curves.values())
-        if days < p["min_history"]:
+        # Each agent is judged on its own days only: an account that joined
+        # late has its starting cash filled in for the days before, which
+        # are not its results.
+        curves = {a.agent.name: own_days(a, date) for a in racers}
+        ready = {k: c for k, c in curves.items()
+                 if len(c) >= p["min_history"]}
+        if not ready:
+            days = max(len(c) for c in curves.values())
             self.backing = {n: 1 / len(racers) for n in curves}
             self.why = (f"Backs all {len(racers)} agents equally until there "
                         f"are {p['min_history']} days of results "
                         f"({days} so far)")
         else:
-            n = min(p["lookback"], days - 1)
+            # The same days for everyone it compares.
+            n = min(p["lookback"], min(len(c) for c in ready.values()) - 1)
             score = {k: float(c.iloc[-1] / c.iloc[-1 - n] - 1)
-                     for k, c in curves.items()}
+                     for k, c in ready.items()}
             best = sorted(score, key=lambda k: -score[k])[:p["top_n"]]
             self.backing = {k: 1 / len(best) for k in best}
+            new = sorted(set(curves) - set(ready))
             self.why = (f"Backs the {len(best)} best agents of the last {n} "
                         "days: " + ", ".join(f"{k} {score[k]:+.1%}"
-                                             for k in best))
+                                             for k in best)
+                        + (f" (too new to judge yet: {', '.join(new)})"
+                           if new else ""))
         self.chosen = date.strftime("%Y-%m-%d")
 
     def calculate_signals(self, date: pd.Timestamp,

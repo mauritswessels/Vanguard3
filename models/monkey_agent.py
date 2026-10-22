@@ -57,6 +57,20 @@ class MonkeyAgent(BaseAgent):
             signals.append(Signal(ticker, Action.BUY, "Picked at random"))
         return signals
 
+    def execute_trade(self, signals, date, portfolio, broker):
+        """A buy still waiting for its market to open (a holiday there)
+        already fills a slot: without this the dice pick another market
+        for that slot every evening, and the account ends up with more
+        than ``max_positions`` holdings once the markets open."""
+        waiting = {o.ticker for o in getattr(broker, "pending", [])
+                   if o.side == "BUY" and not portfolio.has_position(o.ticker)}
+        sells = [s for s in signals if s.action is Action.SELL]
+        room = (self.params["max_positions"] - len(portfolio.positions)
+                - len(waiting) + len(sells))
+        buys = [s for s in signals if s.action is Action.BUY
+                and s.ticker not in waiting][:max(room, 0)]
+        return super().execute_trade(sells + buys, date, portfolio, broker)
+
     def watch(self, date, portfolio):
         chance = 1 / self.params["avg_hold_days"]
         return [{"ticker": t, "held": True, "progress": None, "ready": False,

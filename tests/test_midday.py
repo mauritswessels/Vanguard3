@@ -107,6 +107,20 @@ class MiddayTest(unittest.TestCase):
         self.assertEqual(len(pf.trades), 2)        # nothing bought twice
         self.assertEqual(later.accounts[0].agent.midday["trades"], 1)
 
+    def test_last_evenings_orders_fill_at_the_mornings_exchange_rate(self):
+        # Filled at this morning's open, so at this morning's rate (as the
+        # evening run does); trades made now use the rate of now.
+        notes = []
+        sim = self.evening_sim(notes)
+        acc = sim.accounts[0]
+        acc.agent.decide = decider(
+            {"SPY": 0.12, "QQQ": 0.10, "NESN.SW": 0.10}, notes)
+        midday_check(sim, self.now(), self.quotes(), {"USD": 0.8}, "news",
+                     {"USD": 0.79})
+        trades = {(t.ticker, t.side): t for t in acc.portfolio.trades}
+        self.assertEqual(trades["SPY", "BUY"].fx_rate, 0.79)   # this morning
+        self.assertEqual(trades["QQQ", "BUY"].fx_rate, 0.8)    # now
+
     def test_a_midday_trade_keeps_its_stated_probability(self):
         notes = []
         sim = self.evening_sim(notes)
