@@ -128,6 +128,103 @@ class NewsAgentTest(unittest.TestCase):
         self.assertAlmostEqual(sum(v["weight"] for v in d["targets"].values()), 0.6)
 
 
+class ProbabilityTest(unittest.TestCase):
+    """Each target may state the chance its market beats SPY over the next
+    5 trading days; a missing or odd one is dropped, never blocks a trade."""
+
+    def test_probabilities_are_read_and_kept_between_0_and_1(self):
+        given = {"A": 0.72, "B": 70, "C": -0.2, "D": 150, "E": "0.4",
+                 "F": "likely", "G": None, "H": True, "I": "NaN", "J": [0.5]}
+        text = json.dumps({"targets": {
+            **{t: {"weight": 0.05, "probability": p} for t, p in given.items()},
+            "K": {"weight": 0.05},
+            "EVIL": {"weight": 1, "probability": 0.9}}})
+        universe = list(given) + ["K"]
+        d = news.parse_decision(text, universe, 0.04, 0.3)
+        got = {t: v.get("probability") for t, v in d["targets"].items()}
+        self.assertEqual(got, {"A": 0.72, "B": 0.7, "C": 0.0, "D": 1.0,
+                               "E": 0.4, "F": None, "G": None, "H": None,
+                               "I": None, "J": None, "K": None})
+        self.assertNotIn("probability", d["targets"]["K"])   # none stated
+        # The usual limits hold all the same.
+        self.assertNotIn("EVIL", d["targets"])
+        self.assertTrue(all(v["weight"] <= 0.04 for v in d["targets"].values()))
+        self.assertAlmostEqual(sum(v["weight"] for v in d["targets"].values()),
+                               0.3)
+
+    def test_without_probabilities_the_reply_parses_as_before(self):
+        text = '{"targets": {"A": {"weight": 0.1, "reason": "steady"}}}'
+        d = news.parse_decision(text, ["A", "B"], 0.4, 0.6)
+        self.assertEqual(d["targets"]["A"], {"weight": 0.1, "reason": "steady"})
+
+    def test_a_bad_probability_never_blocks_a_trade(self):
+        market = load_market_data("synthetic", pd.Timestamp("2024-01-01"),
+                                  pd.Timestamp("2025-03-31"), seed=5)
+        market.source = "test"
+
+        def decide(brief, holdings, cash, model, max_w, max_total):
+            text = json.dumps({"targets": {
+                "SPY": {"weight": 0.1, "reason": "steady",
+                        "probability": "very likely"},
+                "GLD": {"weight": 0.1, "reason": "safe", "probability": 0.35},
+                "QQQ": {"weight": 0.1, "reason": "growth"}}})
+            return news.parse_decision(text, list(brief["markets"]),
+                                       max_w, max_total)
+
+        agent = make_agent("news")
+        agent.build_brief, agent.decide = fake_brief, decide
+        sim = Simulator(market, build_accounts(market, [agent]))
+        sim.run(market.calendar[-3:])
+        acc = sim.accounts[0]
+        self.assertEqual({o["ticker"] for o in acc.broker.pending_to_list()},
+                         {"SPY", "GLD", "QQQ"})
+        stated = {s["ticker"]: s["details"]["probability"]
+                  for s in acc.activity[-1]["signals"]}
+        self.assertEqual(stated, {"SPY": None, "GLD": 0.35, "QQQ": None})
+
+    def test_stated_probabilities_reach_the_report_card(self):
+        """Decided on one evening, filled at the next open, scored once 5
+        trading days have passed: in the trade log and the account's card."""
+        import reporting
+        full = load_market_data("synthetic", pd.Timestamp("2024-01-01"),
+                                pd.Timestamp("2025-03-31"), seed=5)
+        full.source = "test"
+        cal = full.calendar
+        evening = full.until(cal[-12])
+        stated = {"AAPL": 0.8, "GLD": 0.3, "QQQ": 0.6}
+
+        def decide(brief, holdings, cash, model, max_w, max_total, note=""):
+            text = json.dumps({"targets": {
+                t: {"weight": 0.1, "reason": "test", "probability": p}
+                for t, p in stated.items()}})
+            return news.parse_decision(text, list(brief["markets"]),
+                                       max_w, max_total)
+
+        agent = make_agent("news")
+        agent.build_brief, agent.decide = fake_brief, decide
+        sim = Simulator(evening, build_accounts(evening, [agent]))
+        sim.run(evening.calendar[-2:])
+        # The next runs: catching up decides nothing, the last day keeps all.
+        later = Simulator.from_dict(json.loads(json.dumps(sim.to_dict())), full)
+        later.accounts[0].agent.build_brief = fake_brief
+        later.accounts[0].agent.decide = decide
+        later.run(cal[-11:])
+        p = reporting.dashboard_payload(later, "paper", cal[-13])
+        (account,) = p["agents"]
+        fills = {t["ticker"]: t for t in account["trades"]}
+        self.assertEqual(set(fills), set(stated))
+        for t, prob in stated.items():
+            self.assertEqual(fills[t]["decision"]["details"]["probability"],
+                             prob)
+        cal_ = account["report_card"]["calibration"]
+        self.assertEqual((cal_["stated"], cal_["scored"]), (3, 3))
+        self.assertAlmostEqual(cal_["avg_probability"], 0.567, 3)
+        self.assertEqual({c["ticker"]: c["probability"]
+                          for c in account["report_card"]["recent"]}, stated)
+        # The card Claude reads keeps its old fields.
+        self.assertNotIn("calibration", later.accounts[0].agent.card)
+
+
 class OpusTwinTest(unittest.TestCase):
     def test_same_rules_stronger_model(self):
         from models import agent_key, make_agent
@@ -293,6 +390,15 @@ class AskClaudeTest(unittest.TestCase):
         self.assertEqual(out["targets"]["SPY"]["weight"], 0.15)  # clipped
         self.assertNotIn("XYZ", out["targets"])                 # ignored
         self.assertEqual(out["usage"], {"output_tokens": 900})
+
+    def test_asks_for_the_chance_of_beating_spy(self):
+        text = json.dumps({"market_view": "calm", "targets": {
+            "GLD": {"weight": 0.1, "reason": "safe", "probability": 0.55}}})
+        out, sent = self.ask({"stop_reason": "end_turn", "content": [
+            {"type": "text", "text": text}]})
+        self.assertIn('"probability": <number from 0 to 1>', sent["system"])
+        self.assertIn("next 5 trading days", sent["system"])
+        self.assertEqual(out["targets"]["GLD"]["probability"], 0.55)
 
     def test_a_cut_off_reply_is_not_traded(self):
         cut = {"stop_reason": "max_tokens", "content": [

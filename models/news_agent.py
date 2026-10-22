@@ -3,7 +3,9 @@
 Every evening, on the latest completed session only, it builds a brief of
 headlines (per market and on politics / the economy), each stock's
 latest quarterly results and recent price moves, then asks Claude for
-target weights with a short reason per market (see ``news.py``).
+target weights with a short reason per market (see ``news.py``), and the
+chance each market beats SPY over the next 5 trading days, which its
+report card checks for calibration (``engine/grading.py``).
 
 * Buys a market whose target is above zero and that it does not hold,
   sized to the target weight.
@@ -154,6 +156,9 @@ class NewsAgent(BaseAgent):
         tgt = self.targets.get(signal.ticker, {})
         seen = self.read.get(signal.ticker, {})
         return {"target_weight": tgt.get("weight"),
+                # Its stated chance this market beats SPY over the next 5
+                # trading days; the report card checks it (calibration).
+                "probability": tgt.get("probability"),
                 "market_view": self.view,
                 "headlines": seen.get("news", []),
                 "quarterly": seen.get("results"),

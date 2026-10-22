@@ -132,7 +132,12 @@ few approved buys then run into the cap.
 A ninth account, the **News Analyst** (`models/news_agent.py`, `news.py`),
 reads free headlines (Google News RSS) on every market and on politics and
 the economy, plus each stock's latest quarterly results (Yahoo Finance), and
-asks Claude for target weights with a short stated reason per market. It
+asks Claude for target weights with a short stated reason per market. With
+each target Claude also states the chance (0 to 1) that the market beats
+SPY over the next 5 trading days; the report card later checks how well
+those chances matched what happened (see
+[Calibration](#calibration-do-the-stated-chances-mean-anything)). A missing
+or odd chance is simply left out: it never stops a trade. It
 needs an `ANTHROPIC_API_KEY` repository secret; without one it waits and
 the dashboard says so. A reply Claude did not finish is not traded either:
 cut off at its length limit, or declined by Claude's safety checks, the
@@ -421,13 +426,50 @@ Every account in `paper.json` and `backtest.json` has a `report_card`
 | `hit_rate_5`, `hit_rate_20` | Share of those that were right |
 | `avg_edge_5`, `median_edge_5`, `avg_edge_20`, `median_edge_20` | Average and middle edge |
 | `by_side` | The same numbers for `buy` and `sell` separately |
-| `recent` | The latest 20 graded fills, oldest first: `date` (filled), `decided` (the session whose data the decision used), `ticker`, `side`, `fill` (its index in `trades`), `edge_5`, `edge_20` (once graded) |
+| `recent` | The latest 20 graded fills, oldest first: `date` (filled), `decided` (the session whose data the decision used), `ticker`, `side`, `fill` (its index in `trades`), `edge_5`, `edge_20` (once graded), `probability` (if the decision stated one) |
+| `calibration` | How well stated chances matched what happened (below); `null` for an account that states none |
 
 At the top of each file, `report_cards` puts the accounts side by side:
 `as_of` (the last session used), `horizons` (`[5, 20]`), `benchmark`
 (`SPY`), `accounts` (each account's `id`, `name`, and `graded_`, `hit_rate_`
 and `avg_edge_` at both horizons, best average 5-day edge first) and
 `pooled` (every graded fill of every account together).
+
+### Calibration: do the stated chances mean anything?
+
+With every target the News Analysts (Sonnet and Opus) state the chance
+that its market does better than SPY over the next 5 trading days, at the
+evening check and at midday alike. The chance is saved with the decision
+(`probability` in the trade's `decision.details`, and word for word in
+Claude's reply in `state/briefs/`). If Claude is well calibrated, about 70%
+of the calls it gave 70% come true. A call **came true** if its market beat
+SPY over the same window the report card grades (from the fill), whichever
+the side: a sell at 0.3 says the market will probably lag. Only fills
+count, and only once their 5 trading days have passed.
+
+The **Brier score** is the average of (stated chance − outcome)², with the
+outcome 1 if it came true and 0 if not: 0 is perfect, and always saying
+0.5 scores 0.25. As a sanity check it is set against the **base rate**:
+always stating the share that came true scores base rate × (1 − base
+rate). That share is only known afterwards, so this yardstick has a small
+head start.
+
+`report_card.calibration` (fractions, rounded; `null` fields until a call
+is scored):
+
+| Field | Meaning |
+| --- | --- |
+| `horizon` | Trading days the chance was about (5) |
+| `stated`, `scored` | Fills with a stated chance, and those whose 5 days have passed |
+| `brier` | Brier score of the scored calls (lower is better) |
+| `avg_probability` | Average stated chance |
+| `base_rate` | Share of scored calls that came true |
+| `base_rate_brier` | Brier score of always stating `base_rate` |
+| `skill` | 1 − `brier` / `base_rate_brier`: above 0 beats the base rate, `null` if every call went the same way |
+| `buckets` | Four rows, chances 0-40%, 40-60%, 60-80% and 80-100%: `from`, `to`, `count`, `avg_probability`, `came_true` (share). Well calibrated means `came_true` close to `avg_probability` |
+
+A handful of calls says little: the table becomes worth reading after a
+few dozen scored calls per account.
 
 ## Layout
 
@@ -456,7 +498,7 @@ and `avg_edge_` at both horizons, best average 5-day edge first) and
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
-| `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days |
+| `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days, and the News Analysts' calibration |
 | `docs/metrics.js` | The dashboard's single source for performance and risk numbers |
 | `docs/terminal.js` | Leaderboard, Agent analysis, Trades, Risk and Performance views |
 | `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |

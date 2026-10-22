@@ -143,6 +143,93 @@ class CardTest(unittest.TestCase):
         self.assertEqual((s["as_of"], s["horizons"]), ("2026-10-19", [5, 20]))
 
 
+def call(p, side, edge=None):
+    c = {"date": "2026-01-05", "ticker": "AAA", "side": side,
+         "decided": None, "probability": p}
+    if p is None:
+        del c["probability"]
+    if edge is None:
+        c["pending"] = True
+    else:
+        c["edge_5"] = edge
+    return c
+
+
+class CalibrationTest(unittest.TestCase):
+    """Stated chances of beating SPY against what happened (5 days)."""
+
+    def test_brier_score_buckets_and_base_rate(self):
+        calls = [call(0.9, "BUY", 0.02),      # beat SPY: came true
+                 call(0.7, "BUY", -0.01),     # lagged
+                 call(0.65, "BUY", 0.03),
+                 call(0.2, "SELL", 0.01),     # a right sell: it lagged SPY
+                 call(0.3, "SELL", -0.02),    # a wrong sell: it beat SPY
+                 call(0.5, "BUY", 0.0),       # level is not beating
+                 call(1.0, "BUY", 0.05),
+                 call(0.8, "BUY"),            # stated, not scored yet
+                 call(None, "BUY", 0.04)]     # no probability: left out
+        c = grading.calibration(calls)
+        self.assertEqual((c["horizon"], c["stated"], c["scored"]), (5, 8, 7))
+        squares = [0.1 ** 2, 0.7 ** 2, 0.35 ** 2, 0.2 ** 2, 0.7 ** 2,
+                   0.5 ** 2, 0.0]
+        self.assertAlmostEqual(c["brier"], sum(squares) / 7, 4)
+        self.assertAlmostEqual(c["avg_probability"], 4.25 / 7, 3)
+        self.assertAlmostEqual(c["base_rate"], 4 / 7, 3)
+        self.assertAlmostEqual(c["base_rate_brier"], 12 / 49, 4)
+        self.assertAlmostEqual(c["skill"], 1 - (sum(squares) / 7) / (12 / 49), 3)
+        table = [(b["from"], b["to"], b["count"], b["avg_probability"],
+                  b["came_true"]) for b in c["buckets"]]
+        expected = [(0.0, 0.4, 2, 0.25, 0.5), (0.4, 0.6, 1, 0.5, 0.0),
+                    (0.6, 0.8, 2, 0.675, 0.5), (0.8, 1.0, 2, 0.95, 1.0)]
+        for row, want in zip(table, expected):
+            self.assertEqual(row[:3], want[:3])
+            self.assertAlmostEqual(row[3], want[3], 3)
+            self.assertAlmostEqual(row[4], want[4], 3)
+        self.assertEqual(len(table), 4)
+
+    def test_no_probabilities_no_table(self):
+        self.assertIsNone(grading.calibration([call(None, "BUY", 0.02)]))
+        self.assertIsNone(grading.report_card([])["calibration"])
+        pending = grading.calibration([call(0.6, "BUY")])
+        self.assertEqual((pending["stated"], pending["scored"]), (1, 0))
+        self.assertIsNone(pending["brier"])
+        self.assertEqual([b["count"] for b in pending["buckets"]], [0] * 4)
+        # Every call came true: no base-rate spread to compare with.
+        sure = grading.calibration([call(0.9, "BUY", 0.01)])
+        self.assertEqual((sure["base_rate_brier"], sure["skill"]), (0.0, None))
+
+    def test_nothing_is_scored_before_its_window_has_passed(self):
+        m = tiny_market()
+        f = fill(m, 3)
+        f["decision"] = {"details": {"probability": 0.7}}
+        unstated = fill(m, 4)
+        unstated["decision"] = {"details": {"probability": None}}
+        for k in range(4, 3 + 12):
+            calls = grading.grade_fills([f, unstated], m, m.calendar[k])
+            self.assertEqual(calls[0]["probability"], 0.7)
+            self.assertNotIn("probability", calls[-1])
+            c = grading.report_card(calls)["calibration"]
+            self.assertEqual(c["stated"], 1)
+            self.assertEqual(c["scored"], int(k >= 3 + 5), k)
+        self.assertEqual(c["brier"], round(0.3 ** 2, 4))   # AAA beat SPY
+
+    def test_later_prices_never_change_the_table(self):
+        m = load_market_data("synthetic", pd.Timestamp("2025-01-01"),
+                             pd.Timestamp("2025-06-30"), cache_dir=None, seed=4)
+        cal = m.calendar
+        fills = []
+        for i, side, t, p in ((10, "BUY", "AAPL", 0.7), (30, "SELL", "AAPL", 0.4),
+                              (60, "BUY", "GLD", 0.55), (80, "BUY", "NESN.SW", 0.9),
+                              (95, "SELL", "GLD", 0.2)):
+            f = fill(m, i, side, t)
+            f["decision"] = {"details": {"probability": p}}
+            fills.append(f)
+        for k in (40, 65, 85, 100):
+            now = grading.grade_fills(fills, m.until(cal[k]), cal[k])
+            self.assertEqual(grading.calibration(grading.grade_fills(
+                fills, m, cal[k])), grading.calibration(now))
+
+
 class PayloadCardTest(unittest.TestCase):
 
     def test_every_account_has_a_report_card(self):
@@ -164,6 +251,7 @@ class PayloadCardTest(unittest.TestCase):
                 market.calendar.get_loc(pd.Timestamp(call["date"])) + 5, last)
             self.assertEqual(trend["trades"][call["fill"]]["date"], call["date"])
         self.assertEqual(bench["report_card"]["graded_5"], 0)   # only SPY
+        self.assertIsNone(trend["report_card"]["calibration"])  # states none
         self.assertEqual({r["id"] for r in p["report_cards"]["accounts"]},
                          {"trend", "benchmark"})
 

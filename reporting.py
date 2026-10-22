@@ -170,7 +170,8 @@ def dashboard_payload(sim: Simulator, mode: str, start: pd.Timestamp,
             # Dividends received and share splits.
             "events": pf.events,
             # Every fill graded against SPY 5 and 20 trading days later
-            # (engine/grading.py).
+            # (engine/grading.py), with a calibration table for an agent
+            # that states its chances (the News Analysts).
             "report_card": grading.report_card(calls),
             "activity": [_slim_day(day) for day in acc.activity[-ACTIVITY_DAYS:]],
             "pending_orders": acc.broker.pending_to_list(),
