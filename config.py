@@ -267,6 +267,7 @@ IBKR_PARAMS = {
     "max_minutes": 10,           # and on any run that takes longer than this
     "max_invested": 1.05,        # send nothing if the targets add up to more
     "change_currency": True,     # change francs into dollars/euros, don't borrow
+    "us_limit_room": 0.05,       # US shares: limit orders 5% from the last close
     "results_url": ("https://raw.githubusercontent.com/mauritswessels/"
                     "Vanguard3/main/docs/data/paper.json"),
     "summary_days": 750,         # mornings the website summary keeps (ibkr_summary.py)

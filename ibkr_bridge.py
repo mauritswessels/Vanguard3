@@ -16,7 +16,10 @@ What it does:
 3. reads the paper account's value and positions through TWS,
 4. sends market orders so the paper account holds the same shares, scaled
    to its own size. Orders sent while a market is closed wait for its next
-   open, just like the simulator's fills.
+   open, just like the simulator's fills. US shares get a limit order
+   5% from the last close instead (``us_limit_room``): IBKR cancels US
+   market orders sent before the open from an account without paid US
+   prices, and a limit order placed then still fills at the opening price.
 5. first changes francs into the dollars and euros those buys need (and
    what is left over from sells back into francs), so the account never
    borrows a currency, just like the simulator, which pays in francs.
@@ -232,6 +235,17 @@ def plan_orders(weights: dict[str, float], held: dict[str, int],
     return orders
 
 
+def limit_price(side: str, last: float, room: float) -> float:
+    """Limit for a US share: ``room`` (a share of the price) above the last
+    close for a buy, below it for a sell, in whole cents. Like a market
+    order it fills at the opening price, unless the price jumps by more
+    than ``room`` overnight; then it waits for a better price that day
+    and, if none comes, the next run sends it again."""
+    cents = last * 100 * (1 + room if side == "BUY" else 1 - room)
+    cents = round(cents, 6)                 # 19611.000000001 is 19611
+    return (math.ceil(cents) if side == "BUY" else math.floor(cents)) / 100
+
+
 def currency_plan(plan: list[dict], cash: dict[str, float], base: str,
                   payload: dict, min_value: float) -> list[dict]:
     """Currency to change so that, once the orders fill, no foreign
@@ -417,7 +431,8 @@ def status_text(trade, errors: list[str]) -> str:
 def run(ib, api, payload: dict, p: dict, send: bool = False,
         say=print, today: date | None = None) -> dict:
     """Plan (and with ``send`` place) the orders. ``ib`` is a connected
-    ``ib_async.IB``; ``api`` provides ``Stock`` and ``MarketOrder``."""
+    ``ib_async.IB``; ``api`` provides ``Stock``, ``Forex``,
+    ``MarketOrder`` and ``LimitOrder``."""
     today = today or date.today()
     agent, weights = agent_weights(payload, p["agent"])
     if agent is None:
@@ -450,6 +465,15 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
         raise SystemExit(REFUSED)
     plan = plan_orders(weights, held, net_liq, base, payload,
                        p["min_trade_pct"])
+    # IBKR cancels a US market order sent before the open when the account
+    # has no paid US prices ("No market data on major exchange for market
+    # order", code 202). A limit order needs none, and placed before the
+    # open it fills at the opening price just the same.
+    for o in plan:
+        _, currency, exchange = ib_symbol(o["ticker"])
+        if p.get("us_limit_room") and currency == "USD" and not exchange:
+            o["limit"] = limit_price(o["side"], o["price"],
+                                     p["us_limit_room"])
     fx = (currency_plan(plan, cash_balances(ib, account), base, payload,
                         p["min_trade_pct"] * net_liq)
           if p.get("change_currency") else [])
@@ -472,9 +496,10 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
     if not plan:
         say("Already matches the agent. No orders needed.")
     for o in plan:
+        limit = f", limit {o['limit']:.2f} USD" if "limit" in o else ""
         say(f"  {o['side']:<4} {o['quantity']:>6} {label(o['ticker']):<8} "
             f"(holds {o['now']}, target {o['target']}, "
-            f"about {o['value']:,.0f} {base})")
+            f"about {o['value']:,.0f} {base}{limit})")
     since, before = last_sent(today, p.get("log_dir"))
     unfilled = not_filled(plan, before)
     if unfilled:
@@ -538,8 +563,12 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
             result["sent"].append({**o, "status": "unknown market",
                                    "note": "not accepted: unknown market"})
             continue
-        order = api.MarketOrder(o["side"], o["quantity"], tif="DAY",
-                                orderRef=p["order_ref"], account=account)
+        kind = dict(tif="DAY", orderRef=p["order_ref"], account=account)
+        if "limit" in o:                      # a US share, see above
+            order = api.LimitOrder(o["side"], o["quantity"], o["limit"],
+                                   **kind)
+        else:
+            order = api.MarketOrder(o["side"], o["quantity"], **kind)
         sent.append((o, ib.placeOrder(contract, order)))
     ib.sleep(3)
     for c, trade in changes:
@@ -548,7 +577,9 @@ def run(ib, api, payload: dict, p: dict, send: bool = False,
             f"{c['currency']}: {c['note']}")
     for o, trade in sent:
         text = status_text(trade, errors.get(trade.order.orderId, []))
-        say(f"  {o['side']} {o['quantity']} {label(o['ticker'])}: {text}")
+        limit = f" (limit {o['limit']:.2f})" if "limit" in o else ""
+        say(f"  {o['side']} {o['quantity']} {label(o['ticker'])}{limit}: "
+            f"{text}")
         result["sent"].append({**o, "status": trade.orderStatus.status,
                                "note": text})
     refused = [s["ticker"] for s in result["sent"]

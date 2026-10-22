@@ -628,6 +628,17 @@ trades paper accounts (IDs starting with "D"), only touches watchlist
 markets, and cancels its own unfilled orders from an earlier run first.
 Each run is logged in `ibkr_logs/`.
 
+US shares get a limit order instead: 5% above the last close for a buy,
+5% below it for a sell (`us_limit_room` in `IBKR_PARAMS`). IBKR cancels a
+US market order sent before the open from an account without paid US
+prices ("No market data on major exchange for market order", code 202),
+but accepts a limit order, which still fills at the opening price. Only a
+share that opens more than 5% beyond the last close (higher for a buy,
+lower for a sell) waits for a better price that day; if none comes, the
+next morning's run sends it again. Until then an unsold US share's
+dollars are missing for that day's buys, so the account may borrow them
+for a day.
+
 European customers may not buy US-listed funds (EU rules), so for each of
 the 26 US funds the bridge holds its closest European (UCITS) version
 instead, listed in `IBKR_STAND_INS` in `config.py`: for example CSPX on the
