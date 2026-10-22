@@ -6,7 +6,7 @@ import { Link, useParams } from "react-router";
 import { ActivityFeed, TripCard, VerdictBadge } from "../components/agent";
 import { PairCard } from "../components/HeadToHead";
 import { RealityCheck, useIbkr } from "../components/RealityCheck";
-import { ReportCardPanel } from "../components/ReportCard";
+import { CalibrationPanel, ReportCardPanel } from "../components/ReportCard";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Badge, Container, Delta, Empty, Section, Segmented, Stat, Swatch, cx } from "../components/ui";
@@ -142,7 +142,14 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
         </div>
       </Section>
 
-      {a.report_card && <Section className="pt-0"><ReportCardPanel a={a} /></Section>}
+      {a.report_card && (
+        <Section className="pt-0">
+          <div className="grid gap-6">
+            <ReportCardPanel a={a} />
+            <CalibrationPanel a={a} />
+          </div>
+        </Section>
+      )}
 
       <RealBroker agentId={a.id} />
 

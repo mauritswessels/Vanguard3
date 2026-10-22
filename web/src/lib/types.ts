@@ -232,7 +232,18 @@ export interface GradeStats {
   graded_20: number; hit_rate_20: number | null; avg_edge_20: number | null; median_edge_20?: number | null;
 }
 
+/** How well a News Analyst's stated chances of beating SPY matched what
+ *  happened (engine/grading.py calibration); null for agents that state none. */
+export interface Calibration {
+  horizon: number; stated: number; scored: number;
+  brier: number | null; avg_probability: number | null; base_rate: number | null;
+  base_rate_brier: number | null; skill: number | null;
+  buckets: { from: number; to: number; count: number; avg_probability: number | null; came_true: number | null }[];
+}
+
 export interface ReportCard extends GradeStats {
+  /** News Analysts only (newer files). */
+  calibration?: Calibration | null;
   calls: number;
   pending: number;
   by_side: { buy: GradeStats; sell: GradeStats };
