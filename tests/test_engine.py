@@ -174,6 +174,20 @@ class BrokerTest(unittest.TestCase):
         self.assertTrue(len(fills) <= 1)
         self.assertGreaterEqual(pf.cash, 0)
 
+    def test_a_buy_cut_below_the_minimum_by_the_cash_is_skipped(self):
+        # Cut to the cash, it would buy a share or two that the fee eats.
+        market = synthetic_market(days=60)
+        d0, d1 = market.calendar[-3], market.calendar[-2]
+        price = market.open_panel.at[d1, "SPY"] * market.fx_rate("SPY", d1, "Open")
+        cash = min(config.MIN_ORDER_CHF - 10, 3 * price)
+        pf = Portfolio("t", cash)
+        broker = SimulatedBroker(pf, market)
+        broker.submit(Order("SPY", "BUY", 1_000, d0))
+        self.assertEqual(broker.process(d1), [])
+        self.assertEqual(pf.cash, cash)
+        self.assertEqual([why for _, why in broker.rejected],
+                         ["insufficient cash"])
+
 
     def test_a_newer_order_replaces_one_still_waiting(self):
         """Orders for a market with no session pile up otherwise (the Team
@@ -301,6 +315,10 @@ class CloseOrderTest(unittest.TestCase):
             self.market, [make_agent("benchmark")]))
         sim.run(self.market.calendar[:-3])
         acc = sim.accounts[0]
+        # Buy & Hold has spent its cash on SPY: room for the 10 shares (a
+        # buy cut down to a share or two by the cash is skipped).
+        acc.portfolio.cash += 10 * 2 * float(
+            self.market.close_panel["NOVN.SW"].max())
         acc.broker.submit(Order("NOVN.SW", "BUY", 10, self.d0, "midday",
                                 kind="close"))
         acc.broker.submit(Order("UBSG.SW", "BUY", 10, self.d1, "midday",

@@ -42,12 +42,15 @@ care. To update by hand (with Python 3.12):
 .venv/bin/pip install pip-tools
 .venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements.in
 .venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements-ibkr.in
+.venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements-check.in
 .venv/bin/python -m pip install --require-hashes -r requirements.txt -r requirements-ibkr.txt
 .venv/bin/python -m unittest discover -s tests -t .
 ```
 
-Never edit the two `.txt` files by hand. Packages both files need (such as
-numpy) must have the same version in both; a test checks that.
+Never edit the `.txt` files by hand. Packages both of the first two need
+(such as numpy) must have the same version in both; a test checks that.
+`requirements-check.txt` holds the flaw scan's own tools (see "The flaw
+scan"), which are installed apart and never next to the others.
 
 ## Live paper trading and dashboard
 
@@ -336,6 +339,45 @@ zone Europe/Zurich, grace time 1 hour): put
 `HEALTHCHECK_URL=<that check's ping address>` in
 `/opt/Vanguard3/ibkr_morning.env`.
 
+### The flaw scan
+
+Mistakes are cheaper to find before they trade. Two things look for them
+by themselves:
+
+* **The flaw scan** (workflow "Flaw scan", `.github/workflows/flaw-scan.yml`)
+  runs every Sunday at 07:30 UTC and on every pull request. It changes
+  nothing; it only reports:
+  * `flaw_scan.py`: every live account adds up (cash is the starting cash
+    plus every fill, dividend and split; the shares held are what the
+    fills bought and sold; no cash below zero, no value that is not a
+    number; waiting orders that make sense), the settings agree with each
+    other (an exchange rate for every currency, a European stand-in for
+    every US fund, no two markets with one IBKR symbol), the IBKR bridge
+    still refuses every account that is not a paper account, no secret
+    file or API key is in the repository, every workflow that pushes waits
+    its turn in the `paper-trading` queue, and the website can read every
+    file in `docs/data/`;
+  * `ruff`: likely bugs in the Python code (`ruff.toml` lists the kinds);
+  * `pip-audit` and `npm audit`: known security holes in the pinned
+    packages;
+  * on Sundays also the whole test suite, on the newest `main`.
+
+  A finding on Sunday opens (or adds to) the GitHub issue "Vanguard3 flaw
+  scan", which GitHub emails out; on a pull request the check turns red.
+  The account checks also run after every evening run (`health_check.py`),
+  so an account that stops adding up is in that evening's alert. Its tools
+  are pinned with hashes in `requirements-check.txt` (built from
+  `requirements-check.in`, like the other lists). To run it yourself:
+  `.venv/bin/python flaw_scan.py`.
+* **The weekly code review**: every Sunday at 10:17 Swiss time a scheduled
+  task on the owner's Claude account (not in this repository: the thread
+  "Project flaw audit and bot" of the Vanguard3 project on claude.ai)
+  reads the week's changes, runs the tests and the flaw scan, and opens a
+  pull request with fixes for any real flaw it finds. It never merges
+  anything, never places orders and never runs the scripts that call the
+  paid Claude API; merging stays with you. It uses the Claude plan's
+  usage, not the API credit.
+
 With a `FINNHUB_API_KEY` repository secret (free plan at finnhub.io), the
 midday check takes real-time US prices from Finnhub instead (Yahoo stays the
 backup, and covers Swiss and European markets, whose midday trades fill at
@@ -527,6 +569,7 @@ few dozen scored calls per account.
 | `ibkr_summary.py` | The paper account next to the simulated agent, for the website (`ibkr_logs/public/ibkr.json`) |
 | `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`); `publish.sh` puts the summary on GitHub |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
+| `flaw_scan.py`, `ruff.toml`, `.github/workflows/flaw-scan.yml` | The flaw scan: accounts that add up, settings that agree, no secrets; ruff and the package audits (Sundays and every pull request) |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
@@ -537,7 +580,7 @@ few dozen scored calls per account.
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `claude_api.py` | Every call to Claude: clear errors, one retry when busy, the check that a reply is finished |
 | `claude_archive.py`, `state/briefs/` | Every Claude call word for word, one file per day, and a reader |
-| `requirements.in`, `requirements-ibkr.in` | The packages the code asks for; `requirements.txt` and `requirements-ibkr.txt` pin them with hashes |
+| `requirements.in`, `requirements-ibkr.in`, `requirements-check.in` | The packages the code (and the flaw scan) asks for; the `.txt` files pin them with hashes |
 | `.github/dependabot.yml` | A monthly pull request with newer package versions |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |

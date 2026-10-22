@@ -67,6 +67,30 @@ class HealthTest(unittest.TestCase):
                                   midday=True), [])
         self.assertEqual(problems(s, pd.Timestamp("2026-10-19")), [])
 
+    def test_a_run_with_nothing_new_only_checks_the_date(self):
+        # The evening has several runs: the later ones must not send the
+        # first one's report again.
+        s = state("2026-10-20", "2026-10-19")
+        s["accounts"][0].update(name="Trend", activity=[
+            {"date": "2026-10-20", "rejected": [
+                {"ticker": "MA", "side": "BUY", "quantity": 1,
+                 "created": "2026-10-19", "why": "insufficient cash"}]}])
+        self.assertEqual(len(problems(s, pd.Timestamp("2026-10-20"))), 2)
+        self.assertEqual(problems(s, pd.Timestamp("2026-10-20"),
+                                  only_late=True), [])
+        late = problems(s, pd.Timestamp("2026-10-21"), only_late=True)
+        self.assertEqual(len(late), 1)
+        self.assertIn("last updated for Tue 20 Oct", late[0])
+
+    def test_an_account_that_does_not_add_up_is_reported(self):
+        s = state("2026-10-20", "2026-10-20")
+        s["accounts"][0].update(name="Trend", portfolio={
+            "initial_cash": 1000.0, "cash": 900.0, "trades": [],
+            "positions": [], "events": [], "equity": {"2026-10-20": 1000.0}})
+        found = problems(s, pd.Timestamp("2026-10-20"))
+        self.assertEqual(len(found), 1)
+        self.assertIn("Trend: its cash is 900.00 CHF", found[0])
+
     def test_latest_session(self):
         before_close = pd.Timestamp("2026-10-12 15:00", tz="UTC")  # Monday
         self.assertEqual(latest_session(before_close),

@@ -1,0 +1,141 @@
+# The flaw scan: every Sunday, and on every pull request, a set of checks
+# that look for mistakes before they cost anything. It changes nothing; it
+# only reports.
+#
+# * flaw_scan.py: the live accounts add up (cash, shares, waiting orders),
+#   settings agree with each other, the IBKR bridge still trades paper
+#   accounts only, no secret is in the repository, every workflow that
+#   pushes waits its turn, and the website can read its data.
+# * ruff: bugs in the Python code (ruff.toml lists which kinds).
+# * pip-audit: known security holes in the pinned Python packages.
+# * npm audit: known security holes in the website's packages.
+# * On Sundays also the full test suite, on the newest main.
+#
+# On Sundays a finding opens (or adds to) the GitHub issue "Vanguard3 flaw
+# scan", which GitHub emails to the owner. On a pull request the check
+# turns red instead.
+name: Flaw scan
+
+on:
+  schedule:
+    # 07:30 UTC on Sundays: no other run then, and the markets are shut.
+    - cron: "30 7 * * 0"
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          # The scan's own tools live apart, so their versions never clash
+          # with the simulation's.
+          python -m venv "$RUNNER_TEMP/check"
+          "$RUNNER_TEMP/check/bin/pip" install --quiet --require-hashes -r requirements-check.txt
+
+      # Each check runs even when one before it found something; the last
+      # step collects them all.
+      - name: Accounts, settings and secrets
+        id: flaws
+        continue-on-error: true
+        run: python flaw_scan.py --out found-flaws.md
+
+      - name: Bugs in the code (ruff)
+        id: ruff
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/check/bin/ruff" check --output-format concise . > ruff.txt || {
+            cat ruff.txt; exit 1; }
+
+      - name: Security holes in the Python packages (pip-audit)
+        id: audit
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/check/bin/pip-audit" --disable-pip --require-hashes \
+            -r requirements.txt -r requirements-ibkr.txt -r requirements-check.txt \
+            > audit.txt 2>&1 || { cat audit.txt; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Security holes in the website's packages (npm audit)
+        id: npm
+        continue-on-error: true
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high > ../npm.txt 2>&1 || { cat ../npm.txt; exit 1; }
+
+      # Pull requests run the tests in the Tests workflow already.
+      - name: Full test suite
+        id: tests
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: python -m unittest discover -s tests -t . > tests.txt 2>&1 || { tail -40 tests.txt; exit 1; }
+
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          {
+            if [ "${{ steps.flaws.outcome }}" = failure ]; then
+              echo "**Accounts, settings and secrets**"
+              cat found-flaws.md 2> /dev/null || echo "- The scan itself stopped with an error."
+              echo
+            fi
+            if [ "${{ steps.ruff.outcome }}" = failure ]; then
+              echo "**Likely bugs in the code** (ruff)"
+              echo '```'; head -40 ruff.txt; echo '```'
+            fi
+            if [ "${{ steps.audit.outcome }}" = failure ]; then
+              echo "**Known security holes in Python packages** (pip-audit). Update the pinned versions as README.md says (\"Pinned packages\")."
+              echo '```'; tail -30 audit.txt; echo '```'
+            fi
+            if [ "${{ steps.npm.outcome }}" = failure ]; then
+              echo "**Known security holes in the website's packages** (npm audit). Run \`npm audit fix\` in web/, then rebuild."
+              echo '```'; tail -30 npm.txt; echo '```'
+            fi
+            if [ "${{ steps.tests.outcome }}" = failure ]; then
+              echo "**Tests that fail on main**"
+              echo '```'; grep -E "^(FAIL|ERROR):" tests.txt | head -20; tail -3 tests.txt; echo '```'
+            fi
+          } > report.md
+          if [ ! -s report.md ]; then
+            echo "No flaws found."
+            exit 0
+          fi
+          cat report.md
+          if [ "$EVENT" != pull_request ]; then
+            {
+              echo "The weekly flaw scan on $(date -u '+%a %d %b') found something. Log: $RUN_URL"
+              echo
+              cat report.md
+              echo
+              echo "@Mits-Alt-F4 · automatic message. Close this issue once it is fixed."
+            } > issue.md
+            n=$(gh issue list --state open --search '"Vanguard3 flaw scan" in:title' --json number -q '.[0].number')
+            if [ -n "$n" ]; then
+              gh issue comment "$n" --body-file issue.md
+            else
+              gh issue create --title "Vanguard3 flaw scan" --body-file issue.md
+            fi
+          fi
+          exit 1

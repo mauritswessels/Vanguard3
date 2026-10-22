@@ -271,6 +271,13 @@ class LearnerAgent(BaseAgent):
                 self.learn_as_held(s.ticker)
         return orders
 
+    def on_split(self, ticker: str, ratio: float) -> None:
+        # Last evening's close is in pre-split shares; tonight's is not. Left
+        # as it was, a 10-for-1 split reads as a 90% loss and one wild update
+        # bends every weight of the model.
+        if ticker in self.memory:
+            self.memory[ticker]["close"] /= ratio
+
     def learn_as_held(self, ticker: str) -> None:
         """Record tonight's decision on ``ticker`` as a hold."""
         m = self.memory[ticker]

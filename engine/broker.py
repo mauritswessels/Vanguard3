@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 
 import pandas as pd
 
+import config
 from data_manager import MarketData
 from engine.portfolio import Portfolio, TradeRecord
 
@@ -189,7 +190,12 @@ class SimulatedBroker(BaseBroker):
         currency = self.market.currencies[order.ticker]
         affordable = pf.max_affordable_qty(price, fx, currency)
         qty = min(order.quantity, affordable)
-        if qty <= 0:
+        # Cut down to the cash, a buy can shrink to a share or two whose fee
+        # eats it: the same floor as when the order was made.
+        cut = qty < order.quantity and (
+            qty * pf.costs.buy_price_chf(price, fx, currency)
+            < config.MIN_ORDER_CHF)
+        if qty <= 0 or cut:
             return self._reject(order, "insufficient cash")
         return pf.buy(date, order.ticker, currency, qty, price, fx,
                       order.reason, decided=order.created)

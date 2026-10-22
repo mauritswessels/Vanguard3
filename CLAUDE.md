@@ -108,7 +108,9 @@ tests run them on both.
 
 - Work on a branch and open a PR to `main`. The "Tests" workflow runs on
   every PR, and the evening run uses whatever is merged.
-- Run the full test suite before committing. Add tests next to the
+- Run the full test suite and `.venv/bin/python flaw_scan.py` before
+  committing. The flaw scan (README, "The flaw scan") also runs on every
+  pull request and every Sunday. Add tests next to the
   existing ones: `unittest`, synthetic data, offline and deterministic.
 - Update `README.md` (including its layout table) when behaviour changes.
   It is the owner's manual.

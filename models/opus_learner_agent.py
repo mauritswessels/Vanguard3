@@ -219,7 +219,7 @@ class OpusLearnerAgent(LearnerAgent):
                  "", "THE MODEL'S PICKS:"]
         for s in picks:
             c = panel[s.ticker].dropna()
-            move = (lambda n: f"{c.iloc[-1] / c.iloc[-1 - n] - 1:+.1%}"
+            move = (lambda n, c=c: f"{c.iloc[-1] / c.iloc[-1 - n] - 1:+.1%}"
                     if len(c) > n else "n/a")
             d = self.decision_details(s, date)
             factors = "; ".join(

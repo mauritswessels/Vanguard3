@@ -127,6 +127,16 @@ class NewsAgentTest(unittest.TestCase):
         self.assertNotIn("EVIL", d["targets"])
         self.assertAlmostEqual(sum(v["weight"] for v in d["targets"].values()), 0.6)
 
+    def test_parse_decision_treats_a_weight_that_is_not_a_number_as_zero(self):
+        # json.loads reads NaN and Infinity; such a weight must not survive
+        # (saved as null, it would crash the next run).
+        text = ('{"targets": {"A": {"weight": NaN}, "B": {"weight": Infinity},'
+                ' "C": {"weight": 0.1}}}')
+        d = news.parse_decision(text, ["A", "B", "C"], 0.4, 0.6)
+        self.assertEqual(d["targets"]["A"]["weight"], 0.0)
+        self.assertEqual(d["targets"]["B"]["weight"], 0.0)
+        self.assertAlmostEqual(d["targets"]["C"]["weight"], 0.1)
+
 
 class ProbabilityTest(unittest.TestCase):
     """Each target may state the chance its market beats SPY over the next

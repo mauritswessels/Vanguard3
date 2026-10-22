@@ -100,6 +100,24 @@ class SimulatorTest(unittest.TestCase):
         self.sim.step(self.cal[-18])
         self.assertAlmostEqual(self.acc.portfolio.cash, cash)
 
+    def test_the_dividend_goes_to_the_shares_held_at_the_last_close(self):
+        # The midday check trades on the day itself: a share bought on the
+        # day it goes ex-dividend earns nothing, a share sold that day does.
+        day = self.cal[-19]
+        self.dividend(day)
+        self.sim.corporate_actions = True
+        pf = self.acc.portfolio
+        fx = self.market.fx_rate("SPY", day)
+        per_share = 1.5 * fx * (1 - 2e-4) * (1 - config.DIVIDEND_TAX["USD"])
+        pf.sell(day, "SPY", self.qty, 400.0, fx)          # all of it, midday
+        pf.buy(day, "SPY", "USD", 5, 400.0, fx)           # and 5 back
+        cash = pf.cash
+        self.acc.agent.calculate_signals = lambda *a: []  # no new orders
+        self.sim.step(day)
+        self.assertAlmostEqual(pf.cash - cash, self.qty * per_share, places=6)
+        event = next(e for e in pf.events if e["kind"] == "dividend")
+        self.assertEqual(event["shares"], self.qty)
+
     def test_a_backtest_pays_none(self):
         """Backtest prices already include dividends."""
         day = self.cal[-19]
@@ -131,6 +149,16 @@ class SimulatorTest(unittest.TestCase):
         agent.stops = {"NVDA": 400.0}
         agent.on_split("NVDA", 4.0)
         self.assertEqual(agent.stops, {"NVDA": 100.0})
+
+    def test_the_learners_remember_the_close_in_post_split_shares(self):
+        # Else a 4-for-1 split is learned as a 75% loss overnight.
+        for key in ("learner", "learner_opus"):
+            agent = make_agent(key)
+            agent.memory = {"NVDA": {"close": 800.0}, "SPY": {"close": 500.0}}
+            agent.on_split("NVDA", 4.0)
+            self.assertEqual(agent.memory["NVDA"]["close"], 200.0)
+            self.assertEqual(agent.memory["SPY"]["close"], 500.0)
+            agent.on_split("AAPL", 2.0)           # not in memory: no change
 
 
 class JournalTest(unittest.TestCase):

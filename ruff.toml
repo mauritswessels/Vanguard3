@@ -1,0 +1,21 @@
+# Ruff (the weekly flaw scan and every pull request, see
+# .github/workflows/flaw-scan.yml): only rules that find real bugs, not
+# matters of style.
+target-version = "py312"
+extend-exclude = ["web", "docs"]
+
+[lint]
+select = [
+    "E9",       # the file cannot be read as Python
+    "F",        # names never defined, imports never used, ...
+    "B",        # likely bugs (shared default lists, loop variables, ...)
+    "PLE",      # errors pylint is sure of
+    "S102", "S307", "S301", "S506",       # exec, eval, pickle, unsafe YAML
+    "S602", "S604", "S605",               # commands run through a shell
+    "S113", "S324",                       # web calls that never time out, weak hashes
+]
+ignore = [
+    "B027",     # empty hooks in a base class are on purpose
+    "B904",     # how an error says what caused it: style
+    "B905",     # zip() without strict=: the lists come from one frame
+]
