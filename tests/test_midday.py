@@ -16,11 +16,15 @@ from models import make_agent
 from tests.test_news_agent import fake_brief
 
 
-def decider(targets, notes):
+def decider(targets, notes, chances=None):
+    """A stand-in for Claude; ``chances`` are stated probabilities of
+    beating SPY, by ticker."""
     def decide(brief, holdings, cash, model, max_w, max_total, note=""):
         notes.append(note)
         text = json.dumps({"market_view": "calm", "targets": {
-            t: {"weight": w, "reason": "test"} for t, w in targets.items()}})
+            t: {"weight": w, "reason": "test",
+                **({"probability": chances[t]} if t in (chances or {}) else {})}
+            for t, w in targets.items()}})
         return news.parse_decision(text, list(brief["markets"]),
                                    max_w, max_total)
     return decide
@@ -102,6 +106,20 @@ class MiddayTest(unittest.TestCase):
         self.assertEqual(set(pf.positions), {"SPY", "QQQ"})
         self.assertEqual(len(pf.trades), 2)        # nothing bought twice
         self.assertEqual(later.accounts[0].agent.midday["trades"], 1)
+
+    def test_a_midday_trade_keeps_its_stated_probability(self):
+        notes = []
+        sim = self.evening_sim(notes)
+        acc = sim.accounts[0]
+        acc.agent.decide = decider({"SPY": 0.12, "QQQ": 0.10}, notes,
+                                   {"SPY": 0.5, "QQQ": 0.62})
+        midday_check(sim, self.now(), self.quotes(), {"USD": 0.8})
+        [qqq] = [s for s in acc.activity[-1]["signals"] if s["ticker"] == "QQQ"]
+        self.assertEqual(qqq["details"]["probability"], 0.62)
+        rows = journal.fills(acc.portfolio, acc.activity)
+        [row] = [r for r in rows if r["ticker"] == "QQQ"]
+        self.assertEqual((row["session"], row["decision"]["details"]
+                          ["probability"]), ("midday", 0.62))
 
     def test_midday_sell_and_failed_call(self):
         notes = []

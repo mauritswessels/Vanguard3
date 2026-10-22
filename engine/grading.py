@@ -23,6 +23,12 @@ card are used. Trades in SPY itself are not graded: SPY cannot beat itself.
 
 Returns need years to tell skill from luck (see ``luck_study.py``); grading
 every call gives many more data points a week.
+
+The News Analysts also state, with each decision, the chance that the
+market beats SPY over the next 5 trading days. ``calibration`` checks those
+numbers against what happened: of the calls given 70%, did about 70% come
+true? It uses the same 5-day window as the grade, so nothing is scored
+before that window has passed either.
 """
 
 from __future__ import annotations
@@ -38,6 +44,8 @@ import config
 HORIZONS = (5, 20)
 #: Latest graded calls listed in each card.
 RECENT_CALLS = 20
+#: Edges of the stated-probability buckets in the calibration table.
+BUCKETS = (0.0, 0.4, 0.6, 0.8, 1.0)
 
 
 def grade_fills(fills, market, as_of: pd.Timestamp) -> list[dict]:
@@ -47,7 +55,8 @@ def grade_fills(fills, market, as_of: pd.Timestamp) -> list[dict]:
     ``side`` and optionally ``decided`` (the session whose data the decision
     used) and ``id``, as in ``journal.fills``. Each call comes back with
     ``edge_5`` / ``edge_20`` once that window has passed, and with
-    ``pending`` while the first one has not.
+    ``pending`` while the first one has not. A fill whose decision stated a
+    chance of beating SPY (the News Analysts) keeps it as ``probability``.
     """
     as_of = pd.Timestamp(as_of)
     cal = market.calendar[market.calendar <= as_of]
@@ -65,6 +74,9 @@ def grade_fills(fills, market, as_of: pd.Timestamp) -> list[dict]:
                             if decided is not None else None)}
         if f.get("id") is not None:
             call["fill"] = f["id"]
+        details = (f.get("decision") or {}).get("details") or {}
+        if details.get("probability") is not None:
+            call["probability"] = details["probability"]
         calls.append(call)
         t = f["ticker"]
         # A market that failed to download today has no column.
@@ -124,8 +136,63 @@ def report_card(calls: list[dict]) -> dict:
             **stats(calls),
             "by_side": {s.lower(): stats([c for c in calls if c["side"] == s])
                         for s in ("BUY", "SELL")},
+            "calibration": calibration(calls),
             "recent": [{k: v for k, v in c.items() if k != "pending"}
                        for c in graded[-RECENT_CALLS:]]}
+
+
+def calibration(calls: list[dict]) -> dict | None:
+    """How well the stated chances of beating SPY matched what happened.
+
+    Only calls that stated a probability count, and only once their 5-day
+    window has passed. A call came true if its market then did better than
+    SPY, whichever the side: a buy at 0.7 says the market should beat SPY,
+    a sell at 0.3 that it probably will not. ``None`` for an account that
+    never states a probability.
+    """
+    h = HORIZONS[0]
+    stated = [c for c in calls if c.get("probability") is not None]
+    if not stated:
+        return None
+    scored = [(c["probability"], _beat(c, h)) for c in stated
+              if f"edge_{h}" in c]
+    out = {"horizon": h, "stated": len(stated), "scored": len(scored),
+           "brier": None, "avg_probability": None, "base_rate": None,
+           "base_rate_brier": None, "skill": None, "buckets": []}
+    for lo, hi in zip(BUCKETS, BUCKETS[1:]):
+        inside = [(p, y) for p, y in scored
+                  if lo <= p < hi or (hi == BUCKETS[-1] and p == hi)]
+        out["buckets"].append({"from": lo, "to": hi, "count": len(inside),
+                               **_rates(inside)})
+    if not scored:
+        return out
+    rates = _rates(scored)
+    base = sum(y for _, y in scored) / len(scored)
+    brier = sum((p - y) ** 2 for p, y in scored) / len(scored)
+    # Always stating the base rate scores base * (1 - base): what a
+    # forecaster with no view of single markets would reach. The base rate
+    # is only known afterwards, so this is a sanity check, not a fair rival.
+    reference = base * (1 - base)
+    out.update(brier=round(brier, 4), avg_probability=rates["avg_probability"],
+               base_rate=rates["came_true"],
+               base_rate_brier=round(reference, 4),
+               skill=round(1 - brier / reference, 3) if reference else None)
+    return out
+
+
+def _beat(call: dict, h: int) -> bool:
+    """Did the market do better than SPY? A sell's edge has the sign turned
+    round (a sell is right when the market lags), so it is turned back."""
+    edge = call[f"edge_{h}"]
+    return edge > 0 if call["side"] == "BUY" else edge < 0
+
+
+def _rates(pairs: list[tuple]) -> dict:
+    """Average stated probability and share that came true."""
+    if not pairs:
+        return {"avg_probability": None, "came_true": None}
+    return {"avg_probability": round(sum(p for p, _ in pairs) / len(pairs), 3),
+            "came_true": round(sum(y for _, y in pairs) / len(pairs), 3)}
 
 
 def summary(accounts, as_of) -> dict:
