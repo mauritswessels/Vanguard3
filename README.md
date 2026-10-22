@@ -110,11 +110,17 @@ nine accounts racing, one will lead by luck alone; an agent shows skill only
 if it keeps beating the Monkey over many weeks.
 
 How many weeks? `luck_study.py` puts a number on it. It runs 300 monkeys,
-each with its own dice, over the same days as each account: over the last
-five years for every agent that can be replayed honestly (the three
-strategies with fixed settings, their learning versions re-tuned each year
-as in the walk-forward study, and the AI Learner), and live for every paper
-account from its first decision on. For each account it gives the share of
+each with its own dice, over the same days as each account: on five years
+of past prices for every agent that can be replayed honestly, and live for
+every paper account from its first decision on. The learning versions
+(re-tuned each year as in the walk-forward study, so their settings are
+picked blind) are replayed over the last five years. The three fixed
+settings and the AI Learner's rules were picked by looking at prices from
+8 October 2018 on (`tuned_since`), and judging them on those same years
+would flatter them, so they are replayed over the five years before that,
+against their own monkeys. If the prices do not reach back that far, they
+are replayed over the last five years, marked as in-sample, and that result
+never decides their verdict. For each account it gives the share of
 monkeys it beat, its average lead a year over SPY with a 95% range (its own
 days reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
 when the lead is too big for luck even allowing for the number of agents
@@ -139,15 +145,17 @@ last session with results), `data_source`, `method` (the method in a few
 plain sentences), `verdict_meanings` (each verdict explained), `settings`
 (`LUCK_PARAMS`), `past` (`from`, `to`, `years`, `days`, `monkeys`,
 `agents_tested`, `start_days`, and `monkey_returns`: every monkey's
-return over those years, for a histogram), `live` (`from`, `to`, `monkeys`, `agents_tested`;
-`null` before paper trading starts), and `accounts`, one entry per account
-(racing accounts first, the two yardsticks last):
+return over those years, for a histogram), `past_before_tuning` (the same
+for the five years before `tuned_since`, plus `tuned_since`; `null` when
+the prices do not reach back that far), `live` (`from`, `to`, `monkeys`,
+`agents_tested`; `null` before paper trading starts), and `accounts`, one
+entry per account (racing accounts first, the two yardsticks last):
 
 | Field | Meaning |
 | --- | --- |
 | `id`, `key`, `name` | As in `paper.json`: `trend-fixed`, `trend`, "Trend Follower (fixed)" |
 | `fixed_twin`, `yardstick` | A fixed twin; Buy & Hold SPY or the Monkey (never judged) |
-| `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices |
+| `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices (never from an in-sample past) |
 | `verdict_from` | "live", "past prices", or `null` (no results yet, or a yardstick) |
 | `summary` | A few plain sentences: one on the past prices, one on the live results |
 | `past`, `live` | The two parts, with the same fields below (`null` when the account has none) |
@@ -165,6 +173,8 @@ Fields of `past` and `live`:
 | `p_vs_monkeys`, `p_vs_monkeys_adjusted`, `p_vs_spy`, `p_vs_spy_adjusted` | Chance of a result this good by luck alone, before and after allowing for the number of agents tested |
 | `weeks_needed`, `weeks_needed_vs_spy` | Live only, while it can't tell yet: more weeks of results needed to spot an edge of `settings.edge` a year |
 | `returns_by_start_day` | Past only, replayed agents: the return of each start-day copy, lowest first (the fields above describe the middle one) |
+| `window` | "recent" (the last years, as in `past`), "before_tuning" (as in `past_before_tuning`) or "live" |
+| `in_sample` | True when the settings were picked by looking at these same years: the result flatters the agent and does not count for its verdict |
 
 The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are

@@ -84,6 +84,8 @@ FIRST_SEED = 1000
 MIN_SPREAD_DAYS = 5
 #: Monkeys simulated together (see ``run_monkeys``).
 BATCH = 20
+#: Years the AI Learner practises on before its first replayed day.
+PRETRAIN_YEARS = config.LEARNER_PARAMS["pretrain_years"]
 
 
 # ---------------------------------------------------------------------------
@@ -280,9 +282,12 @@ def run_monkeys(market: MarketData, days: pd.DatetimeIndex, count: int,
 # ---------------------------------------------------------------------------
 # Part 1: past prices
 # ---------------------------------------------------------------------------
-def replay(market: MarketData, s: dict, keys=REPLAYED + ("learner",),
-           grids: dict = GRIDS, train_years: int = LOOKBACK_YEARS) -> dict:
-    """The last ``years`` years for every agent that can be replayed.
+def _race(market: MarketData, s: dict, end: pd.Timestamp,
+          rng: np.random.Generator, keys=(), learning=(), grids=GRIDS,
+          train_years: int = LOOKBACK_YEARS) -> dict:
+    """The ``years`` years up to ``end``: ``keys`` with fixed rules (the AI
+    Learner included) and ``learning`` as learning versions, against SPY
+    and the monkeys. Nothing is judged here (see ``replay``).
 
     A rule's result over five years depends a lot on the day it starts
     (started a few days apart, the Trend Follower ended anywhere between
@@ -293,18 +298,26 @@ def replay(market: MarketData, s: dict, keys=REPLAYED + ("learner",),
     years are the test years. The monkeys and SPY start on the earliest
     start day.
     """
-    rng = np.random.default_rng(s["seed"])
-    cal = market.calendar
+    cal = market.calendar[market.calendar <= end]
     end = cal[-1]
     folds = make_folds(end, s["years"])
     first = cal[cal >= folds[0][0]][0]          # first day with a result
     at = cal.get_loc(first) - 1                 # the close before it
     offsets = [k * s["start_gap"] for k in range(s["starts"])]
     starts = [cal[at - o] for o in offsets]
+    base = cal.get_loc(cal[cal >= end - pd.DateOffset(
+        years=s["years"] + train_years)][0])
+    wf_starts = [cal[base - o] for o in offsets]
+    # Only the prices this race needs: nothing after ``end``, and enough
+    # before it for indicators and the AI Learner's practice years.
+    since = (min(starts[-1] - pd.DateOffset(years=PRETRAIN_YEARS),
+                 wf_starts[-1]) - pd.Timedelta(days=config.WARMUP_DAYS))
+    market = window(market, since, end)
+    cal = market.calendar
 
     names, copies = {}, {}      # id -> daily returns, one per start day
     t0 = time.time()
-    for start in starts:
+    for start in (starts if keys else []):
         agents = {}
         for key in keys:
             if key in REPLAYED:
@@ -319,18 +332,16 @@ def replay(market: MarketData, s: dict, keys=REPLAYED + ("learner",),
             names[i] = acc.agent.name
             copies.setdefault(i, []).append(
                 acc.portfolio.equity_curve.pct_change().iloc[1:])
-    logger.info("Replayed %d agents from %d start days in %.0fs",
-                len(keys), len(starts), time.time() - t0)
+    if keys:
+        logger.info("Replayed %d agents up to %s from %d start days in %.0fs",
+                    len(keys), end.date(), len(starts), time.time() - t0)
 
-    base = cal.get_loc(cal[cal >= end - pd.DateOffset(
-        years=s["years"] + train_years)][0])
-    for key in keys:
-        if key in REPLAYED and key in grids:
-            names[key] = make_agent(key).name
-            for o in offsets:
-                wf = walk_forward_agent(market, key, grids[key],
-                                        cal[base - o], folds, train_years)
-                copies.setdefault(key, []).append(wf["tuned"])
+    for key in learning:
+        names[key] = make_agent(key).name
+        for wf_start in wf_starts:
+            wf = walk_forward_agent(market, key, grids[key], wf_start,
+                                    folds, train_years)
+            copies.setdefault(key, []).append(wf["tuned"])
 
     refs = [make_agent(key) for key in YARDSTICKS]
     monkeys, curves = run_monkeys(market, cal[cal >= starts[-1]],
@@ -348,15 +359,82 @@ def replay(market: MarketData, s: dict, keys=REPLAYED + ("learner",),
         if len(runs) > 1:
             results[i]["returns_by_start_day"] = [r["return"] for r in runs]
     results["benchmark"]["spy"] = None
-    tests = judge(results, s, [i for i in results if i not in YARDSTICKS])
     crowd = (1 + monkeys).prod() - 1
-    return {"from": cal[at].strftime("%Y-%m-%d"),
+    return {"from": cal[cal < first][-1].strftime("%Y-%m-%d"),
             "last": end.strftime("%Y-%m-%d"),
             "sessions": len(cal[cal >= first]),
             "start_days": [d.strftime("%Y-%m-%d") for d in starts],
-            "years": s["years"], "monkeys": s["monkeys"], "tested": tests,
+            "years": s["years"], "monkeys": s["monkeys"],
             "monkey_returns": sorted(float(v) for v in crowd),
             "results": results, "names": names}
+
+
+def before_tuning_end(market: MarketData, s: dict) -> pd.Timestamp | None:
+    """Last session before ``tuned_since``, if the prices reach far enough
+    back to replay the ``years`` years up to it (with the AI Learner's
+    practice years and the indicators' warm-up before them)."""
+    if not s.get("tuned_since"):
+        return None
+    cal = market.calendar
+    before = cal[cal < pd.Timestamp(s["tuned_since"])]
+    if len(before) == 0:
+        return None
+    need = (before[-1] - pd.DateOffset(years=s["years"] + PRETRAIN_YEARS)
+            - pd.Timedelta(days=config.WARMUP_DAYS + 2 * s["starts"]
+                           * s["start_gap"]))
+    spy = market.bars.get(config.BENCHMARK_TICKER)
+    if spy is None or spy.index[0] > need + pd.Timedelta(days=7):
+        return None
+    return before[-1]
+
+
+def replay(market: MarketData, s: dict, keys=REPLAYED + ("learner",),
+           grids: dict = GRIDS, train_years: int = LOOKBACK_YEARS) -> dict:
+    """Past prices for every agent that can be replayed.
+
+    The learning versions pick their settings blind (walk-forward), so they
+    are judged on the last ``years`` years. The fixed settings and the AI
+    Learner's rules were picked by looking at prices from ``tuned_since``
+    on, and judging them on those same years would flatter them. So they
+    are judged on the ``years`` years before ``tuned_since``, against their
+    own monkeys and SPY. When the prices do not reach back that far, they
+    are judged on the last years after all, but marked in-sample: that
+    result never decides their verdict.
+    """
+    rng = np.random.default_rng(s["seed"])
+    early_end = before_tuning_end(market, s)
+    learning = [k for k in keys if k in REPLAYED and k in grids]
+    recent = _race(market, s, market.calendar[-1], rng,
+                   keys=() if early_end is not None else keys,
+                   learning=learning, grids=grids, train_years=train_years)
+    early = (_race(market, s, early_end, rng, keys=keys, grids=grids,
+                   train_years=train_years)
+             if early_end is not None else None)
+
+    results, names = dict(recent["results"]), dict(recent["names"])
+    for res in results.values():
+        res["window"], res["in_sample"] = "recent", False
+        res["start"] = recent["from"]
+    picked = [i for i in recent["results"]
+              if i.endswith("-fixed") or i == "learner"]
+    for i in picked:                    # fell back: the tuning years
+        results[i]["in_sample"] = True
+    if early:
+        for i, res in early["results"].items():
+            if i in YARDSTICKS:
+                continue                # shown from the recent years
+            res["window"], res["in_sample"] = "before_tuning", False
+            res["start"] = early["from"]
+            results[i], names[i] = res, early["names"][i]
+    tests = judge(results, s, [i for i in results if i not in YARDSTICKS])
+
+    def meta(race):
+        return {k: v for k, v in race.items()
+                if k not in ("results", "names")} | {"tested": tests}
+
+    return {**meta(recent), "results": results, "names": names,
+            "before_tuning": meta(early) | {"tuned_since": s["tuned_since"]}
+            if early else None}
 
 
 # ---------------------------------------------------------------------------
@@ -478,8 +556,12 @@ def summary(row: dict, history: dict | None, live_part: dict | None,
 
     if h:
         m, b, n = h["monkey"], h["spy"], history["tested"]
-        text = (f"Past {_years(history['years'])}: it beat {m['beat']:.0%} "
-                f"of {history['monkeys']} monkeys")
+        if h.get("window") == "before_tuning":
+            when = (f"In the {_years(history['years'])} before its settings "
+                    f"were picked ({_day(h['first'])} to {_day(h['last'])})")
+        else:
+            when = f"Past {_years(history['years'])}"
+        text = f"{when}: it beat {m['beat']:.0%} of {history['monkeys']} monkeys"
         if m["verdict"] == "skill":
             text += (f"; luck does that less than 1 time in 20, even with "
                      f"{n} agents tested: skill.")
@@ -503,6 +585,10 @@ def summary(row: dict, history: dict | None, live_part: dict | None,
             text += (f" Started on {len(spread)} different days, it ended "
                      f"between {_signed(spread[0])} and {_signed(spread[-1])}"
                      f"; these figures are for the middle one.")
+        if h.get("in_sample"):
+            text += (" Its settings were picked by looking at these same "
+                     "years, so this flatters it and does not count for its "
+                     "verdict.")
         out.append(text)
     elif row["key"] in NOT_REPLAYED:
         out.append(f"No replay on past prices: {NOT_REPLAYED[row['key']]}.")
@@ -592,7 +678,22 @@ def export_part(res: dict | None, start: str,
         "p_vs_spy_adjusted": b.get("p_adjusted"),
         "weeks_needed_vs_spy": live_weeks(b),
         "returns_by_start_day": res.get("returns_by_start_day"),
+        "window": res.get("window", "live" if is_live else "recent"),
+        "in_sample": bool(res.get("in_sample", False)),
     }
+
+
+def _early_meta(history: dict | None) -> dict | None:
+    """The years before the settings were picked, as in ``past``."""
+    early = (history or {}).get("before_tuning")
+    if not early:
+        return None
+    return {"from": early["from"], "to": early["last"],
+            "monkeys": early["monkeys"], "agents_tested": early["tested"],
+            "years": early["years"], "days": early["sessions"],
+            "start_days": early["start_days"],
+            "tuned_since": early["tuned_since"],
+            "monkey_returns": early["monkey_returns"]}
 
 
 def build_report(history: dict | None, live_part: dict | None, s: dict,
@@ -610,7 +711,7 @@ def build_report(history: dict | None, live_part: dict | None, s: dict,
         key = i.removesuffix("-fixed")
         row = {"id": i, "key": key, "yardstick": key in YARDSTICKS,
                "history": h, "live": lv}
-        past = export_part(h, history["from"], False) if h else None
+        past = export_part(h, h.get("start", history["from"]), False) if h else None
         now = export_part(lv, lv["since"], True) if lv else None
         # The headline: live once there are enough live days, else the
         # replay of past prices; never for the yardsticks.
@@ -618,7 +719,7 @@ def build_report(history: dict | None, live_part: dict | None, s: dict,
             verdict, source_of = None, None
         elif now and now["days"] >= s["min_days"]:
             verdict, source_of = now["verdict"], "live"
-        elif past:
+        elif past and not past["in_sample"]:
             verdict, source_of = past["verdict"], "past prices"
         else:
             verdict, source_of = VERDICTS["unclear"], None
@@ -647,6 +748,7 @@ def build_report(history: dict | None, live_part: dict | None, s: dict,
                 "years": history["years"], "days": history["sessions"],
                 "start_days": history["start_days"],
                 "monkey_returns": history["monkey_returns"]}),
+            "past_before_tuning": _early_meta(history),
             "live": meta(live_part, {}),
             "accounts": accounts}
 
@@ -657,9 +759,13 @@ def run(source: str, s: dict, state_path: Path | None,
     """Load prices, run both parts and return the report."""
     # Only finished sessions: during the day Yahoo also sends today's bar.
     today = today or last_completed_session()
-    data_start = (today - pd.DateOffset(years=s["years"] + LOOKBACK_YEARS)
-                  - pd.Timedelta(days=config.WARMUP_DAYS
-                                 + 2 * s["starts"] * s["start_gap"]))
+    extra = pd.Timedelta(days=config.WARMUP_DAYS
+                         + 2 * s["starts"] * s["start_gap"])
+    data_start = today - pd.DateOffset(years=s["years"] + LOOKBACK_YEARS) - extra
+    if s.get("tuned_since"):        # the years before the settings were picked
+        data_start = min(data_start, pd.Timestamp(s["tuned_since"])
+                         - pd.DateOffset(years=s["years"] + PRETRAIN_YEARS)
+                         - extra)
     market = load_market_data(source, data_start, today, seed=seed,
                               strict={config.BENCHMARK_TICKER})
     history = replay(market, s, **replay_kw)
@@ -678,7 +784,10 @@ def print_report(report: dict) -> None:
     h, lv, s = report["past"], report["live"], report["settings"]
 
     def beat(part):
-        return f"{part['percentile_vs_monkeys']:.0%}" if part else "-"
+        if not part:
+            return "-"
+        mark = {"before_tuning": "*"}.get(part["window"], "")
+        return f"{part['percentile_vs_monkeys']:.0%}{mark}{'~' if part['in_sample'] else ''}"
 
     live_days = f"{lv['from']} -> {lv['to']}" if lv else "none"
     print()
@@ -707,6 +816,13 @@ def print_report(report: dict) -> None:
           f"year.")
     print(f" Weeks to tell = live weeks still needed to spot an edge of "
           f"{s['edge']:.0%} a year over random picks.")
+    early = report.get("past_before_tuning")
+    if early:
+        print(f" * judged on {early['from']} -> {early['to']}, before their "
+              f"settings were picked (on prices from {early['tuned_since']}).")
+    if any((a["past"] or {}).get("in_sample") for a in report["accounts"]):
+        print(" ~ in-sample: settings picked on these same years; does not "
+              "count for the verdict.")
 
 
 def main() -> None:

@@ -235,6 +235,9 @@ LUCK_PARAMS = {
     "resamples": 2000,           # bootstrap repeats
     "min_days": 20,              # fewer live sessions: always "can't tell yet"
     "seed": 2026,
+    # The fixed settings (and the AI Learner's rules) were picked by looking
+    # at prices from this day on, so their past is judged on the years before.
+    "tuned_since": "2018-10-08",
 }
 
 # ---------------------------------------------------------------------------
