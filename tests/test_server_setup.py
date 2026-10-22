@@ -45,6 +45,26 @@ exit "$code"
 """
 
 
+# Stands in for ssh-keygen: writes a key pair at the path after -f.
+FAKE_KEYGEN = """#!/bin/bash
+echo "ssh-keygen $*" >> "$CALLS"
+while [ $# -gt 0 ]; do [ "$1" = -f ] && key="$2"; shift; done
+echo "PRIVATE KEY" > "$key"
+echo "ssh-ed25519 AAAAfakepublickey vanguard3-server" > "$key.pub"
+"""
+
+# Stands in for server/publish.sh --check: GitHub takes the key, or not.
+FAKE_PUBLISH = """#!/bin/bash
+echo "publish $*" >> "$CALLS"
+if [ "${FAKE_PUBLISH_OK:-1}" = 1 ]; then
+    echo "The deploy key may push."
+    exit 0
+fi
+echo "GitHub did not take the summary (ERROR: read only)" >&2
+exit 1
+"""
+
+
 class ComposeTest(unittest.TestCase):
     text = COMPOSE.read_text()
 
@@ -95,8 +115,10 @@ class SetupScriptTest(unittest.TestCase):
         for name in ("server/setup.sh", "server/docker-compose.yml",
                      "requirements-ibkr.txt", "ibkr_morning.sh"):
             shutil.copy(ROOT / name, self.repo / name)
+        (self.repo / "server" / "publish.sh").write_text(FAKE_PUBLISH)
+        self.keys = tmp / "ssh"
         fakes = {"id": FAKE_ID, "python3": FAKE_PYTHON3,
-                 "fake-bridge": FAKE_BRIDGE}
+                 "fake-bridge": FAKE_BRIDGE, "ssh-keygen": FAKE_KEYGEN}
         for tool in ("apt-get", "timedatectl", "systemctl", "docker",
                      "chown", "curl", "sleep"):
             fakes[tool] = RECORDER
@@ -107,7 +129,8 @@ class SetupScriptTest(unittest.TestCase):
         self.env = {**os.environ, "PATH": f"{self.tools}:/usr/bin:/bin",
                     "CALLS": str(self.calls_file),
                     "FAKE_BRIDGE": str(self.tools / "fake-bridge"),
-                    "UNIT_DIR": str(self.units), "APT_DIR": str(self.apt)}
+                    "UNIT_DIR": str(self.units), "APT_DIR": str(self.apt),
+                    "KEY_DIR": str(self.keys)}
 
     def setup(self, *args, answers="", **env):
         """Run setup.sh, typing ``answers``; returns (exit code, output,
@@ -223,6 +246,159 @@ class SetupScriptTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("run this as root", out)
         self.assertEqual(calls, [])
+
+    def test_publish_makes_a_deploy_key(self):
+        self.setup(answers="DUTEST1\nsecret\n")
+        code, out, calls = self.setup("--publish", answers="\n\n")
+        self.assertEqual(code, 0, out)
+        key = self.keys / "vanguard3_publish"
+        self.assertEqual(sum(c.startswith("ssh-keygen ") for c in calls), 1)
+        self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.keys.stat().st_mode & 0o777, 0o700)
+        # Exact steps on GitHub, with the public half of the key.
+        self.assertIn("ssh-ed25519 AAAAfakepublickey", out)
+        self.assertIn("https://github.com/mauritswessels/vanguard3-ibkr-data"
+                      "/settings/keys", out)
+        self.assertIn('Tick "Allow write access"', out)
+        self.assertNotIn("PRIVATE KEY", out)
+        settings = self.repo / "ibkr_morning.env"
+        text = settings.read_text()
+        self.assertIn('BRIDGE_ARGS="--port 4002"', text)     # kept
+        self.assertIn("PUBLISH_REPO=git@github.com:mauritswessels/"
+                      "vanguard3-ibkr-data.git\n", text)
+        self.assertIn("PUBLISH_BRANCH=ibkr-data\n", text)
+        self.assertIn(f"PUBLISH_KEY={key}\n", text)
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
+        self.assertIn("publish --check", calls)
+        # Nothing else is installed or restarted.
+        self.assertFalse(any(c.startswith(("apt-get", "docker", "systemctl"))
+                             for c in calls))
+        self.assertIn("raw.githubusercontent.com/mauritswessels/"
+                      "vanguard3-ibkr-data/ibkr-data/ibkr.json", out)
+
+        # Again, for another repository: same key, settings replaced.
+        code, _, calls = self.setup("--publish", answers="me/data\n\n")
+        self.assertEqual(code, 0)
+        self.assertFalse(any(c.startswith("ssh-keygen ") for c in calls))
+        text = settings.read_text()
+        self.assertEqual(text.count("PUBLISH_REPO="), 1)
+        self.assertIn("PUBLISH_REPO=git@github.com:me/data.git\n", text)
+
+    def test_publish_says_when_github_refuses_the_key(self):
+        self.setup(answers="DUTEST1\nsecret\n")
+        code, out, _ = self.setup("--publish", answers="\n\n",
+                                  FAKE_PUBLISH_OK="0")
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR: read only", out)
+        self.assertIn("Allow write access", out)
+        self.assertIn("setup.sh --publish", out)
+
+    def test_publish_needs_the_setup_first(self):
+        code, out, calls = self.setup("--publish", answers="\n\n")
+        self.assertEqual(code, 1)
+        self.assertIn("without --publish first", out)
+        self.assertEqual(calls, [])
+
+    def test_publish_refuses_a_bad_repository_name(self):
+        self.setup(answers="DUTEST1\nsecret\n")
+        code, out, calls = self.setup("--publish", answers="not a repo\n")
+        self.assertEqual(code, 1)
+        self.assertIn("doesn't look like owner/name", out)
+        self.assertNotIn("PUBLISH_", (self.repo / "ibkr_morning.env")
+                         .read_text())
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git"),
+                     "needs bash and git")
+class PublishTest(unittest.TestCase):
+    """server/publish.sh, pushing to a repository on this computer."""
+
+    def setUp(self):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.repo, self.remote = tmp / "Vanguard3", tmp / "data.git"
+        (self.repo / "server").mkdir(parents=True)
+        for name in ("publish.sh", "github_known_hosts"):
+            shutil.copy(ROOT / "server" / name, self.repo / "server")
+        subprocess.run(["git", "init", "--quiet", "--bare",
+                        str(self.remote)], check=True)
+        self.file = self.repo / "ibkr_logs" / "public" / "ibkr.json"
+        self.file.parent.mkdir(parents=True)
+        self.file.write_text('{"history": []}\n')
+        self.settings(f"PUBLISH_REPO={self.remote}\n")
+
+    def settings(self, text):
+        (self.repo / "ibkr_morning.env").write_text(text)
+
+    def publish(self, *args):
+        done = subprocess.run(
+            ["bash", str(self.repo / "server" / "publish.sh"), *args],
+            cwd=self.repo, capture_output=True, text=True, timeout=60)
+        return done.returncode, done.stdout + done.stderr
+
+    def git(self, *args):
+        return subprocess.run(["git", "--git-dir", str(self.remote), *args],
+                              capture_output=True, text=True).stdout
+
+    def test_publishes_to_its_own_branch(self):
+        code, out = self.publish("ibkr_logs/public/ibkr.json")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.git("show", "ibkr-data:ibkr.json"),
+                         '{"history": []}\n')
+        self.assertIn("README.md", self.git("ls-tree", "--name-only",
+                                            "ibkr-data"))
+        self.assertEqual(self.git("branch", "--list").split(),
+                         ["ibkr-data"])
+        # The next morning replaces it: still a single small commit.
+        self.file.write_text('{"history": [1]}\n')
+        code, out = self.publish()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.git("show", "ibkr-data:ibkr.json"),
+                         '{"history": [1]}\n')
+        self.assertEqual(len(self.git("log", "--oneline", "ibkr-data")
+                             .splitlines()), 1)
+
+    def test_never_to_main(self):
+        for branch in ("main", "master", "refs/heads/main", "bad..name"):
+            with self.subTest(branch=branch):
+                self.settings(f"PUBLISH_REPO={self.remote}\n"
+                              f"PUBLISH_BRANCH={branch}\n")
+                code, out = self.publish()
+                self.assertEqual(code, 1)
+                self.assertEqual(self.git("branch", "--list"), "")
+
+    def test_check_changes_nothing(self):
+        code, out = self.publish("--check")
+        self.assertEqual(code, 0, out)
+        self.assertIn("may push", out)
+        self.assertEqual(self.git("branch", "--list"), "")
+
+    def test_needs_settings_a_file_and_a_key(self):
+        self.settings("")
+        code, out = self.publish()
+        self.assertEqual(code, 1)
+        self.assertIn("setup.sh --publish", out)
+        self.settings(f"PUBLISH_REPO={self.remote}\n")
+        self.file.unlink()
+        code, out = self.publish()
+        self.assertEqual(code, 1)
+        self.assertIn("No summary at", out)
+        self.settings("PUBLISH_REPO=git@github.com:me/data.git\n"
+                      "PUBLISH_KEY=/nowhere/key\n")
+        code, out = self.publish("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("No deploy key at /nowhere/key", out)
+
+    def test_github_host_keys_are_pinned(self):
+        """GitHub's published keys (api.github.com/meta), so the server
+        never trusts an impostor on its first connection."""
+        lines = (ROOT / "server" / "github_known_hosts").read_text().split("\n")
+        kinds = [line.split()[1] for line in lines if line]
+        self.assertEqual(kinds, ["ssh-ed25519", "ecdsa-sha2-nistp256",
+                                 "ssh-rsa"])
+        self.assertTrue(all(line.startswith("github.com ")
+                            for line in lines if line))
+        self.assertIn("StrictHostKeyChecking=yes",
+                      (ROOT / "server" / "publish.sh").read_text())
 
 
 # Telegram's API as the helper sees it; every call is recorded.

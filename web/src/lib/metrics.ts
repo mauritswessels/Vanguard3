@@ -1,0 +1,385 @@
+/* Vanguard3 metrics: the one place the platform computes performance and
+ * risk numbers, so a number can never differ between two pages.
+ *
+ * A line-for-line port of the old dashboard's docs/metrics.js. The return,
+ * volatility, Sharpe and drawdown formulas match engine/metrics.py exactly
+ * (risk-free 0.5% a year, 252 trading days, sample standard deviation); for
+ * "All time" they give the same values as the Python scoreboard, which
+ * metrics.test.ts checks against the real data. Nothing here invents or
+ * smooths data. */
+import type { Agent, Point, RunData, Trip } from "./types";
+
+export const RF = 0.005;
+export const PERIODS = 252;
+/** Below this many daily returns, volatility and Sharpe are not shown. */
+export const MIN_RETURNS = 20;
+/** Risk warning thresholds (shown on the page next to each warning). */
+export const LIMITS = { concentration: 0.25, drawdown: -0.1, volMultiple: 1.5, lowCash: 0.02 };
+
+const DAY = 864e5;
+const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+export const addDays = (s: string, n: number) => iso(Date.parse(s + "T00:00:00Z") + n * DAY);
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+const mean = (xs: number[]) => (xs.length ? sum(xs) / xs.length : NaN);
+function std(xs: number[]) {
+  if (xs.length < 2) return NaN;
+  const m = mean(xs);
+  return Math.sqrt(sum(xs.map((x) => (x - m) ** 2)) / (xs.length - 1));
+}
+
+// ---------- time ranges ----------
+export type RangeKind = "today" | "7d" | "30d" | "all" | "custom";
+export interface Range {
+  kind: RangeKind;
+  from: string | null;
+  to: string | null;
+  label: string;
+}
+export const RANGES: [RangeKind, string][] = [
+  ["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all", "All time"],
+];
+
+export const inRange = (date: string | null, r: Range) =>
+  date != null && (!r.from || date >= r.from) && (!r.to || date <= r.to);
+
+/** Inclusive ISO dates, null = open-ended. "Today" is the latest session:
+ *  values are recorded once per trading day. */
+export function range(kind: RangeKind, d: Pick<RunData, "last">, custom?: { from?: string | null; to?: string | null }): Range {
+  const last = d.last;
+  switch (kind) {
+    case "today": return { kind, from: last, to: null, label: "the latest session" };
+    case "7d": return { kind, from: addDays(last, -6), to: null, label: "the last 7 days" };
+    case "30d": return { kind, from: addDays(last, -29), to: null, label: "the last 30 days" };
+    case "custom": {
+      const from = custom?.from || null, to = custom?.to || null;
+      const end = to && to < last ? to : null;
+      return { kind, from, to: end, label: `${from || "launch"} to ${end || "now"}` };
+    }
+    default: return { kind: "all", from: null, to: null, label: "all time" };
+  }
+}
+const toLatest = (r: Range) => !r.to;
+
+// ---------- equity windows ----------
+interface Window { base: number; baseDate: string | null; pts: Point[] }
+
+/** The curve inside the range plus its base: the last close before the
+ *  range starts (no look-ahead), or the starting capital. */
+export function windowOf(a: Agent, d: RunData, r: Range): Window {
+  const before = r.from ? a.equity.filter((p) => p[0] < r.from!) : [];
+  const pts = a.equity.filter((p) => inRange(p[0], r));
+  const base = before.length ? before[before.length - 1] : null;
+  return { base: base ? base[1] : d.initial_capital_chf, baseDate: base ? base[0] : null, pts };
+}
+
+function returnsOf(w: Window) {
+  const vals = [w.base, ...w.pts.map((p) => p[1])], out: number[] = [];
+  for (let i = 1; i < vals.length; i++) out.push(vals[i] / vals[i - 1] - 1);
+  return out;
+}
+
+function sharpe(rets: number[]) {
+  if (rets.length < 2) return NaN;
+  const ex = rets.map((r) => r - RF / PERIODS), s = std(ex);
+  return !isFinite(s) || s < 1e-12 ? NaN : (mean(ex) / s) * Math.sqrt(PERIODS);
+}
+
+function drawdowns(vals: number[]) {
+  let peak = -Infinity;
+  return vals.map((v) => { peak = Math.max(peak, v); return v / peak - 1; });
+}
+
+// ---------- the book right now (last close) ----------
+export interface Book {
+  value: number; cash: number; invested: number; cashPct: number; exposure: number; open: number;
+  largest: { ticker: string; pct: number } | null; effective: number | null; unrealized: number;
+}
+
+export function book(a: Agent): Book {
+  const invested = sum(a.positions.map((p) => p.value_chf));
+  const value = a.cash_chf + invested;
+  const weights = a.positions.map((p) => p.value_chf / value);
+  const top = a.positions.slice().sort((x, y) => y.value_chf - x.value_chf)[0] || null;
+  return {
+    value, cash: a.cash_chf, invested,
+    cashPct: a.cash_chf / value,
+    exposure: invested / value,
+    open: a.positions.length,
+    largest: top ? { ticker: top.ticker, pct: top.value_chf / value } : null,
+    // 1 / sum of squared weights: how many equal positions the book is worth.
+    effective: weights.length ? 1 / sum(weights.map((w) => w * w)) : null,
+    unrealized: sum(a.positions.map((p) => p.pnl_chf)),
+  };
+}
+
+/** Share of the account invested at each close: cash at a close is the
+ *  starting cash plus every fill and dividend up to that day. */
+export function exposureSeries(a: Agent, d: RunData, r: Range): Point[] {
+  const fills = [
+    ...a.trades.map((t) => ({ date: t.date, cash_flow_chf: t.cash_flow_chf })),
+    ...(a.events || []).map((e) => ({ date: e.date, cash_flow_chf: e.chf || 0 })),
+  ].sort((x, y) => (x.date < y.date ? -1 : 1));
+  let i = 0, cash = d.initial_capital_chf;
+  return a.equity.filter((p) => !r.to || p[0] <= r.to).map(([date, eq]): Point => {
+    while (i < fills.length && fills[i].date <= date) cash += fills[i++].cash_flow_chf;
+    return [date, Math.max(0, 1 - cash / eq)];
+  }).filter((p) => inRange(p[0], r));
+}
+
+// ---------- trips (positions from first buy to last sell) ----------
+export const tripsClosedIn = (a: Agent, r: Range) =>
+  (a.trips || []).filter((t) => t.status === "closed" && inRange(t.exit_date, r));
+/** Positions that were open at some point inside the range. */
+export const tripsTouching = (a: Agent, r: Range) => (a.trips || []).filter((t) =>
+  (!r.to || t.entry_date <= r.to) && (t.status === "open" || !r.from || (t.exit_date ?? "") >= r.from));
+
+function tradeStats(closed: Trip[]) {
+  const wins = closed.filter((t) => t.pnl_chf > 0), losses = closed.filter((t) => t.pnl_chf < 0);
+  const gw = sum(wins.map((t) => t.pnl_chf)), gl = -sum(losses.map((t) => t.pnl_chf));
+  const best = closed.slice().sort((x, y) => y.pnl_chf - x.pnl_chf);
+  return {
+    closed: closed.length,
+    winRate: closed.length ? wins.length / closed.length : NaN,
+    avgWin: wins.length ? gw / wins.length : NaN,
+    avgWinPct: wins.length ? mean(wins.map((t) => t.pnl_pct)) : NaN,
+    avgLoss: losses.length ? -gl / losses.length : NaN,
+    avgLossPct: losses.length ? mean(losses.map((t) => t.pnl_pct)) : NaN,
+    profitFactor: losses.length ? gw / gl : wins.length ? Infinity : NaN,
+    largestGain: wins.length ? best[0] : null,
+    largestLoss: losses.length ? best[best.length - 1] : null,
+    avgHoldDays: closed.length ? mean(closed.map((t) => t.holding_days)) : NaN,
+  };
+}
+
+// ---------- everything for one account ----------
+export function stats(a: Agent, d: RunData, r: Range) {
+  const w = windowOf(a, d, r), rets = returnsOf(w);
+  const vals = [w.base, ...w.pts.map((p) => p[1])];
+  const end = vals[vals.length - 1], dd = drawdowns(vals);
+  const fills = a.trades.filter((t) => inRange(t.date, r));
+  const b = book(a), trips = tripsTouching(a, r);
+  const exp = exposureSeries(a, d, r);
+  const days = w.pts.length
+    ? Math.max(1, (Date.parse(w.pts[w.pts.length - 1][0]) - Date.parse(w.baseDate || w.pts[0][0])) / DAY) : 0;
+  const enough = rets.length >= MIN_RETURNS;
+  const vol = rets.length > 1 ? std(rets) * Math.sqrt(PERIODS) : NaN;
+  return {
+    id: a.id, name: a.name, key: a.key,
+    start: w.base, startDate: w.baseDate, value: end,
+    ret: end / w.base - 1, pnl: end - w.base,
+    realized: sum(fills.filter((t) => t.side === "SELL").map((t) => t.pnl_chf ?? 0)),
+    // Open positions are only valued at the latest close.
+    unrealized: toLatest(r) ? b.unrealized : null,
+    fees: sum(fills.map((t) => t.fees_chf)),
+    fills: fills.length, buys: fills.filter((t) => t.side === "BUY").length,
+    sells: fills.filter((t) => t.side === "SELL").length,
+    returns: rets.length, enough,
+    vol, sharpe: sharpe(rets),
+    maxDD: Math.min(...dd), curDD: dd[dd.length - 1],
+    ...tradeStats(tripsClosedIn(a, r)),
+    avgSize: mean((a.trips || []).filter((t) => inRange(t.entry_date, r)).map((t) => t.size_pct)),
+    avgExposure: mean(exp.map((p) => p[1])),
+    perWeek: days ? fills.length / (days / 7) : NaN,
+    trips: trips.length,
+    book: b,
+  };
+}
+export type AgentStats = ReturnType<typeof stats>;
+
+export const all = (d: RunData, r: Range) => d.agents.map((a) => stats(a, d, r));
+
+// ---------- chart series ----------
+export type CurveMode = "value" | "return" | "pnl";
+/** [[date, y]]: "value" in CHF, "return" vs the range base, "pnl" in CHF vs
+ *  the base. Starts at the base so lines share a zero. */
+export function curve(a: Agent, d: RunData, r: Range, mode: CurveMode): Point[] {
+  const w = windowOf(a, d, r);
+  const pts: Point[] = (w.baseDate ? [[w.baseDate, w.base] as Point] : []).concat(w.pts);
+  return pts.map(([t, v]): Point => [t, mode === "return" ? v / w.base - 1 : mode === "pnl" ? v - w.base : v]);
+}
+
+export function drawdownCurve(a: Agent, d: RunData, r: Range): Point[] {
+  const w = windowOf(a, d, r);
+  const pts: Point[] = (w.baseDate ? [[w.baseDate, w.base] as Point] : []).concat(w.pts);
+  const dd = drawdowns(pts.map((p) => p[1]));
+  return pts.map((p, i): Point => [p[0], dd[i]]);
+}
+
+// ---------- assets ----------
+/** Per ticker: fills, realised + open P&L of positions in the range. */
+export function assets(a: Agent, r: Range) {
+  const out: Record<string, { ticker: string; fills: number; pnl: number; trips: number }> = {};
+  const row = (t: string) => out[t] || (out[t] = { ticker: t, fills: 0, pnl: 0, trips: 0 });
+  a.trades.filter((t) => inRange(t.date, r)).forEach((t) => { row(t.ticker).fills++; });
+  tripsClosedIn(a, r).forEach((t) => { const x = row(t.ticker); x.pnl += t.pnl_chf; x.trips++; });
+  if (toLatest(r)) (a.trips || []).filter((t) => t.status === "open").forEach((t) => {
+    const x = row(t.ticker); x.pnl += t.pnl_chf; x.trips++;
+  });
+  return Object.values(out);
+}
+
+/** Current exposure per ticker and per asset group for a set of accounts. */
+export function exposure(accts: Agent[], d: RunData) {
+  const total = sum(accts.map((a) => book(a).value));
+  const byAsset: Record<string, number> = {}, byGroup: Record<string, number> = {};
+  accts.forEach((a) => a.positions.forEach((p) => {
+    byAsset[p.ticker] = (byAsset[p.ticker] || 0) + p.value_chf;
+    const g = (d.groups || {})[p.ticker] || "Other";
+    byGroup[g] = (byGroup[g] || 0) + p.value_chf;
+  }));
+  const list = (o: Record<string, number>) => Object.entries(o)
+    .map(([k, v]) => ({ name: k, chf: v, pct: v / total })).sort((x, y) => y.chf - x.chf);
+  const invested = sum(Object.values(byAsset));
+  return {
+    total, cash: total - invested, cashPct: (total - invested) / total, long: invested / total, short: 0,
+    byAsset: list(byAsset), byGroup: list(byGroup),
+  };
+}
+
+// ---------- warnings ----------
+export interface Alert { level: "warn" | "info"; kind: string; id: string; text: string }
+/** Warnings from the actual book and curve; each says what triggered it. */
+export function alerts(d: RunData, r: Range): Alert[] {
+  // The yardsticks are concentrated or random by design, so they are left out.
+  const S = all(d, r).filter((_, i) => !d.agents[i].benchmark), out: Alert[] = [];
+  const vols = S.filter((s) => s.enough && isFinite(s.vol) && s.vol > 0).map((s) => s.vol).sort((x, y) => x - y);
+  S.forEach((s) => {
+    const b = s.book;
+    if (b.largest && b.largest.pct > LIMITS.concentration) out.push({ level: "warn", kind: "High concentration", id: s.id,
+      text: `${s.name} has ${(b.largest.pct * 100).toFixed(1)}% of its account in ${b.largest.ticker} (warning above ${LIMITS.concentration * 100}%).` });
+    if (s.curDD <= LIMITS.drawdown) out.push({ level: "warn", kind: "High drawdown", id: s.id,
+      text: `${s.name} is ${(-s.curDD * 100).toFixed(1)}% below its peak in ${r.label} (warning from ${-LIMITS.drawdown * 100}%).` });
+    if (s.enough && vols.length >= 3) {
+      const others = vols.filter((v) => v !== s.vol), mid = others[Math.floor(others.length / 2)];
+      if (mid > 0 && s.vol > LIMITS.volMultiple * mid) out.push({ level: "warn", kind: "High volatility", id: s.id,
+        text: `${s.name} swings ${(s.vol * 100).toFixed(1)}% a year, ${(s.vol / mid).toFixed(1)}× the middle of the other accounts (${(mid * 100).toFixed(1)}%).` });
+    }
+    if (b.open && b.cashPct < LIMITS.lowCash) out.push({ level: "info", kind: "Fully invested", id: s.id,
+      text: `${s.name} keeps only ${(b.cashPct * 100).toFixed(1)}% in cash, so new buys have to wait for a sale.` });
+  });
+  return out;
+}
+
+// ---------- agent vs agent ----------
+const p1 = (v: number) => (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+/** Plain sentences, each one a direct reading of two numbers. */
+export function compareSummary(A: AgentStats, B: AgentStats, r: Range): string[] {
+  const s: string[] = [];
+  s.push(`Over ${r.label}, ${A.name} returned ${p1(A.ret)} and ${B.name} ${p1(B.ret)}.`);
+  if (A.enough && B.enough && isFinite(A.sharpe) && isFinite(B.sharpe)) {
+    const hiRet = A.ret >= B.ret ? A : B, loRet = hiRet === A ? B : A;
+    if (loRet.sharpe > hiRet.sharpe && hiRet.ret !== loRet.ret)
+      s.push(`${loRet.name} earned less but had the higher Sharpe ratio (${loRet.sharpe.toFixed(2)} vs ${hiRet.sharpe.toFixed(2)}), so more return per unit of day-to-day swings.`);
+    else s.push(`${hiRet.name} also had the higher Sharpe ratio (${hiRet.sharpe.toFixed(2)} vs ${loRet.sharpe.toFixed(2)}).`);
+    const hv = A.vol >= B.vol ? A : B, lv = hv === A ? B : A;
+    if (hv.vol > lv.vol * 1.25) s.push(`${hv.name} was more volatile (${(hv.vol * 100).toFixed(1)}% a year vs ${(lv.vol * 100).toFixed(1)}%).`);
+  } else {
+    s.push(`Sharpe ratio and volatility need at least ${MIN_RETURNS} trading days in the range (this range has ${Math.min(A.returns, B.returns)}).`);
+  }
+  if (A.maxDD !== B.maxDD) {
+    const deep = A.maxDD < B.maxDD ? A : B, shallow = deep === A ? B : A;
+    if (deep.maxDD < 0) s.push(`${deep.name}'s largest drop from a peak was ${p1(deep.maxDD)}, deeper than ${shallow.name}'s ${p1(shallow.maxDD)}.`);
+  }
+  if (A.closed >= 3 && B.closed >= 3 && A.winRate !== B.winRate) {
+    const hw = A.winRate > B.winRate ? A : B, lw = hw === A ? B : A;
+    s.push(`${hw.name} won ${Math.round(hw.winRate * 100)}% of its ${hw.closed} closed positions, ${lw.name} ${Math.round(lw.winRate * 100)}% of ${lw.closed}.`);
+  } else if (A.closed + B.closed) {
+    s.push(`Win rates are not compared yet: ${A.name} closed ${A.closed} position${A.closed === 1 ? "" : "s"} and ${B.name} ${B.closed} (at least 3 each needed).`);
+  }
+  if (A.fills !== B.fills) {
+    const many = A.fills > B.fills ? A : B, few = many === A ? B : A;
+    s.push(few.fills ? `${many.name} traded more often: ${many.fills} fills vs ${few.fills}.` : `${many.name} made ${many.fills} fills; ${few.name} made none.`);
+  }
+  if (isFinite(A.avgSize) && isFinite(B.avgSize) && Math.abs(A.avgSize - B.avgSize) > 0.02) {
+    const big = A.avgSize > B.avgSize ? A : B, small = big === A ? B : A;
+    s.push(`${big.name} took larger positions (${(big.avgSize * 100).toFixed(1)}% of the account on average vs ${(small.avgSize * 100).toFixed(1)}%).`);
+  }
+  if (isFinite(A.avgExposure) && isFinite(B.avgExposure) && Math.abs(A.avgExposure - B.avgExposure) > 0.05) {
+    const hi = A.avgExposure > B.avgExposure ? A : B, lo = hi === A ? B : A;
+    s.push(`${hi.name} kept more of its money invested (${Math.round(hi.avgExposure * 100)}% on average vs ${Math.round(lo.avgExposure * 100)}%).`);
+  }
+  return s;
+}
+
+// ---------- head to head ----------
+/** Two-sided 95% t quantiles for 1..30 degrees of freedom (normal beyond). */
+const T95 = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 2.18, 2.16, 2.14, 2.13,
+  2.12, 2.11, 2.10, 2.09, 2.09, 2.08, 2.07, 2.07, 2.06, 2.06, 2.06, 2.05, 2.05, 2.05, 2.04];
+const t95 = (df: number) => (df < 1 ? NaN : df <= 30 ? T95[df - 1] : 1.96);
+
+/** The close an account first decided at (its first activity), or the
+ *  launch: from then on it was trading. */
+export function joined(a: Agent, d: RunData): string {
+  return a.activity[0]?.date || d.start;
+}
+
+export interface Pair {
+  a: Agent; b: Agent; from: string; days: number;
+  /** A's lead over B in percentage points of each account, over the same days. */
+  lead: number;
+  /** [date, A's return minus B's] since the common start. */
+  path: Point[];
+  /** Average daily gap, as a yearly figure, with its 95% range. */
+  edge: number; low: number; high: number;
+  /** "a" or "b" once the range excludes zero, else null. */
+  ahead: "a" | "b" | null;
+  /** Rough extra trading days needed to tell the gap from zero if it holds. */
+  daysNeeded: number | null;
+}
+
+/** A against B on exactly the same days (from when both were trading).
+ *  The daily difference of two accounts in the same markets moves far less
+ *  than either account, so a real gap shows much sooner than a lead over
+ *  the market does. */
+export function headToHead(a: Agent, b: Agent, d: RunData): Pair {
+  const from = [joined(a, d), joined(b, d)].sort()[1];
+  const ea = new Map(a.equity), eb = new Map(b.equity);
+  const dates = a.equity.map((p) => p[0]).filter((t) => t >= from && eb.has(t));
+  const diffs: number[] = [], path: Point[] = [];
+  let ga = 1, gb = 1;
+  for (let i = 0; i < dates.length; i++) {
+    if (i === 0) { path.push([dates[0], 0]); continue; }
+    const ra = ea.get(dates[i])! / ea.get(dates[i - 1])! - 1;
+    const rb = eb.get(dates[i])! / eb.get(dates[i - 1])! - 1;
+    diffs.push(ra - rb);
+    ga *= 1 + ra; gb *= 1 + rb;
+    path.push([dates[i], ga - gb]);
+  }
+  const n = diffs.length, m = mean(diffs), s = std(diffs);
+  const half = n > 1 ? t95(n - 1) * s / Math.sqrt(n) : NaN;
+  const edge = m * PERIODS, low = (m - half) * PERIODS, high = (m + half) * PERIODS;
+  const ahead = isFinite(low) && low > 0 ? "a" : isFinite(high) && high < 0 ? "b" : null;
+  const need = isFinite(s) && Math.abs(m) > 1e-9 ? Math.ceil((1.96 * s / Math.abs(m)) ** 2) - n : null;
+  return { a, b, from, days: n, lead: ga - gb, path, edge, low, high, ahead, daysNeeded: need != null && need > 0 ? need : null };
+}
+
+/** The race's built-in experiments: the same idea with one thing changed. */
+export const PAIRS: { a: string; b: string; question: string }[] = [
+  { a: "news_opus", b: "news", question: "Does a smarter model trade better?" },
+  { a: "learner_opus", b: "learner", question: "Does an AI reviewer help a learning model?" },
+  { a: "trend", b: "trend-fixed", question: "Does monthly learning pay? (Trend)" },
+  { a: "reversion", b: "reversion-fixed", question: "Does monthly learning pay? (Bargain Hunter)" },
+  { a: "volatility", b: "volatility-fixed", question: "Does monthly learning pay? (Volatility)" },
+];
+
+export function pairs(d: RunData): (Pair & { question: string })[] {
+  const by = new Map(d.agents.map((x) => [x.id, x]));
+  return PAIRS.filter((p) => by.has(p.a) && by.has(p.b))
+    .map((p) => ({ ...headToHead(by.get(p.a)!, by.get(p.b)!, d), question: p.question }));
+}
+
+// ---------- cost of intelligence ----------
+/** What each Claude-driven account spent on the model and earned since it
+ *  joined, in CHF. Cost is the account's own estimate from token counts. */
+export function aiCosts(d: RunData) {
+  const usd = d.fx?.USD?.length ? d.fx.USD[d.fx.USD.length - 1][1] : NaN;
+  return d.agents.filter((a) => a.ai && (a.ai as { est_cost_usd?: number }).est_cost_usd != null).map((a) => {
+    const ai = a.ai as { est_cost_usd?: number; calls?: number; model?: string };
+    const costChf = (ai.est_cost_usd || 0) * usd;
+    const profit = a.stats.final_equity_chf - d.initial_capital_chf;
+    return {
+      agent: a, model: ai.model || "", calls: ai.calls || 0, costUsd: ai.est_cost_usd || 0, costChf,
+      profit, perChf: costChf > 0 ? profit / costChf : NaN, perCall: ai.calls ? costChf / ai.calls : NaN,
+    };
+  });
+}
