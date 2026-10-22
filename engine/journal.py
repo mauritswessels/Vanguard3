@@ -43,6 +43,10 @@ def fills(portfolio, activity: list[dict]) -> list[dict]:
     """Every fill, oldest first, with the decision that led to it."""
     decisions = _decisions(activity)
     decided_dates = sorted({d["date"] for d in activity})
+    # Fills at the close of an order placed at midday, by the evening run.
+    at_close = {(d["date"], f["ticker"], f["side"]) for d in activity
+                if d.get("time", "close") == "close"
+                for f in d.get("fills", []) if f.get("at_close")}
     rows = []
     for i, t in enumerate(portfolio.trades):
         date = t.date.strftime("%Y-%m-%d")
@@ -56,8 +60,10 @@ def fills(portfolio, activity: list[dict]) -> list[dict]:
             "id": i,
             "date": date,
             "decided": decided,
-            # Orders fill at the next open; the midday check fills at once.
-            "session": "midday" if decided == date else "open",
+            # Orders fill at the next open; the midday check fills at once
+            # or, where its price was delayed, at that day's close.
+            "session": ("close" if (date, t.ticker, t.side) in at_close
+                        else "midday" if decided == date else "open"),
             "ticker": t.ticker, "side": t.side, "quantity": t.quantity,
             "price": t.exec_price, "market_price": t.market_price,
             "fx": t.fx_rate, "value_chf": t.gross_chf,
