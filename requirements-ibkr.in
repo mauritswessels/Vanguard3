@@ -1,0 +1,8 @@
+# The packages the IBKR bridge needs, on a Mac or the cloud server.
+# requirements-ibkr.txt pins the exact versions (and their file hashes)
+# that are installed; rebuild it from this file as the README says
+# ("Updating the pinned packages").
+ib_async>=2.1
+certifi
+# Draws the race chart sent to Telegram (telegram_chart.py).
+matplotlib

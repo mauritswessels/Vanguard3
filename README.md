@@ -5,12 +5,14 @@ End-of-day, multi-agent paper-trading simulator. Three rule-based agents
 against the same watchlist of 108 large markets (US, Swiss and euro-area shares plus index, sector, bond and commodity funds), all tradable at Interactive Brokers; a scoreboard ranks them against buy-and-hold SPY.
 
 On macOS the command is `python3` (there is no `python`). Install the
-packages once into a virtual environment, then run through it:
+packages once into a virtual environment, then run through it. Use Python
+3.12, as GitHub and the cloud server do (if `python3 --version` shows a
+newer one, install 3.12 and make the environment with `python3.12`):
 
 ```bash
 cd vanguard3
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install --require-hashes -r requirements.txt
 
 .venv/bin/python main.py                      # 1-year backtest (auto data)
 .venv/bin/python main.py --source synthetic --seed 7 --days 730
@@ -19,6 +21,33 @@ python3 -m venv .venv
 .venv/bin/python main.py --days 1825 --dashboard   # refresh dashboard backtest
 .venv/bin/python luck_study.py                # skill or luck: everyone against 300 monkeys
 ```
+
+### Pinned packages
+
+`requirements.txt` (the simulation) and `requirements-ibkr.txt` (the IBKR
+bridge and its Telegram chart) pin the exact version of every package,
+down to a fingerprint (hash) of each file. Every run on GitHub, on the
+cloud server and on your Mac installs exactly the files the tests passed
+with, and pip stops if a file does not match its fingerprint. A new
+release on PyPI, broken or tampered with, cannot reach a run by itself.
+The packages the code asks for, with the oldest versions it works with,
+are listed in `requirements.in` and `requirements-ibkr.in`.
+
+Once a month Dependabot (`.github/dependabot.yml`) opens one pull request
+with newer versions. The tests run on it, and nothing changes until you
+merge it; the IBKR bridge runs on `main` the next morning, so merge with
+care. To update by hand (with Python 3.12):
+
+```bash
+.venv/bin/pip install pip-tools
+.venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements.in
+.venv/bin/pip-compile --upgrade --generate-hashes --allow-unsafe --strip-extras requirements-ibkr.in
+.venv/bin/python -m pip install --require-hashes -r requirements.txt -r requirements-ibkr.txt
+.venv/bin/python -m unittest discover -s tests -t .
+```
+
+Never edit the two `.txt` files by hand. Packages both files need (such as
+numpy) must have the same version in both; a test checks that.
 
 ## Live paper trading and dashboard
 
@@ -105,7 +134,10 @@ reads free headlines (Google News RSS) on every market and on politics and
 the economy, plus each stock's latest quarterly results (Yahoo Finance), and
 asks Claude for target weights with a short stated reason per market. It
 needs an `ANTHROPIC_API_KEY` repository secret; without one it waits and
-the dashboard says so. It only decides for the newest session (news cannot
+the dashboard says so. A reply Claude did not finish is not traded either:
+cut off at its length limit, or declined by Claude's safety checks, the
+agent keeps its targets and the dashboard says why ("Claude's reply was cut
+off", "Claude declined: <category>"). It only decides for the newest session (news cannot
 be replayed honestly) and cannot be backtested, because the model already
 knows how past markets turned out. `python news.py` prints today's brief, and
 the manual "News check" workflow does the same on GitHub.
@@ -235,6 +267,26 @@ the dashboard ("The week in plain words", from `docs/data/weekly.json`) and
 arrives by email as a closed GitHub issue. Claude only describes the facts;
 it decides nothing.
 
+Everything Claude reads and answers is kept word for word in
+`state/briefs/` (`claude_archive.py`), so any decision can be checked, or
+graded again, long after the dashboard's 90 days: every News Analyst
+decision (evening and midday), every Opus Learner review and every weekly
+report. Each call keeps the exact request (the model and settings, the
+system prompt and the message with the full news brief) and Claude's reply,
+with the model that answered, the tokens used and why it stopped, or the
+error when there was no reply. The API key is never saved. There is one
+compressed file per day (UTC date), such as
+`state/briefs/2026-10-21.json.xz`, about 20 to 100 KB. To read one:
+
+```bash
+.venv/bin/python claude_archive.py                     # the newest day, in short
+.venv/bin/python claude_archive.py 2026-10-21 --full   # with every text in full
+```
+
+In Python, `claude_archive.load("2026-10-21")` gives that day's calls as a
+list. If saving ever fails, the reply is used all the same and the log says
+why: trading never waits for the archive.
+
 If a run fails, a scheduled run never starts, a news agent cannot decide,
 or an order does not go through (not enough cash, or its market did not
 open for a week), `health_check.py` notices and the workflow opens (or adds
@@ -353,6 +405,10 @@ and `avg_edge_` at both horizons, best average 5-day edge first) and
 | `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |
 | `telegram_chart.py` | Race chart and top three for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
+| `claude_api.py` | Every call to Claude: clear errors, one retry when busy, the check that a reply is finished |
+| `claude_archive.py`, `state/briefs/` | Every Claude call word for word, one file per day, and a reader |
+| `requirements.in`, `requirements-ibkr.in` | The packages the code asks for; `requirements.txt` and `requirements-ibkr.txt` pin them with hashes |
+| `.github/dependabot.yml` | A monthly pull request with newer package versions |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
 | `luck_study.py` | Skill or luck: every account against hundreds of monkeys and SPY |
@@ -426,7 +482,7 @@ Precautions tick "Bypass Order Precautions for API Orders".
 Then, in this folder:
 
     python3 -m venv .venv
-    .venv/bin/pip install -r requirements-ibkr.txt
+    .venv/bin/pip install --require-hashes -r requirements-ibkr.txt
     .venv/bin/python ibkr_bridge.py           # shows the plan only
     .venv/bin/python ibkr_bridge.py --send    # places the orders
 

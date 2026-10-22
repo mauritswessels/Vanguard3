@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 import claude_api
+import claude_archive
 import weekly_report as wr
 
 
@@ -78,8 +79,11 @@ class WeeklyReportTest(unittest.TestCase):
                     "--out", str(out), "--issue", str(issue)]
             with mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "k"}), \
                     mock.patch.object(claude_api.urllib.request, "urlopen", urlopen), \
+                    mock.patch.object(claude_archive, "FOLDER", tmp / "briefs"), \
                     mock.patch("sys.argv", argv):
                 wr.main()
+                (archived,) = [c for p in (tmp / "briefs").iterdir()
+                               for c in claude_archive.load(p.name[:10])]
             reports = json.loads(out.read_text())["reports"]
             body = issue.read_text()
         self.assertEqual([r["week_end"] for r in reports],
@@ -88,11 +92,41 @@ class WeeklyReportTest(unittest.TestCase):
         self.assertIn("A calm week.", body)
         self.assertIn("@Mits-Alt-F4", body)
         self.assertIn("Trend ended", seen["body"]["messages"][0]["content"])
+        # The call is archived word for word (the workflow commits it).
+        self.assertEqual(archived["purpose"], "Weekly report")
+        self.assertEqual(archived["request"], seen["body"])
+        self.assertEqual(archived["reply"]["text"], "A calm week.\n\nOne lesson.")
 
     def test_no_key_is_an_error(self):
         with mock.patch.dict("os.environ", {}, clear=True):
             with self.assertRaises(RuntimeError):
                 wr.ask_claude({}, "claude-sonnet-5-5")
+
+    def test_half_a_report_is_an_error_not_a_report(self):
+        sent = {}
+
+        def answer(reply):
+            def call_claude(body, key, **kwargs):
+                sent.update(body)
+                return reply
+            with mock.patch.object(wr, "call_claude", call_claude):
+                return wr.ask_claude({"agents": []}, "claude-sonnet-5-5",
+                                     api_key="k")
+
+        cut = {"stop_reason": "max_tokens", "content": [
+            {"type": "thinking", "thinking": ""},
+            {"type": "text", "text": "A calm week. The Trend Follower"}]}
+        with self.assertRaisesRegex(RuntimeError, "reply was cut off"):
+            answer(cut)
+        self.assertEqual(sent["max_tokens"], 4000)
+        with self.assertRaisesRegex(RuntimeError, "^Claude declined: "
+                                                  "general_harms$"):
+            answer({"stop_reason": "refusal", "content": [],
+                    "stop_details": {"category": "general_harms"}})
+        done = answer({"stop_reason": "end_turn", "model": "m", "content": [
+            {"type": "thinking", "thinking": ""},
+            {"type": "text", "text": " A calm week. "}]})
+        self.assertEqual(done["text"], "A calm week.")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -165,6 +166,25 @@ class OpusLearnerTest(unittest.TestCase):
         self.assertTrue(b.review["picks"])
         for p in b.review["picks"]:
             self.assertEqual(b.memory[p["ticker"]]["a"], HOLD)
+
+    def test_a_declined_or_cut_off_review_places_nothing(self):
+        import models.opus_learner_agent as ol
+        for reply, why in (
+                ({"stop_reason": "refusal", "content": [],
+                  "stop_details": {"category": "cyber"}},
+                 "No review today: Claude declined: cyber"),
+                ({"stop_reason": "max_tokens", "content": [
+                    {"type": "text", "text": '{"view": "fine", "decisions": {'}]},
+                 "No review today: Claude's reply was cut off (it reached "
+                 "its length limit)")):
+            def ask(brief, model, effort, reply=reply):
+                with mock.patch.object(ol, "call_claude",
+                                       lambda body, key, **kw: reply):
+                    return ol.ask_opus(brief, model, effort, api_key="k")
+
+            acc = self.sim(ask)
+            self.assertEqual(acc.broker.pending_to_list(), [])
+            self.assertEqual(acc.agent.status, why)
 
     def test_parse_review_defaults_to_not_approved(self):
         r = parse_review('Sure: {"view": "v", "decisions": {'
