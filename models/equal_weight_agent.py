@@ -24,6 +24,9 @@ shares allow: the number of shares is rounded to the nearest, as long as
 the cash lasts. A market whose single share costs more than about twice an
 equal share is left out (Givaudan, near 4,000 CHF a share, against about
 930 CHF). Dividends are paid into cash and stay there, as for Buy & Hold SPY.
+All buys are paid at the next open, so on top of the usual cash buffer it
+keeps a small ``cushion`` back (``EQUAL_WEIGHT_PARAMS``): when the markets
+open higher than they closed, the last orders can still be paid.
 
 Any market it does not hold yet (closed for a holiday on its first evening,
 or an order the cash could not cover) is bought on a later evening with an
@@ -49,18 +52,22 @@ class EqualWeightAgent(BaseAgent):
     benchmark = True
 
     def __init__(self, params: dict | None = None):
-        super().__init__(dict(params or {}))
+        super().__init__({**config.EQUAL_WEIGHT_PARAMS, **(params or {})})
         #: Shares to buy per market, worked out by ``calculate_signals``.
         self._plan: dict[str, int] = {}
 
     def compute_indicators(self, bars: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame({"close": bars["Close"]})
 
+    def kept(self) -> float:
+        """Share of the cash never planned for: the buffer and cushion."""
+        return config.CASH_BUFFER_PCT + self.params["cushion"]
+
     def equal_share(self, date: pd.Timestamp, portfolio: Portfolio) -> float:
         """CHF for the shares of one market: the account split evenly over
-        every watched market, less the cash buffer and the fee."""
+        every watched market, less the cash kept back and the fee."""
         equity = portfolio.equity(self.market.close_chf(date))
-        return (equity * (1.0 - config.CASH_BUFFER_PCT) / len(self.indicators)
+        return (equity * (1.0 - self.kept()) / len(self.indicators)
                 - portfolio.costs.commission_chf)
 
     def plan(self, date: pd.Timestamp, portfolio: Portfolio) -> dict[str, int]:
@@ -79,7 +86,7 @@ class EqualWeightAgent(BaseAgent):
             units[t] = costs.buy_price_chf(*self._quote(t, date))
         qty = {t: max(int(share // u), 0) for t, u in units.items()}
         spent = sum(q * units[t] + fee for t, q in qty.items() if q)
-        budget = portfolio.cash * (1.0 - config.CASH_BUFFER_PCT)
+        budget = portfolio.cash * (1.0 - self.kept())
         short = sorted(((share - qty[t] * u, t) for t, u in units.items()),
                        reverse=True)
         for gap, t in short:

@@ -179,10 +179,14 @@ shares too, all in CHF, so part of any gap to SPY is just "the US against
 Europe and Switzerland", not skill. A third yardstick, **Buy & Hold All
 Markets** (`models/equal_weight_agent.py`), takes that part out: on its
 first evening it splits the account into equal shares, one per watched
-market (about 930 CHF each), buys them at the next open with the usual
+market (about 920 CHF each), buys them at the next open with the usual
 costs, and never sells. Shares are whole, so each holding is as close to an
 equal share as whole shares allow; a market whose single share costs more
-than about twice an equal share (Givaudan) is left out. It is bought once,
+than about twice an equal share (Givaudan) is left out. All its buys are
+paid at one open, so it keeps an extra 1% of cash back (`cushion` in
+`EQUAL_WEIGHT_PARAMS`): when the markets open higher than they closed, the
+last orders are still paid in full. About 2% of the account stays in cash.
+It is bought once,
 not rebalanced every month: with a flat 2 CHF a fill, a monthly rebalance of
 some 100 markets would cost about 2.5% a year and turn the yardstick into a
 strategy of its own (selling winners, buying losers). It joined the live race
@@ -606,7 +610,8 @@ own computer can stay off.
    Telegram, then run `bash /opt/Vanguard3/server/telegram.sh` on the
    server and paste the bot's token. Telegram then also gets the race
    chart (`telegram_chart.py`: every account's return since launch, the
-   top three and the yardsticks) after each run, followed by why the top
+   top three by their lead over SPY over the same days, and the
+   yardsticks) after each run, followed by why the top
    three hold what they hold: how each one picks, its biggest holdings
    with the reason it bought them, and what it trades at the next open.
 

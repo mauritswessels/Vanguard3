@@ -196,6 +196,17 @@ MANAGER_PARAMS = {
     "band": 0.02,                # only trades a market this far off target
 }
 
+# Buy & Hold All Markets (models/equal_weight_agent.py): an equal share of
+# every watched market, bought once. It sends about 106 buys at once, all
+# paid at the next open: if the markets open higher than they closed, the
+# last ones would run out of cash. Over the last 4 years the whole basket
+# opened more than 1.2% higher on about 1 day in 40, and more than 2% higher
+# on about 1 in 170, so it keeps this much cash back on top of the usual
+# buffer (about 2% of the account ends up in cash, with the rounding).
+EQUAL_WEIGHT_PARAMS = {
+    "cushion": 0.01,
+}
+
 MONKEY_PARAMS = {
     "position_pct": 0.10,        # same slot size as the Trend Follower
     "max_positions": 10,

@@ -47,7 +47,9 @@ class EqualWeightTest(unittest.TestCase):
         cls.sim, cls.acc = run(cls.market, cls.days)
 
     def equal_share(self):
-        return config.INITIAL_CAPITAL_CHF * (1 - config.CASH_BUFFER_PCT) / len(WATCH)
+        kept = config.CASH_BUFFER_PCT + config.EQUAL_WEIGHT_PARAMS["cushion"]
+        return (config.INITIAL_CAPITAL_CHF * (1 - kept) / len(WATCH)
+                - config.COMMISSION_PER_TRADE_CHF)
 
     def test_buys_every_market_once_at_the_next_open(self):
         pf = self.acc.portfolio
@@ -67,10 +69,36 @@ class EqualWeightTest(unittest.TestCase):
             unit = float(close[t]) * 1.001
             self.assertLessEqual(abs(pos.quantity * unit - share),
                                  unit / 2 + 5, t)
-        # Rounding to the nearest share keeps nearly all of it invested.
+        # Rounding to the nearest share keeps nearly all of it invested:
+        # what is left is about the buffer and the cushion.
         self.assertGreaterEqual(self.acc.portfolio.cash, 0)
         self.assertLess(self.acc.portfolio.cash,
-                        0.02 * config.INITIAL_CAPITAL_CHF)
+                        0.03 * config.INITIAL_CAPITAL_CHF)
+
+    def test_every_buy_is_paid_when_the_markets_open_higher(self):
+        """All its buys fill at one open; the cushion pays for a higher one."""
+        first, fill = self.days[0], self.days[1]
+
+        def gap_up(bars):
+            if first not in bars.index or fill not in bars.index:
+                return bars
+            bars = bars.copy()
+            bars.loc[fill, "Open"] = bars.at[first, "Close"] * 1.012
+            return bars
+        market = synthetic(**{t: gap_up for t in WATCH})
+        for cushion, in_full in ((0.0, False), (None, True)):
+            agent = make_agent("equal_weight", None if cushion is None
+                               else {"cushion": cushion})
+            sim = Simulator(market, build_accounts(market, [agent]))
+            sim.run(self.days[:5])
+            acc = sim.accounts[0]
+            ordered = {o["ticker"]: o["quantity"]
+                       for o in acc.activity[0]["orders"]}
+            filled = {t.ticker: t.quantity for t in acc.portfolio.trades}
+            # Without the cushion the last order gets fewer shares.
+            self.assertEqual(filled == ordered, in_full, cushion)
+        self.assertEqual(acc.broker.rejected, [])
+        self.assertGreaterEqual(acc.portfolio.cash, 0)
 
     def test_pays_the_usual_costs(self):
         pf = self.acc.portfolio
