@@ -106,6 +106,12 @@ class BaseAgent(ABC):
     def compute_indicators(self, bars: pd.DataFrame) -> pd.DataFrame:
         """Return ``bars`` joined with this strategy's indicator columns."""
 
+    def trades_on(self, date: pd.Timestamp) -> bool:
+        """Whether the agent may place orders on ``date``. Only the AI
+        Learners say no, during their practice run; an account's join date
+        is the first session this is true (see ``Account.joined``)."""
+        return True
+
     # -- step 2 --------------------------------------------------------------
     @abstractmethod
     def calculate_signals(self, date: pd.Timestamp,

@@ -185,6 +185,11 @@ class LearnerAgent(BaseAgent):
                          "updates": self.updates}
 
     # -- daily step ----------------------------------------------------------
+    def trades_on(self, date: pd.Timestamp) -> bool:
+        """Practice mode (deciding and learning, no orders) ends on
+        ``live_from``."""
+        return date >= pd.Timestamp(self.params["live_from"])
+
     def calculate_signals(self, date: pd.Timestamp,
                           portfolio: Portfolio) -> list[Signal]:
         if self.w is None:
@@ -206,7 +211,7 @@ class LearnerAgent(BaseAgent):
             self.td_recent = (self.td_recent + [float(np.mean(tds))])[-20:]
 
         # 2. Decide for today.
-        live = date >= pd.Timestamp(self.params["live_from"])
+        live = self.trades_on(date)
         self.memory, self.last_decisions, signals = {}, {}, []
         for t in self.indicators:
             z = self._z(t, date)
