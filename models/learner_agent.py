@@ -28,6 +28,15 @@ day, and costs ate most of the account):
   did. Without this the "do I hold it" input taught the model to sell the
   day after almost every buy.
 
+A buy that does not become an order is recorded as a hold too. The model
+wants to buy about 19 markets an evening and the cap of ``max_positions``
+holdings leaves almost all of them out. Learned as bought, these many
+ordinary picks pulled its buy scores down, so its book more often had a
+free slot. Learned as holds, it stays fuller: in a 5-year replay that
+earned more on two seeds in three, but it trades more and falls further
+in a bad year (the README has the numbers). Sells always become orders.
+Random tries are still learned on paper.
+
 Explanations are exact for this model: each feature's share of a score is
 ``w_a,i * phi_i``. They describe how the model scores, not why markets move.
 """
@@ -245,14 +254,33 @@ class LearnerAgent(BaseAgent):
         buys = sorted((s for s in signals if s.action is Action.BUY),
                       key=lambda s: s.score, reverse=True)[:max(room, 0)]
         keep = [s for s in signals if s.action is Action.SELL] + buys
-        return super().execute_trade(keep, date, portfolio, broker)
+        orders = super().execute_trade(keep, date, portfolio, broker)
+        # Learn from what the account did: a buy that did not become an
+        # order (no room under the cap, too little cash, too small) is
+        # learned as a hold. Otherwise the model learns it as bought and the
+        # next evening starts from a holding the account does not have.
+        # Sells always become orders.
+        bought = {o.ticker for o in orders if o.side == "BUY"}
+        for s in signals:
+            if s.action is Action.BUY and s.ticker not in bought:
+                self.learn_as_held(s.ticker)
+        return orders
+
+    def learn_as_held(self, ticker: str) -> None:
+        """Record tonight's decision on ``ticker`` as a hold."""
+        m = self.memory[ticker]
+        m["a"], m["pos"] = HOLD, m["prev"]
+        self.shadow[ticker] = m["prev"]
+        self.last_decisions[ticker]["action"] = ACTIONS[HOLD]
 
     def decision_details(self, signal, date) -> dict:
         d = self.last_decisions.get(signal.ticker)
         m = self.memory.get(signal.ticker)
         if not d or not m or self.w is None:
             return {}
-        a = ACTIONS.index(d["action"])
+        # The factors behind the signal, even when it was learned as a hold
+        # because no order was placed.
+        a = ACTIONS.index(signal.action.value)
         parts = self._contributions(np.array(m["phi"]), a)[:3]
         return {"model_scores": dict(zip(ACTIONS, d["q"])),
                 "explored": d["explored"],

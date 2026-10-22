@@ -12,9 +12,9 @@ short brief on the model's picks and approves or turns down each one.
   down. The usual cap of ``max_positions`` holdings still applies.
 * The model learns from what the account did. A pick that is not placed
   is learned as a hold, as the AI Learner does with a sell its minimum
-  holding time blocks. Learning a turned-down buy as if bought left the
-  model reasoning from holdings the account did not have. Random tries are
-  still learned on paper.
+  holding time blocks and a buy the cap leaves out. Learning a turned-down
+  buy as if bought left the model reasoning from holdings the account did
+  not have. Random tries are still learned on paper.
 
 One Opus call per evening at most, and none when the model proposes
 nothing. Sessions replayed while catching up after a missed run are not
@@ -41,7 +41,7 @@ import config
 from claude_api import call_claude
 from engine.portfolio import Portfolio
 from models.base_agent import Action, Signal
-from models.learner_agent import ACTIONS, HOLD, LearnerAgent
+from models.learner_agent import LearnerAgent
 
 logger = logging.getLogger("vanguard3.opus_learner")
 
@@ -147,18 +147,13 @@ class OpusLearnerAgent(LearnerAgent):
         # so everything is learned as a hold. Random tries are never
         # proposed, so they are still learned on paper; that keeps the model
         # learning about buys and sells even when Opus approves nothing.
+        # An approved buy that the cap or the cash leaves out is learned as a
+        # hold in ``execute_trade``, as the AI Learner does.
         placed = {s.ticker for s in approved}
         for s in proposed:
             if s.ticker not in placed:
                 self.learn_as_held(s.ticker)
         return approved
-
-    def learn_as_held(self, ticker: str) -> None:
-        """Record tonight's decision on ``ticker`` as a hold."""
-        m = self.memory[ticker]
-        m["a"], m["pos"] = HOLD, m["prev"]
-        self.shadow[ticker] = m["prev"]
-        self.last_decisions[ticker]["action"] = ACTIONS[HOLD]
 
     def reviewed(self, proposed: list[Signal], date: pd.Timestamp,
                  portfolio: Portfolio) -> list[Signal]:

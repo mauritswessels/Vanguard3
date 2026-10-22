@@ -128,18 +128,24 @@ class OpusLearnerTest(unittest.TestCase):
                              "HOLD")
         self.assertEqual(acc.broker.pending_to_list(), [])
 
-    def test_approved_picks_are_learned_as_made(self):
+    def test_placed_picks_are_learned_as_made(self):
         agent = eager(self.market)
         agent.ask = verdicts(lambda i, t: i % 2 == 0)
         sim = Simulator(self.market, build_accounts(self.market, [agent]))
         sim.run(self.market.calendar[-1:])
         picks = agent.review["picks"]
+        placed = {o["ticker"] for o in sim.accounts[0].broker.pending_to_list()}
+        approved = {p["ticker"] for p in picks if p["approve"]}
         self.assertGreater(len(picks), 2)
+        self.assertTrue(placed)
+        # More are approved than fit under the cap; those count as holds too.
+        self.assertLess(len(placed), len(approved))
+        self.assertLessEqual(placed, approved)
         for p in picks:
             m = agent.memory[p["ticker"]]
             self.assertEqual(p["action"], "BUY")
             self.assertEqual((m["a"], m["pos"]),
-                             (BUY, 1) if p["approve"] else (HOLD, 0))
+                             (BUY, 1) if p["ticker"] in placed else (HOLD, 0))
             self.assertEqual(agent.shadow[p["ticker"]], m["pos"])
 
     def test_state_round_trips(self):
