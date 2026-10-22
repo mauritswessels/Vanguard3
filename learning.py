@@ -161,6 +161,8 @@ def paper_lineup(market) -> list:
     agents.append(make_agent("news_opus"))
     if config.BENCHMARK_TICKER in market.bars:
         agents.append(make_agent("benchmark"))
+    # An equal share of every watched market: the wider yardstick.
+    agents.append(make_agent("equal_weight"))
     # Backs the agents with the best recent results (goes after them).
     agents.append(make_agent("manager"))
     # Random picks: shows how far luck alone gets you.

@@ -6,7 +6,10 @@
 Draws every account's return since launch from the dashboard results
 (``docs/data/paper.json`` on GitHub) in the dashboard's colours: learning
 agents solid, their fixed twins dashed, the yardsticks grey and brown. The
-caption lists the top three and the two yardsticks. ``--why`` also writes a
+caption lists the top three and the yardsticks. The accounts joined on
+different days, so the top three are ranked by their lead over Buy & Hold
+SPY over the same days (``same_days`` in the results), not by their return
+since their own start. ``--why`` also writes a
 message saying, for each of the top three, how it picks, what it holds and
 why it bought it, and what it will trade at the next open, in plain words.
 ``ibkr_morning.sh`` sends all of it to Telegram when ``TELEGRAM_TOKEN`` is
@@ -29,7 +32,8 @@ COLORS = {"trend": "#5b93ff", "reversion": "#ffb547",
           "volatility": "#3fd0c9", "benchmark": "#8d9096",
           "learner": "#b6e36b", "news": "#ff7ac0", "news_opus": "#ff8f6b",
           "learner_opus": "#5fd6a0",
-          "monkey": "#c39a74", "manager": "#a98bff"}
+          "monkey": "#c39a74", "manager": "#a98bff",
+          "equal_weight": "#c9ccd1"}
 BG, PANEL, INK, MUTED, LINE = "#111213", "#17191c", "#e8e9eb", "#8d9096", "#2a2d31"
 
 
@@ -86,11 +90,34 @@ def day(d: str) -> str:
     return date.fromisoformat(d).strftime("%-d %b")
 
 
+def vs_spy(agent: dict) -> dict | None:
+    """The agent against Buy & Hold SPY over the days both were trading
+    (``None`` in results from before same-days figures, or before it
+    joined)."""
+    return (agent.get("same_days") or {}).get("benchmark")
+
+
 def ranked(payload: dict) -> list[dict]:
-    """The racing agents, best first (no fixed twins or yardsticks)."""
-    return sorted((a for a in payload["agents"] if not a.get("benchmark")
-                   and a["key"] != "monkey" and "(fixed)" not in a["name"]),
-                  key=lambda a: -a["stats"]["total_return"])
+    """The racing agents, best first (no fixed twins or yardsticks): by
+    their lead over SPY over the same days, those not trading yet last.
+    Older results without same-days figures rank by return since start."""
+    racers = [a for a in payload["agents"] if not a.get("benchmark")
+              and a["key"] != "monkey" and "(fixed)" not in a["name"]]
+    if not any(vs_spy(a) for a in racers):
+        return sorted(racers, key=lambda a: -a["stats"]["total_return"])
+    return sorted(racers, key=lambda a: (vs_spy(a) is None,
+                                         -(vs_spy(a) or {}).get("difference", 0)))
+
+
+def standing(agent: dict) -> str:
+    """Name, return, and the lead over SPY over the same days."""
+    text = f"{agent['name']} {agent['stats']['total_return']:+.2%}"
+    v = vs_spy(agent)
+    if v:
+        side = "ahead of" if v["difference"] >= 0 else "behind"
+        text += (f", {abs(v['difference']):.2%} {side} SPY since "
+                 f"{day(v['from'])}")
+    return text
 
 
 def why(payload: dict, top: int = 3) -> str:
@@ -99,7 +126,7 @@ def why(payload: dict, top: int = 3) -> str:
     lines = [f"Why the top {top} hold what they hold "
              f"(close of {day(payload['last'])})"]
     for i, a in enumerate(ranked(payload)[:top], 1):
-        lines += ["", f"{i}. {a['name']} {a['stats']['total_return']:+.2%}",
+        lines += ["", f"{i}. {standing(a)}",
                   STYLES.get(a["key"], a.get("style", ""))]
         value = a["stats"]["final_equity_chf"]
         bought = {}
@@ -136,10 +163,13 @@ def caption(payload: dict) -> str:
     lines = [f"The race, day {len(agents[0]['equity'])} "
              f"(close of {payload['last']})"]
     for i, a in enumerate(ranked(payload)[:3], 1):
-        lines.append(f"{i}. {a['name']} {a['stats']['total_return']:+.2%}")
+        lines.append(f"{i}. {standing(a)}")
     for a in agents:
         if a.get("benchmark") or a["key"] == "monkey":
-            lines.append(f"Yardstick {a['name']} {a['stats']['total_return']:+.2%}")
+            since = (f" since {day(a['joined'])}" if a.get("joined")
+                     and a["joined"] != payload.get("start") else "")
+            lines.append(f"Yardstick {a['name']} "
+                         f"{a['stats']['total_return']:+.2%}{since}")
     return "\n".join(lines)
 
 

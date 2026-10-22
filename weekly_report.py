@@ -37,8 +37,11 @@ reader is a student who is new to investing and coding, and his dad.
 
 Write in plain, friendly English with no jargon (if a term is needed,
 explain it in a few words). Use only the facts given: never invent numbers,
-trades or reasons. Compare each agent with "Buy & Hold SPY" (simply holding
-the S&P 500 fund) and the "Monkey" (random picks), which are the yardsticks.
+trades or reasons. Compare each agent with the yardsticks: "Buy & Hold SPY"
+(simply holding the S&P 500 fund), "Buy & Hold All Markets" (an equal share
+of every market the agents trade, US, Swiss and European) and the "Monkey"
+(random picks). Accounts joined on different days, so compare them with a
+yardstick over the same days ("same_days"), not on "since_start".
 One week is far too short to judge skill; say so once, briefly.
 
 Format: plain text, no markdown, no headings, no bullet points. 4 to 6 short
@@ -74,6 +77,12 @@ def week_facts(payload: dict, sessions: int = SESSIONS) -> dict:
             "style": a.get("style", ""),
             "week_return": round(week, 4) if week is not None else None,
             "since_start": round(a["stats"]["total_return"], 4),
+            "joined": a.get("joined"),
+            # Against each yardstick over the days both were trading.
+            "same_days": {v["name"]: {"from": v["from"],
+                                      "return": round(v["return"], 4),
+                                      "yardstick": round(v["yardstick_return"], 4)}
+                          for v in (a.get("same_days") or {}).values() if v},
             "trades_this_week": trades[-12:],
             "trade_count_this_week": len(trades),
             "cash_share": round(a["cash_chf"] / value, 3) if value else None,

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ActivityFeed, TripCard, VerdictBadge } from "../components/agent";
 import { PairCard } from "../components/HeadToHead";
+import { RealityCheck, useIbkr } from "../components/RealityCheck";
 import { ReportCardPanel } from "../components/ReportCard";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { useChartTheme } from "../components/charts/useChartTheme";
@@ -143,6 +144,8 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
 
       {a.report_card && <Section className="pt-0"><ReportCardPanel a={a} /></Section>}
 
+      <RealBroker agentId={a.id} />
+
       <Section className="pt-0"><TradeChart d={d} a={a} /></Section>
 
       <Section className="pt-0">
@@ -170,6 +173,21 @@ function Profile({ d, a, verdict }: { d: RunData; a: Agent; verdict?: SkillData[
         </div>
       </Section>
     </>
+  );
+}
+
+/** The agent the IBKR bridge copies gets its real paper account alongside. */
+function RealBroker({ agentId }: { agentId: string }) {
+  const s = useIbkr();
+  if (!s || s.agent !== agentId) return null;
+  return (
+    <Section className="pt-0">
+      <div className="mb-5">
+        <div className="eyebrow mb-2 text-gold">Simulation vs reality</div>
+        <h2 className="display text-[2rem]">Copied into a real broker every morning</h2>
+      </div>
+      <RealityCheck />
+    </Section>
   );
 }
 

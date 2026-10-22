@@ -49,6 +49,31 @@ class ChartTest(unittest.TestCase):
         self.assertEqual(lines[4:], ["Yardstick Buy & Hold SPY +0.50%",
                                      "Yardstick Monkey +2.00%"])
 
+    def test_ranks_on_the_lead_over_spy_over_the_same_days(self):
+        """A late joiner that skipped a fall must not lead just for that."""
+        data = payload()
+        lead = {"Trend Follower": ("2026-10-07", 0.004),
+                "Bargain Hunter": ("2026-10-07", 0.011),
+                "News Analyst": ("2026-10-08", 0.006)}
+        for a in data["agents"]:
+            a["joined"] = lead.get(a["name"], ("2026-10-07",))[0]
+            a["same_days"] = {"benchmark": None if a["name"] not in lead
+                              else {"from": lead[a["name"]][0],
+                                    "difference": lead[a["name"]][1]}}
+        data["agents"][-1]["joined"] = "2026-10-08"         # the Monkey
+        lines = chart.caption(data).splitlines()
+        self.assertEqual(lines[1:4], [
+            "1. Bargain Hunter +0.20%, 1.10% ahead of SPY since 7 Oct",
+            "2. News Analyst -0.50%, 0.60% ahead of SPY since 8 Oct",
+            "3. Trend Follower +1.00%, 0.40% ahead of SPY since 7 Oct"])
+        self.assertEqual(lines[4:], ["Yardstick Buy & Hold SPY +0.50%",
+                                     "Yardstick Monkey +2.00% since 8 Oct"])
+        self.assertIn("1. Bargain Hunter +0.20%, 1.10% ahead",
+                      chart.why(data))
+        # Not trading yet (no same-days figures): last.
+        self.assertEqual(chart.ranked(data)[-1]["name"], "AI Learner")
+        self.assertEqual(chart.COLORS["equal_weight"], "#c9ccd1")
+
     def test_labels_keep_apart(self):
         self.assertEqual(chart.spread([1.0, 5.0], 1.0), [1.0, 5.0])
         a, b, c = sorted(chart.spread([0.0, 0.1, 0.2], 1.0))

@@ -1,15 +1,20 @@
 """Skill or luck: is an agent's lead real, or what random picks get anyway?
 
 With a dozen accounts racing, one of them will lead by luck alone. This
-study puts a number on that for every account, against both yardsticks:
+study puts a number on that for every account, against three yardsticks:
 
 * the Monkey (random picks under the same rules and costs), run not once
   but with hundreds of different dice over the same days, which shows how
-  far luck alone gets you, and
-* buy-and-hold SPY.
+  far luck alone gets you,
+* buy-and-hold SPY, and
+* an equal share of every watched market, bought once and held
+  (``models/equal_weight_agent.py``). The agents trade Swiss and euro-area
+  markets too, so part of any gap to SPY is "the US against Europe", not
+  skill; this yardstick takes that part out.
 
 For each account it reports the share of monkeys it beat, its average lead
-a year over SPY and over the typical monkey with a 95% range, and a verdict:
+a year over SPY, over the equal mix and over the typical monkey with a 95%
+range, and a verdict:
 
 * "skill": the lead is too big for luck, even allowing for the number of
   agents racing (Holm's correction: the more agents race, the bigger a lead
@@ -30,9 +35,10 @@ Two parts:
   hours) and the AI Learner. The monkeys share the replay's flaw that the
   markets were picked because they are big today, so the race against them
   stays fair.
-* Live: every paper account in ``state/paper_state.json``, from its first
-  decision on, against monkeys that start with cash on the same day. The
-  news agents, the Opus Learner and the Team Manager exist only here.
+* Live: every paper account in ``state/paper_state.json``, from the first
+  session it could trade (its join date), against monkeys and an equal mix
+  that start with cash on the same day. The news agents, the Opus Learner
+  and the Team Manager exist only here.
 
 Usage::
 
@@ -61,7 +67,7 @@ import pandas as pd
 import config
 from daily_run import last_completed_session
 from data_manager import MarketData, load_market_data
-from engine.simulator import Simulator, build_accounts
+from engine.simulator import Simulator, build_accounts, joined_before_records
 from learning import GRIDS, LOOKBACK_YEARS
 from main import setup_logging
 from models import make_agent
@@ -73,8 +79,10 @@ logger = logging.getLogger("vanguard3.luck")
 DAYS_PER_YEAR = config.TRADING_DAYS_PER_YEAR
 VERDICTS = {"skill": "skill", "unclear": "can't tell yet",
             "luck": "looks like luck"}
-#: The two yardsticks: shown for reference, never judged.
-YARDSTICKS = ("benchmark", "monkey")
+#: The yardsticks: shown for reference, never judged.
+YARDSTICKS = ("benchmark", "equal_weight", "monkey")
+#: What each account is judged against: the monkeys, SPY, the equal mix.
+SIDES = ("monkey", "spy", "equal_weight")
 #: Strategies replayed with fixed settings and as learning versions.
 REPLAYED = ("trend", "reversion", "volatility")
 #: Dice of the study's monkeys (the live Monkey uses its own seed, 11).
@@ -181,17 +189,22 @@ def verdict(p_adjusted, high, sessions: int, s: dict) -> str:
 # Comparing accounts with the yardsticks
 # ---------------------------------------------------------------------------
 def compare(rets: pd.Series, spy: pd.Series, monkeys: pd.DataFrame,
-            s: dict, rng: np.random.Generator) -> dict | None:
-    """One account against SPY and the monkeys, on the days it has results.
+            s: dict, rng: np.random.Generator,
+            mix: pd.Series | None = None) -> dict | None:
+    """One account against SPY, the monkeys and the equal mix of every
+    market (``mix``, when there is one), on the days it has results.
 
     ``rets`` are the account's daily returns; ``monkeys`` has one column of
     daily returns per monkey. Against the monkeys the lead is measured
     from the typical monkey (their average day).
     """
     days = rets.index.intersection(spy.index).intersection(monkeys.index)
+    if mix is not None:
+        days = days.intersection(mix.index)
     if len(days) == 0:
         return None
     r, b, m = rets.loc[days], spy.loc[days], monkeys.loc[days]
+    e = mix.loc[days] if mix is not None else None
     total = float((1 + r).prod() - 1)
     crowd = (1 + m).prod().to_numpy() - 1
     beat, p = monkey_rank(total, crowd)
@@ -207,6 +220,10 @@ def compare(rets: pd.Series, spy: pd.Series, monkeys: pd.DataFrame,
                    "low": vs_monkey["low"], "high": vs_monkey["high"],
                    "sd_day": vs_monkey["sd_day"]},
         "spy": lead((r - b).to_numpy(), s, rng),
+        "equal_weight_return": (float((1 + e).prod() - 1)
+                                if e is not None else None),
+        "equal_weight": (lead((r - e).to_numpy(), s, rng)
+                         if e is not None else None),
     }
 
 
@@ -215,10 +232,12 @@ def judge(results: dict, s: dict, racing: list) -> int:
     to the ``racing`` entries of ``results`` (in place). Returns how many
     agents were tested together."""
     ids = [i for i in racing if results.get(i)]
-    for side in ("monkey", "spy"):
-        adjusted = holm([results[i][side]["p"] for i in ids])
+    for side in SIDES:
+        adjusted = holm([(results[i].get(side) or {}).get("p") for i in ids])
         for i, adj in zip(ids, adjusted):
-            res, part = results[i], results[i][side]
+            res, part = results[i], results[i].get(side)
+            if part is None:
+                continue
             part["p_adjusted"] = adj
             part["verdict"] = verdict(adj, part["high"], res["sessions"], s)
             need = (sessions_needed(part["sd_day"], s, len(ids))
@@ -351,14 +370,16 @@ def _race(market: MarketData, s: dict, end: pd.Timestamp,
         copies[i], names[i] = [curve.pct_change().iloc[1:]], agent.name
 
     spy = copies["benchmark"][0].loc[first:]
+    mix = copies["equal_weight"][0].loc[first:]
     results = {}
     for i, series in copies.items():
-        runs = sorted((compare(r.loc[first:], spy, monkeys, s, rng)
+        runs = sorted((compare(r.loc[first:], spy, monkeys, s, rng, mix)
                        for r in series), key=lambda r: r["return"])
         results[i] = runs[len(runs) // 2]
         if len(runs) > 1:
             results[i]["returns_by_start_day"] = [r["return"] for r in runs]
     results["benchmark"]["spy"] = None
+    results["equal_weight"]["equal_weight"] = None
     crowd = (1 + monkeys).prod() - 1
     return {"from": cal[cal < first][-1].strftime("%Y-%m-%d"),
             "last": end.strftime("%Y-%m-%d"),
@@ -446,13 +467,26 @@ def account_id(account: dict) -> str:
                                else "")
 
 
-def live(state: dict, market: MarketData, s: dict) -> dict:
-    """Every paper account from its first decision on.
+def joined(account: dict) -> pd.Timestamp | None:
+    """First session a saved account could trade (see ``Account.joined``).
 
-    Days before an account's first decision are left out: it was waiting
-    in cash, or not in the race yet (an account added later is filled in
-    with its starting cash). Each start date gets its own monkeys, so every
-    account meets monkeys that start with cash on the same day.
+    The days before are left out: it was not in the race yet (an account
+    added later is filled in with its starting cash), or it was practising
+    without orders. Waiting in cash after joining counts: that is a choice.
+    """
+    if "joined" in account:
+        return pd.Timestamp(account["joined"]) if account["joined"] else None
+    agent = make_agent(account["agent"], account["params"],
+                       name=account.get("name"))
+    return joined_before_records(account, agent)
+
+
+def live(state: dict, market: MarketData, s: dict) -> dict:
+    """Every paper account from the session it joined on.
+
+    Each join date gets its own monkeys and its own equal mix of every
+    market, so every account meets yardsticks that start with cash on the
+    same day. SPY is the live Buy & Hold SPY account over the same days.
     """
     rng = np.random.default_rng(s["seed"] + 1)
     last = pd.Timestamp(state["last_date"])
@@ -461,18 +495,18 @@ def live(state: dict, market: MarketData, s: dict) -> dict:
     for a in state["accounts"]:
         equity = pd.Series({pd.Timestamp(d): float(v) for d, v in
                             a["portfolio"]["equity"].items()}).sort_index()
-        decided = sorted(x["date"] for x in a.get("activity", []))
-        since = pd.Timestamp(decided[0]) if decided else None
-        accounts[account_id(a)] = (a, equity, since)
+        accounts[account_id(a)] = (a, equity, joined(a))
     if "benchmark" not in accounts:
         raise ValueError("The paper state has no Buy & Hold SPY account")
     spy = accounts["benchmark"][1].pct_change().iloc[1:]
 
-    crowds = {}
+    crowds, mixes = {}, {}
     for since in sorted({v[2] for v in accounts.values() if v[2] is not None}):
         days = cal[cal >= since]
         if len(days) >= 2:
-            crowds[since] = run_monkeys(market, days, s["monkeys"])[0]
+            crowds[since], (curve,) = run_monkeys(
+                market, days, s["monkeys"], [make_agent("equal_weight")])
+            mixes[since] = curve.pct_change().iloc[1:]
 
     results, names = {}, {}
     for i, (a, equity, since) in accounts.items():
@@ -480,12 +514,14 @@ def live(state: dict, market: MarketData, s: dict) -> dict:
         res = None
         if since in crowds:
             res = compare(equity.loc[since:].pct_change().iloc[1:], spy,
-                          crowds[since], s, rng)
+                          crowds[since], s, rng, mixes[since])
         if res:
             res["since"] = since.strftime("%Y-%m-%d")
         results[i] = res
     if results["benchmark"]:
         results["benchmark"]["spy"] = None
+    if results.get("equal_weight"):
+        results["equal_weight"]["equal_weight"] = None
     racing = [i for i, v in accounts.items() if v[0]["agent"] not in YARDSTICKS]
     tests = judge(results, s, racing)
     first = min(v[1].index[0] for v in accounts.values())
@@ -580,6 +616,11 @@ def summary(row: dict, history: dict | None, live_part: dict | None,
         text += (f" Against SPY: {_signed(b['per_year'], 1)} a year (95% "
                  f"range {_signed(b['low'])} to {_signed(b['high'])}): "
                  f"{VERDICTS[b['verdict']]}.")
+        e = h.get("equal_weight")
+        if e:
+            text += (f" Against an equal share of every market: "
+                     f"{_signed(e['per_year'], 1)} a year: "
+                     f"{VERDICTS[e['verdict']]}.")
         spread = h.get("returns_by_start_day")
         if spread:
             text += (f" Started on {len(spread)} different days, it ended "
@@ -608,6 +649,11 @@ def summary(row: dict, history: dict | None, live_part: dict | None,
                 f"{VERDICTS[m['verdict']]}. Against SPY: "
                 f"{_signed(b['per_year'], 1)} a year: "
                 f"{VERDICTS[b['verdict']]}.")
+        e = lv.get("equal_weight")
+        if e:
+            text += (f" Against an equal share of every market: "
+                     f"{_signed(e['per_year'], 1)} a year: "
+                     f"{VERDICTS[e['verdict']]}.")
     if m["verdict"] == "unclear" and m.get("weeks_more") is not None:
         text += (f" Spotting an edge of {edge} a year over random picks "
                  f"would take {_weeks(m['weeks_more'])} of results.")
@@ -621,10 +667,12 @@ def method(s: dict) -> str:
     """Short plain-language account of the method, for skill.json."""
     return (
         f"Every account is compared with {s['monkeys']} monkeys (random "
-        f"picks under the same rules and costs, each with its own dice) and "
-        f"with buy-and-hold SPY, over exactly the same days: on the last "
-        f"{s['years']} years of prices for the agents that can be replayed, "
-        f"and live from each account's first decision. A lead counts as "
+        f"picks under the same rules and costs, each with its own dice), "
+        f"with buy-and-hold SPY and with an equal share of every watched "
+        f"market bought once and held, over exactly the same days: on the "
+        f"last {s['years']} years of prices for the agents that can be "
+        f"replayed, and live from the first session each account could "
+        f"trade. A lead counts as "
         f"skill only when luck explains it less than 1 time in "
         f"{1 / s['alpha']:.0f} after allowing for the number of agents "
         f"racing (Holm's correction). It looks like luck when the results "
@@ -654,7 +702,7 @@ def export_part(res: dict | None, start: str,
     needed only make sense live, and only while it can't tell yet."""
     if res is None:
         return None
-    m, b = res["monkey"], res["spy"] or {}
+    m, b, e = res["monkey"], res["spy"] or {}, res.get("equal_weight") or {}
     live_weeks = lambda part: (part.get("weeks_more") if is_live
                                and part.get("verdict") == "unclear" else None)
     return {
@@ -680,6 +728,14 @@ def export_part(res: dict | None, start: str,
         "returns_by_start_day": res.get("returns_by_start_day"),
         "window": res.get("window", "live" if is_live else "recent"),
         "in_sample": bool(res.get("in_sample", False)),
+        "equal_weight_return": res.get("equal_weight_return"),
+        "verdict_vs_equal_weight": _label(e.get("verdict")),
+        "excess_vs_equal_weight": e.get("per_year"),
+        "excess_vs_equal_weight_low": e.get("low"),
+        "excess_vs_equal_weight_high": e.get("high"),
+        "p_vs_equal_weight": e.get("p"),
+        "p_vs_equal_weight_adjusted": e.get("p_adjusted"),
+        "weeks_needed_vs_equal_weight": live_weeks(e),
     }
 
 

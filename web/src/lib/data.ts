@@ -32,6 +32,22 @@ export function loadJSON<T>(name: string, fresh = false): Promise<T | null> {
   return memo.get(name) as Promise<T | null>;
 }
 
+/** A JSON file from another site (GitHub serves raw files to any page).
+ *  Missing or unreachable resolves to null. */
+export function useRemoteJSON<T>(url: string): T | null | undefined {
+  const [v, setV] = useState<T | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    if (!memo.has(url)) memo.set(url, fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+    (memo.get(url) as Promise<T | null>).then((j) => { if (live) setV(j); });
+    return () => { live = false; };
+  }, [url]);
+  return v;
+}
+
+/** Where the cloud server publishes the IBKR paper account's summary (README, "Simulation vs reality"). */
+export const IBKR_URL = "https://raw.githubusercontent.com/mauritswessels/vanguard3-ibkr-data/ibkr-data/ibkr.json";
+
 /** A data file for one page; undefined while loading (or while name is
  *  null, for a file only loaded on request), null when missing. */
 export function useJSON<T>(name: string | null): T | null | undefined {

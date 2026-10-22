@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { LineChart, type Line } from "../components/charts/LineChart";
 import { AiCostTable, PairCard } from "../components/HeadToHead";
+import { RealityCheck } from "../components/RealityCheck";
 import { ReportCardTable } from "../components/ReportCard";
 import { useChartTheme } from "../components/charts/useChartTheme";
 import { Delta, Empty, Section, Segmented, Swatch, cx } from "../components/ui";
@@ -17,7 +18,7 @@ import {
 } from "../lib/metrics";
 import type { RunData } from "../lib/types";
 
-type Tab = "performance" | "pairs" | "cards" | "risk" | "compare";
+type Tab = "performance" | "pairs" | "cards" | "real" | "risk" | "compare";
 
 export default function Analytics() {
   const d = useLive();
@@ -40,12 +41,22 @@ export default function Analytics() {
       </Section>
       <Section className="pt-0">
         <div className="glass sticky top-16 z-30 mb-8 flex flex-wrap items-center justify-between gap-2 rounded-2xl p-2">
-          <Segmented label="View" value={tab} options={[["performance", "Performance"], ["pairs", "Head to head"], ["cards", "Report cards"], ["risk", "Risk"], ["compare", "Compare two"]]} onChange={setTab} />
-          {tab === "pairs" || tab === "cards" ? <span className="px-3 text-[12.5px] text-muted">{tab === "pairs" ? "Each pair on the days both were trading" : "Every trade, graded against SPY"}</span>
+          <Segmented label="View" value={tab} options={[["performance", "Performance"], ["pairs", "Head to head"], ["cards", "Report cards"], ["real", "Real broker"], ["risk", "Risk"], ["compare", "Compare two"]]} onChange={setTab} />
+          {tab === "pairs" || tab === "cards" || tab === "real" ? <span className="px-3 text-[12.5px] text-muted">{tab === "pairs" ? "Each pair on the days both were trading" : tab === "cards" ? "Every trade, graded against SPY" : "Updated every weekday morning"}</span>
             : <Segmented label="Time range" value={kind} options={RANGES} onChange={setKind} />}
         </div>
         {tab === "performance" && <Performance d={d} r={r} />}
         {tab === "pairs" && <HeadToHead d={d} />}
+        {tab === "real" && (
+          <div className="grid gap-5">
+            <p className="max-w-3xl text-[14.5px] text-ink-2">
+              Every weekday morning a bridge copies the Team Manager into a real Interactive Brokers paper account. The simulation fills every order
+              at the open with fixed costs; a real broker refuses some, fills others late or only in part, and holds European versions of US funds.
+              The gap between the two lines is what a real broker changes.
+            </p>
+            <RealityCheck />
+          </div>
+        )}
         {tab === "cards" && (
           <div className="grid gap-5">
             <p className="max-w-3xl text-[14.5px] text-ink-2">

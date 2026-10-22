@@ -15,7 +15,13 @@ import ibkr_schedule as schedule
 ROOT = Path(__file__).resolve().parent.parent
 
 FAKE_PYTHON = """#!/bin/bash
-# Stands in for ".venv/bin/python ibkr_bridge.py --send" (and the chart).
+# Stands in for ".venv/bin/python ibkr_bridge.py --send" (and the chart,
+# and the summary for the website).
+if [ "$1" = ibkr_summary.py ]; then
+    echo "summary" >> "$PUBLISHED"
+    echo "${FAKE_SUMMARY:-Summary for the website saved.}"
+    exit "${FAKE_SUMMARY_CODE:-0}"
+fi
 if [ "$1" = telegram_chart.py ]; then
     echo png > "$2"
     [ "$3" = --why ] && echo "Why the top 3 hold what they hold" > "$4"
@@ -35,6 +41,17 @@ else
 Is TWS open and logged in to Paper Trading?}"
 fi
 exit "$code"
+"""
+
+FAKE_PUBLISH = """#!/bin/bash
+echo "publish $*" >> "$PUBLISHED"
+if [ "${FAKE_PUBLISH_CODE:-0}" = 0 ]; then
+    echo "Published: https://raw.githubusercontent.com/me/data/ibkr-data/ibkr.json"
+    exit 0
+fi
+echo "git@github.com: Permission denied (publickey)." >&2
+echo "GitHub did not take the summary (Permission denied)" >&2
+exit 1
 """
 
 FAKE_OSASCRIPT = """#!/bin/bash
@@ -97,13 +114,15 @@ class JobTest(unittest.TestCase):
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
 class MorningScriptTest(unittest.TestCase):
     def run_script(self, codes, settings=None, failure=None, docker=False,
-                   **env_extra):
+                   publish=False, **env_extra):
         """Run ibkr_morning.sh with fake tools; the bridge exits with
         ``codes`` on its attempts. ``settings`` is the text of
         ibkr_morning.env, if any. Returns (notification, calls, log); the
         ntfy request, if one was sent, is in ``self.curled``. ``failure``
         replaces the bridge's error text; with ``docker`` the IB Gateway
-        container exists and its commands land in ``self.docker``."""
+        container exists and its commands land in ``self.docker``; with
+        ``publish`` server/publish.sh exists, and the summary and publish
+        steps land in ``self.published``."""
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         repo, tools = tmp / "Vanguard3", tmp / "bin"
         (repo / ".venv" / "bin").mkdir(parents=True)
@@ -119,12 +138,16 @@ class MorningScriptTest(unittest.TestCase):
                  tools / "curl": FAKE_CURL}
         if docker:
             fakes[tools / "docker"] = FAKE_DOCKER
+        if publish:
+            (repo / "server").mkdir()
+            fakes[repo / "server" / "publish.sh"] = FAKE_PUBLISH
         for path, text in fakes.items():
             path.write_text(text)
             path.chmod(0o755)
         env = {**os.environ, "PATH": f"{tools}:/usr/bin:/bin",
                "CALLS": str(tmp / "calls"), "NOTIFIED": str(tmp / "notified"),
                "CURLED": str(tmp / "curled"), "DOCKER": str(tmp / "docker"),
+               "PUBLISHED": str(tmp / "published"),
                "FAKE_CODES": ",".join(map(str, codes))}
         if failure:
             env["FAKE_FAILURE"] = failure
@@ -139,6 +162,9 @@ class MorningScriptTest(unittest.TestCase):
         self.docker = dock.read_text().splitlines() if dock.exists() else []
         every = tmp / "curled.all"
         self.all_curled = every.read_text() if every.exists() else ""
+        published = tmp / "published"
+        self.published = (published.read_text().splitlines()
+                          if published.exists() else [])
         return ((tmp / "notified").read_text(),
                 (tmp / "calls").read_text().splitlines(),
                 (repo / "ibkr_logs" / "morning.log").read_text())
@@ -230,6 +256,47 @@ class MorningScriptTest(unittest.TestCase):
         self.assertIn("Priority: high", self.curled)
         self.assertIn("Morning run failed: Is TWS open and logged in to "
                       "Paper Trading?", self.curled)
+
+    PUBLISH = ("PUBLISH_REPO=git@github.com:me/data.git\n"
+               "HEALTHCHECK_URL=https://hc-ping.com/abc\n")
+
+    def test_publishes_the_summary_after_the_orders(self):
+        note, calls, log = self.run_script([0], self.PUBLISH, publish=True)
+        self.assertEqual(self.published,
+                         ["summary", "publish ibkr_logs/public/ibkr.json"])
+        self.assertEqual(note, "Done: 2 of 3 orders placed; "
+                               "not accepted: EWZ.")
+        self.assertEqual(calls, ["ibkr_bridge.py --send"])
+        self.assertIn("Published: https://raw.githubusercontent.com", log)
+        self.assertLess(log.index("Done:"), log.index("Summary for"))
+
+    def test_a_publishing_problem_only_adds_a_line(self):
+        for fail, why in (
+                ({"FAKE_PUBLISH_CODE": "1"},
+                 "GitHub did not take the summary (Permission denied)"),
+                ({"FAKE_SUMMARY_CODE": "1",
+                  "FAKE_SUMMARY": "The results are now of 2026-10-13."},
+                 "The results are now of 2026-10-13.")):
+            with self.subTest(why=why):
+                # The run still counts as a success (exit code 0).
+                note, calls, _ = self.run_script([0], self.PUBLISH,
+                                                 publish=True, **fail)
+                self.assertEqual(note, "Done: 2 of 3 orders placed; not "
+                                       "accepted: EWZ.\nCould not publish "
+                                       "the account summary for the "
+                                       f"website: {why}")
+                self.assertEqual(calls, ["ibkr_bridge.py --send"])
+                self.assertIn("https://hc-ping.com/abc\n", self.all_curled)
+                self.assertNotIn("https://hc-ping.com/abc/fail",
+                                 self.all_curled)
+
+    def test_publishes_nothing_after_a_failed_run(self):
+        self.run_script([1, 1, 1], self.PUBLISH, publish=True)
+        self.assertEqual(self.published, [])
+
+    def test_publishes_nothing_unless_set_up(self):
+        self.run_script([0], publish=True)
+        self.assertEqual(self.published, [])
 
     def test_telegram(self):
         self.run_script([0], "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n")

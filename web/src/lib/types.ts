@@ -386,3 +386,35 @@ export interface SkillData {
     live: SkillPart | null;
   }[];
 }
+
+/* The IBKR paper account next to the simulated agent it copies
+ * (ibkr_summary.py, published by the cloud server to its own repository). */
+export interface IbkrRow {
+  date: string; results_of: string; same_close: boolean;
+  value: number; value_chf: number; cash_chf: number; invested: number; positions: number;
+  sim_value_chf: number; sim_invested: number; sim_positions: number;
+  return: number | null; sim_return: number | null; difference: number | null;
+  return_total: number | null; sim_return_total: number | null; difference_total: number | null;
+  holdings_gap: number | null;
+  planned: number; sent: number; refused: number; kept_in_cash: number;
+  filled: number | null; partly_filled: number | null; not_filled: number | null;
+}
+
+export interface IbkrSummary {
+  schema: number; generated_utc: string; about: string;
+  agent: string; agent_name: string; account_currency: string; since: string;
+  latest: {
+    date: string; results_of: string; same_close: boolean;
+    real: { value: number; currency: string; value_chf: number; cash: number; cash_chf: number; invested: number; positions: number; watchlist_positions: number };
+    sim: { value_chf: number; cash_chf: number; invested: number; positions: number };
+    tracking: { since: string; holdings_gap: number | null; tracking_error_yearly: number | null; [k: string]: unknown };
+    weights: { ticker: string; holds_as: string | null; sim: number; real: number; difference: number }[];
+    orders: {
+      planned: number; sent: number; refused: number;
+      orders: { ticker: string; holds_as: string | null; side: "BUY" | "SELL"; quantity: number; value: number; outcome: string; note?: string }[];
+      kept_in_cash: { ticker: string; holds_as: string | null; reason: string }[];
+    };
+    previous_orders: { date: string; sent: number; filled: number; partly_filled: number; not_filled: number } | null;
+  };
+  history: IbkrRow[];
+}

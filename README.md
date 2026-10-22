@@ -2,7 +2,7 @@
 
 End-of-day, multi-agent paper-trading simulator. Three rule-based agents
 (pure pandas/NumPy, no LLM calls) each trade their own 100,000 CHF account
-against the same watchlist of 108 large markets (US, Swiss and euro-area shares plus index, sector, bond and commodity funds), all tradable at Interactive Brokers; a scoreboard ranks them against buy-and-hold SPY.
+against the same watchlist of 108 large markets (US, Swiss and euro-area shares plus index, sector, bond and commodity funds), all tradable at Interactive Brokers; a scoreboard ranks them against two buy-and-hold yardsticks: SPY, and an equal share of every watched market.
 
 On macOS the command is `python3` (there is no `python`). Install the
 packages once into a virtual environment, then run through it. Use Python
@@ -170,24 +170,47 @@ touched. Like everything else it is a simulation: no broker is contacted.
 
 A second yardstick, the **Monkey** (`models/monkey_agent.py`), picks markets
 at random under the same rules as the agents (10 positions of 10%, same
-costs; each evening a holding has a 1 in 20 chance of being sold). With
-nine accounts racing, one will lead by luck alone; an agent shows skill only
+costs; each evening a holding has a 1 in 20 chance of being sold). With a
+dozen accounts racing, one will lead by luck alone; an agent shows skill only
 if it keeps beating the Monkey over many weeks.
+
+SPY alone is a narrow yardstick: the agents trade Swiss and euro-area
+shares too, all in CHF, so part of any gap to SPY is just "the US against
+Europe and Switzerland", not skill. A third yardstick, **Buy & Hold All
+Markets** (`models/equal_weight_agent.py`), takes that part out: on its
+first evening it splits the account into equal shares, one per watched
+market (about 920 CHF each), buys them at the next open with the usual
+costs, and never sells. Shares are whole, so each holding is as close to an
+equal share as whole shares allow; a market whose single share costs more
+than about twice an equal share (Givaudan) is left out. All its buys are
+paid at one open, so it keeps an extra 1% of cash back (`cushion` in
+`EQUAL_WEIGHT_PARAMS`): when the markets open higher than they closed, the
+last orders are still paid in full. About 2% of the account stays in cash.
+It is bought once,
+not rebalanced every month: with a flat 2 CHF a fill, a monthly rebalance of
+some 100 markets would cost about 2.5% a year and turn the yardstick into a
+strategy of its own (selling winners, buying losers). It joined the live race
+on the first evening run after it was added, so it started later than the
+others; the same-days comparisons below take care of that.
 
 How many weeks? `luck_study.py` puts a number on it. It runs 300 monkeys,
 each with its own dice, over the same days as each account: on five years
 of past prices for every agent that can be replayed honestly, and live for
-every paper account from its first decision on. The learning versions
-(re-tuned each year as in the walk-forward study, so their settings are
-picked blind) are replayed over the last five years. The three fixed
+every paper account from the session it joined (waiting in cash after
+that counts: it is a choice). The learning versions (re-tuned each year
+as in the walk-forward study, so their settings are picked blind) are
+replayed over the last five years. The three fixed
 settings and the AI Learner's rules were picked by looking at prices from
 8 October 2018 on (`tuned_since`), and judging them on those same years
 would flatter them, so they are replayed over the five years before that,
 against their own monkeys. If the prices do not reach back that far, they
 are replayed over the last five years, marked as in-sample, and that result
-never decides their verdict. For each account it gives the share of
-monkeys it beat, its average lead a year over SPY with a 95% range (its own
-days reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
+never decides their verdict. Buy & Hold All Markets races along: in each
+replay it starts with the monkeys, and live each join date gets its own
+copy, started with cash on that day like the monkeys. For each account it
+gives the share of monkeys it beat, its average lead a year over SPY and
+over the equal mix of every market with a 95% range (its own days
+reshuffled in runs of 20, a block bootstrap), and a verdict: **skill**
 when the lead is too big for luck even allowing for the number of agents
 racing (Holm's correction), **looks like luck** when the results rule out
 an edge of 10% a year, and **can't tell yet** otherwise, with how many more
@@ -214,12 +237,12 @@ return over those years, for a histogram), `past_before_tuning` (the same
 for the five years before `tuned_since`, plus `tuned_since`; `null` when
 the prices do not reach back that far), `live` (`from`, `to`, `monkeys`,
 `agents_tested`; `null` before paper trading starts), and `accounts`, one
-entry per account (racing accounts first, the two yardsticks last):
+entry per account (racing accounts first, the three yardsticks last):
 
 | Field | Meaning |
 | --- | --- |
 | `id`, `key`, `name` | As in `paper.json`: `trend-fixed`, `trend`, "Trend Follower (fixed)" |
-| `fixed_twin`, `yardstick` | A fixed twin; Buy & Hold SPY or the Monkey (never judged) |
+| `fixed_twin`, `yardstick` | A fixed twin; Buy & Hold SPY, Buy & Hold All Markets or the Monkey (never judged) |
 | `verdict` | "skill", "can't tell yet" or "looks like luck" against the monkeys: live once there are `min_days` live sessions, otherwise from the past prices (never from an in-sample past) |
 | `verdict_from` | "live", "past prices", or `null` (no results yet, or a yardstick) |
 | `summary` | A few plain sentences: one on the past prices, one on the live results |
@@ -229,7 +252,7 @@ Fields of `past` and `live`:
 
 | Field | Meaning |
 | --- | --- |
-| `from`, `to`, `days` | Counted from this close (live: the account's first decision) to `to`; `days` sessions with a result |
+| `from`, `to`, `days` | Counted from this close (live: the session the account joined) to `to`; `days` sessions with a result |
 | `return`, `spy_return`, `monkey_median_return` | Over those days: the account, buy-and-hold SPY, the middle monkey |
 | `percentile_vs_monkeys` | Share of the monkeys it beat (0 to 1) |
 | `verdict`, `verdict_vs_spy` | The verdict against the monkeys, and against SPY |
@@ -240,6 +263,9 @@ Fields of `past` and `live`:
 | `returns_by_start_day` | Past only, replayed agents: the return of each start-day copy, lowest first (the fields above describe the middle one) |
 | `window` | "recent" (the last years, as in `past`), "before_tuning" (as in `past_before_tuning`) or "live" |
 | `in_sample` | True when the settings were picked by looking at these same years: the result flatters the agent and does not count for its verdict |
+| `equal_weight_return`, `verdict_vs_equal_weight` | Buy & Hold All Markets over the same days, and the verdict against it |
+| `excess_vs_equal_weight`, `excess_vs_equal_weight_low`, `excess_vs_equal_weight_high` | Average lead a year over it, with its 95% range |
+| `p_vs_equal_weight`, `p_vs_equal_weight_adjusted`, `weeks_needed_vs_equal_weight` | As for SPY above |
 
 The **Team Manager** (`models/manager_agent.py`) picks agents, not
 markets: it owns its share of what the agents it backs own. Until there are
@@ -365,6 +391,36 @@ fresh build of `web/`.
 To start over, delete `state/paper_state.json` and change
 `PAPER_START_DATE` in `config.py`.
 
+### Comparing over the same days
+
+The accounts joined on different days: the rule-based agents, Buy & Hold
+SPY and the News Analyst on 7 Oct 2026, the Team Manager and the Monkey on
+12 Oct, the AI Learner on 13 Oct (when its practice run ended), the News
+Analyst (Opus) on 14 Oct and the Opus Learner on 15 Oct. Buy & Hold SPY lost
+about 3% between 12 and 16 Oct, so a late joiner skipped part of that fall,
+and its return since its own start flatters it next to "SPY since launch". Each
+account in `docs/data/paper.json` (and `backtest.json`) therefore also says
+when it joined and how it did against each yardstick over exactly the days
+both were trading. The older fields are unchanged.
+
+| Field | Meaning |
+| --- | --- |
+| `joined` | First session the account could trade (`YYYY-MM-DD`), or `null` before that. The days before are filled in with its starting cash and are not its own |
+| `same_days.benchmark`, `same_days.equal_weight` | The account against Buy & Hold SPY and against Buy & Hold All Markets; `null` for the yardstick itself, or while either has not joined |
+| ... `name` | The yardstick's name |
+| ... `from`, `to`, `days` | Counted from the close of `from` (the later of the two join dates) to the close of `to`: `days` sessions |
+| ... `return`, `yardstick_return` | Both returns over exactly those days (fractions: 0.01 = 1%) |
+| ... `difference` | `return` minus `yardstick_return`: the lead over the yardstick |
+
+At the top, `yardsticks` names both yardsticks with the day each joined
+(`null` when one is not in the race). Rank accounts by
+`same_days.benchmark.difference`, not by `stats.total_return`. Against Buy &
+Hold All Markets, accounts that joined before it are counted from its own
+join date. The weekly report gets the same figures. Join dates are saved in
+`state/paper_state.json`; for accounts saved before that, the late joiners
+are listed in `JOINED_BEFORE_RECORDS` (`engine/simulator.py`, taken from
+the history of the state file).
+
 ## Report cards: every trade graded against SPY
 
 Returns need years to tell skill from luck (see `luck_study.py` above), but
@@ -421,11 +477,13 @@ and `avg_edge_` at both horizons, best average 5-day edge first) and
 | `models/volatility_agent.py` | Volatility Protected: Donchian breakout, ATR trailing stop, risk sizing |
 | `engine/simulator.py` | The daily loop shared by backtests and paper trading, with save/restore |
 | `models/benchmark_agent.py` | Buy & Hold SPY, run as an agent so it pays the same costs |
+| `models/equal_weight_agent.py` | Buy & Hold All Markets: an equal share of every watched market, bought once |
 | `models/monkey_agent.py` | The Monkey: random picks, the luck yardstick |
 | `models/manager_agent.py` | Team Manager: backs the agents with the best recent results |
 | `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS or IB Gateway |
 | `ibkr_schedule.py`, `ibkr_morning.sh` | Run the bridge by itself every weekday morning (Mac or cloud server) |
-| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`) |
+| `ibkr_summary.py` | The paper account next to the simulated agent, for the website (`ibkr_logs/public/ibkr.json`) |
+| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`); `publish.sh` puts the summary on GitHub |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
@@ -441,7 +499,7 @@ and `avg_edge_` at both horizons, best average 5-day edge first) and
 | `.github/dependabot.yml` | A monthly pull request with newer package versions |
 | `learning.py` | Monthly self-tuning for the live learning agents |
 | `walk_forward.py` | Walk-forward parameter study |
-| `luck_study.py` | Skill or luck: every account against hundreds of monkeys and SPY |
+| `luck_study.py` | Skill or luck: every account against hundreds of monkeys, SPY and an equal mix of every market |
 | `web/` | The platform's source (React + TypeScript); `npm run build` writes `docs/` |
 | `web/src/lib/metrics.ts` | The platform's single source for performance and risk numbers |
 | `web/src/components/network/Network3D.tsx` | The 3D network of accounts and markets on the live page |
@@ -586,7 +644,8 @@ own computer can stay off.
    Telegram, then run `bash /opt/Vanguard3/server/telegram.sh` on the
    server and paste the bot's token. Telegram then also gets the race
    chart (`telegram_chart.py`: every account's return since launch, the
-   top three and the yardsticks) after each run, followed by why the top
+   top three by their lead over SPY over the same days, and the
+   yardsticks) after each run, followed by why the top
    three hold what they hold: how each one picks, its biggest holdings
    with the reason it bought them, and what it trades at the next open.
 
@@ -604,6 +663,109 @@ Useful commands on the server:
     tail -n 40 /opt/Vanguard3/ibkr_logs/morning.log
     docker logs --tail 30 ib-gateway          # what IB Gateway is doing
     bash /opt/Vanguard3/server/setup.sh --login   # type a new login
+
+### The paper account on the website
+
+The simulation fills every order at the open with fixed costs. A real
+broker does not: orders can be refused, fill late or only in part, a US
+fund is held as its European version, and prices differ a little. To show
+that gap, every morning run can publish a small summary of the paper
+account next to the simulated Team Manager.
+
+After the orders are placed, `ibkr_summary.py` reads that run's log and
+the results it copied and writes `ibkr_logs/public/ibkr.json`;
+`server/publish.sh` then pushes it to GitHub. Both run in their own steps
+after the orders, so they cannot stop or change them: a problem only adds
+one line to the morning message ("Could not publish the account summary
+for the website: ..."), and the run still counts as a success.
+
+The file goes to its own public repository (default
+`mauritswessels/vanguard3-ibkr-data`, branch `ibkr-data`), not to this
+one. The server writes with a GitHub deploy key, and a deploy key opens
+the whole repository it belongs to: in this repository it could also
+change the code, the workflows and so reach the secrets. In a repository
+of its own it can only ever change the summary. `publish.sh` also refuses
+to push to `main` or `master`, and trusts only GitHub's published server
+keys (`server/github_known_hosts`). Each morning replaces a single commit
+there; the file keeps its own history (the last 750 mornings,
+`summary_days` in `IBKR_PARAMS`). The website reads it from
+
+    https://raw.githubusercontent.com/mauritswessels/vanguard3-ibkr-data/ibkr-data/ibkr.json
+
+(GitHub serves it to any website; it can take up to five minutes to
+show a new version).
+
+Set it up once, after the server setup above:
+
+1. On the server, as root:
+
+       bash /opt/Vanguard3/server/setup.sh --publish
+
+   Press Enter to keep the suggested repository name. It makes the key
+   (`/root/.ssh/vanguard3_publish`, never in git), saves the settings in
+   `ibkr_morning.env` (`PUBLISH_REPO`, `PUBLISH_BRANCH`, `PUBLISH_KEY`)
+   and prints the two steps below with the key filled in. Leave it
+   waiting.
+2. On GitHub, make the repository at https://github.com/new: name
+   `vanguard3-ibkr-data`, Public, no README > Create repository.
+3. In that repository, Settings > Deploy keys > Add deploy key: title
+   "Vanguard3 server", paste the line starting with `ssh-ed25519` that
+   the setup printed, tick **Allow write access** > Add key.
+4. Back on the server, press Enter. The setup checks that the key may
+   push (a dry run: nothing is published yet) and says Done. The first
+   summary appears after the next morning run.
+
+To stop publishing, delete the `PUBLISH_` lines from `ibkr_morning.env`
+(and the deploy key on GitHub).
+
+Nothing personal is published: no account ID, username, password, token
+or Telegram chat, and none of IBKR's own messages, which can name the
+account (a refused order shows only IBKR's error code). Before the file is
+written it is searched for the account ID, anything shaped like an IBKR
+account ID, and every login detail and token on the server; if one turns
+up, nothing is written.
+
+Both accounts are valued at the same close: the paper account before
+that morning's orders (so at the last close), the Team Manager at the
+close whose results were copied. Returns are in francs, at the results'
+exchange rates, so the account's own currency (usually US dollars) does
+not blur the comparison. Whether an order filled is judged the next
+morning, from the account's holdings: until then it is `null`.
+
+`ibkr.json` keeps a fixed shape. Shares and returns are fractions (0.1 =
+10%), dates are `YYYY-MM-DD`, money is rounded to cents, and a value that
+is not known is `null`. At the top: `schema` (1), `generated_utc`,
+`about` (a plain sentence on what it shows), `agent` and `agent_name` (the
+copied agent), `account_currency`, `since` (the first morning the
+returns count from), `latest` (the newest morning in detail) and `history`
+(one row per morning, oldest first).
+
+Rows of `history`:
+
+| Field | Meaning |
+| --- | --- |
+| `date` | The morning of the run |
+| `results_of` | The close whose results were copied; both values are measured there |
+| `same_close` | `false` when the results were older than the last weekday close (the evening run failed, or a holiday): that row has no returns |
+| `value`, `value_chf` | The paper account's net liquidation value, in its own currency and in CHF |
+| `cash_chf`, `invested`, `positions` | Its cash (value minus positions), share invested and number of positions |
+| `sim_value_chf`, `sim_invested`, `sim_positions` | The same for the simulated agent |
+| `return`, `sim_return`, `difference` | Since the previous row with `same_close`, in CHF; `difference` = account minus simulation |
+| `return_total`, `sim_return_total`, `difference_total` | The same since `since` |
+| `holdings_gap` | Share of the account held differently from the simulation: half the sum of the differences per market (0 = the same holdings) |
+| `planned`, `sent`, `refused`, `kept_in_cash` | This morning's orders: worked out, taken by IBKR, refused, and markets left in cash |
+| `filled`, `partly_filled`, `not_filled` | What became of the orders sent, filled in the next morning (`null` until then) |
+
+`latest` has `date`, `results_of`, `same_close` and:
+
+| Field | Meaning |
+| --- | --- |
+| `real` | `value`, `currency`, `value_chf`, `cash`, `cash_chf`, `invested`, `positions`, `watchlist_positions` |
+| `sim` | `value_chf`, `cash_chf`, `invested`, `positions` |
+| `tracking` | The row's returns, `since`, `holdings_gap`, and `tracking_error_yearly`: how much the daily differences swing, scaled to a year (from 5 mornings on) |
+| `weights` | Per market, biggest first: `ticker`, `holds_as` (the European fund held instead of a US one, or `null`), `sim`, `real`, `difference` |
+| `orders` | `planned`, `sent`, `refused`; `orders` (`ticker`, `holds_as`, `side`, `quantity`, `value` in the account currency, `outcome` "sent" or "refused", `note`); `currency` (currency changes: `currency`, `side`, `amount`, `value`, `outcome`); `kept_in_cash` (`ticker`, `holds_as`, `reason`) |
+| `previous_orders` | The orders of the last earlier run and what became of them: `date`, `sent`, `filled`, `partly_filled`, `not_filled`, and `orders` (`ticker`, `holds_as`, `side`, `quantity`, `outcome`: "filled", "partly filled" or "not filled"); `null` on the first morning |
 
 ## Going live with Interactive Brokers
 
