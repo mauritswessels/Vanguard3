@@ -122,8 +122,11 @@ api = NS(Stock=lambda symbol, exchange, currency, primaryExchange="":
             primaryExchange=primaryExchange),
          Forex=lambda pair: NS(symbol=pair[:3], currency=pair[3:], pair=pair,
                                exchange="IDEALPRO"),
-         MarketOrder=lambda action, qty, **kw: NS(action=action,
-                                                  totalQuantity=qty, **kw))
+         MarketOrder=lambda action, qty, **kw: NS(
+             action=action, totalQuantity=qty, orderType="MKT", **kw),
+         LimitOrder=lambda action, qty, price, **kw: NS(
+             action=action, totalQuantity=qty, orderType="LMT",
+             lmtPrice=price, **kw))
 
 PARAMS = {"agent": "trend", "min_trade_pct": 0.005, "order_ref": "Vanguard3"}
 
@@ -226,6 +229,32 @@ class BridgeTest(unittest.TestCase):
         self.assertIn({"ticker": "NESN.SW", "status": "unknown market"},
                       [{k: s[k] for k in ("ticker", "status")}
                        for s in out["sent"]])
+
+    def test_us_shares_get_a_limit_order(self):
+        """IBKR cancels US market orders sent before the open from an
+        account without paid US prices (code 202): those go as limit
+        orders 5% from the last close, the others stay market orders."""
+        self.assertEqual(bridge.limit_price("BUY", 200.0, 0.05), 210.0)
+        self.assertEqual(bridge.limit_price("BUY", 196.11, 0.05), 205.92)
+        self.assertEqual(bridge.limit_price("SELL", 196.11, 0.05), 186.30)
+        ib = FakeIB()
+        said = []
+        bridge.run(ib, api, payload(), {**PARAMS, "us_limit_room": 0.05},
+                   send=True, say=said.append)
+        kinds = {c.symbol: (o.orderType, getattr(o, "lmtPrice", None),
+                            o.tif, o.orderRef) for c, o in ib.placed}
+        self.assertEqual(kinds, {"AAPL": ("LMT", 210.0, "DAY", "Vanguard3"),
+                                 "NESN": ("MKT", None, "DAY", "Vanguard3")})
+        self.assertTrue(any("AAPL (limit 210.00):" in line for line in said))
+        self.assertTrue(any("limit 210.00 USD)" in line for line in said))
+        # The plan shows the limit without sending anything.
+        dry = []
+        out = bridge.run(FakeIB(), api, payload(),
+                         {**PARAMS, "us_limit_room": 0.05}, send=False,
+                         say=dry.append)
+        self.assertEqual({o["ticker"]: o.get("limit") for o in out["plan"]},
+                         {"AAPL": 210.0, "NESN.SW": None})
+        self.assertEqual(said[-1], "Done: 2 of 2 orders placed.")
 
     def test_refuses_live_accounts(self):
         with self.assertRaises(SystemExit):
