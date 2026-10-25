@@ -153,6 +153,20 @@ class ProjectTest(unittest.TestCase):
             self.assertEqual(len(found), 1)
             self.assertIn("bad.yml", found[0])
 
+    def test_a_scheduled_workflow_that_fails_silently(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "loud.yml").write_text(
+                "on:\n  schedule:\n    - cron: '0 6 * * 6'\n"
+                "steps: gh issue comment 21\n")
+            (folder / "silent.yml").write_text(
+                "on:\n  schedule:\n    - cron: '0 6 * * 6'\n"
+                "steps: echo hi\n")
+            (folder / "by_hand.yml").write_text("on: workflow_dispatch\n")
+            found = flaw_scan.workflow_problems(folder)
+            self.assertEqual(len(found), 1)
+            self.assertIn("silent.yml runs on a schedule", found[0])
+
     def test_data_a_browser_cannot_read(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)

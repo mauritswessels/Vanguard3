@@ -232,7 +232,9 @@ rather than weeks: day-to-day swings are large next to any edge, so even
 10% a year over random picks takes well over ten years to show. The news
 agents, the Opus Learner and the Team Manager are judged on their live
 results only. The study runs every Saturday (workflow "Skill or luck",
-about 5 minutes; settings in `LUCK_PARAMS` in `config.py`), writes
+about 45 minutes, with a 105-minute limit; a run that fails or runs out of
+time adds to the "Vanguard3 needs attention" issue; settings in
+`LUCK_PARAMS` in `config.py`), writes
 `docs/data/skill.json` and is on the platform under Research > Skill or
 luck?
 
@@ -359,7 +361,8 @@ by themselves:
     every US fund, no two markets with one IBKR symbol), the IBKR bridge
     still refuses every account that is not a paper account, no secret
     file or API key is in the repository, every workflow that pushes waits
-    its turn in the `paper-trading` queue, and the website can read every
+    its turn in the `paper-trading` queue, every scheduled workflow says
+    so when it fails, and the website can read every
     file in `docs/data/`;
   * `ruff`: likely bugs in the Python code (`ruff.toml` lists the kinds);
   * `pip-audit` and `npm audit`: known security holes in the pinned
