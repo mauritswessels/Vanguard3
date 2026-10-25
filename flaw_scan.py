@@ -265,7 +265,8 @@ def secret_problems(root: Path = ROOT, files: list[str] | None = None
 
 def workflow_problems(folder: Path | None = None) -> list[str]:
     """Every workflow that pushes waits its turn in the shared queue, so
-    two runs never write the accounts at the same time."""
+    two runs never write the accounts at the same time. Every workflow that
+    runs on a schedule says so when it fails: nobody watches it start."""
     out = []
     folder = folder or ROOT / ".github" / "workflows"
     for path in sorted(folder.glob("*.y*ml")):
@@ -276,6 +277,11 @@ def workflow_problems(folder: Path | None = None) -> list[str]:
                        "paper-trading queue (add 'concurrency: group: "
                        "paper-trading'): it can overwrite another run's "
                        "results.")
+        if "cron:" in text and not re.search(r"gh issue (create|comment)",
+                                              text):
+            out.append(f"{path.name} runs on a schedule but tells no one "
+                       "when it fails (add an alert step like the one in "
+                       "daily.yml).")
     return out
 
 

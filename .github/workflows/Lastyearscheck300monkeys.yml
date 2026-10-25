@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: paper-trading
@@ -19,7 +20,9 @@ concurrency:
 jobs:
   study:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The study takes about 45 minutes (two five-year replays with 300
+    # monkeys each), and the live part grows with every week of results.
+    timeout-minutes: 120
     steps:
       # The newest main, not the commit this run was started on.
       - uses: actions/checkout@v4
@@ -34,7 +37,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # A limit on the step itself, so a study that runs too long fails
+      # here and the alert below still runs.
       - name: Run the study
+        timeout-minutes: 105
         run: python luck_study.py --source yfinance
 
       - name: Commit the results
@@ -48,4 +54,25 @@ jobs:
             git commit -m "Skill or luck study $(date -u +%F)"
             git pull --rebase origin main
             git push
+          fi
+
+      # Opens (or adds to) one GitHub issue; GitHub emails it to the owner.
+      - name: Alert if something went wrong
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The **${{ github.workflow }}** run on $(date -u '+%a %d %b %H:%M UTC') needs a look."
+            echo
+            echo "- The study stopped with an error or ran out of time, so the Skill or luck page was not updated. Log: $RUN_URL"
+            echo
+            echo "@Mits-Alt-F4 · automatic message. Close this issue once things are fine again."
+          } > alert.md
+          n=$(gh issue list --state open --search '"Vanguard3 needs attention" in:title' --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file alert.md
+          else
+            gh issue create --title "Vanguard3 needs attention" --body-file alert.md
           fi
