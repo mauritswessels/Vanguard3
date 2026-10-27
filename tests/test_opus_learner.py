@@ -129,6 +129,31 @@ class OpusLearnerTest(unittest.TestCase):
                              "HOLD")
         self.assertEqual(acc.broker.pending_to_list(), [])
 
+    def test_a_full_account_that_sells_nothing_asks_nothing(self):
+        cal = self.market.calendar
+        first = self.market.until(cal[-2])
+        agent = eager(first)
+        agent.ask = verdicts(lambda i, t: True)
+        sim = Simulator(first, build_accounts(first, [agent]))
+        sim.run([cal[-2]])
+        # Full, and too soon to sell: the model can only propose buys.
+        sim = Simulator.from_dict(json.loads(json.dumps(sim.to_dict())),
+                                  self.market)
+        acc = sim.accounts[0]
+        acc.agent.params["min_hold"] = 1000
+        acc.agent.news = lambda t, n: []
+        calls = []
+        acc.agent.ask = lambda *a: calls.append(a) or {}
+        sim.run(cal[-1:])
+        self.assertEqual(len(acc.portfolio.positions),
+                         acc.agent.params["max_positions"])
+        self.assertEqual(calls, [])
+        self.assertIn("nothing to review", acc.agent.status)
+        self.assertEqual(acc.agent.decided, cal[-1].strftime("%Y-%m-%d"))
+        self.assertEqual(acc.broker.pending_to_list(), [])
+        for t, m in acc.agent.memory.items():
+            self.assertEqual(m["pos"], m["prev"], t)
+
     def test_placed_picks_are_learned_as_made(self):
         agent = eager(self.market)
         agent.ask = verdicts(lambda i, t: i % 2 == 0)
