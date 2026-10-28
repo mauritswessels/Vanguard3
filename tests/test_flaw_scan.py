@@ -200,7 +200,7 @@ class ProjectTest(unittest.TestCase):
         merged = flaw_scan.merged_pull_requests()
         # A shallow checkout has no merges; with history, titles are the
         # pull requests' own and weekly flaw fixes are left out.
-        for day, title in merged:
+        for _day, title in merged:
             self.assertNotIn("Weekly flaw fixes", title)
             self.assertFalse(title.startswith("Merge "))
 
