@@ -9,15 +9,17 @@ short brief on the model's picks and approves or turns down each one.
   proposed buys: recent price moves, the model's own scores and biggest
   factors, and a few headlines per market.
 * Only approved trades are placed. A pick Opus leaves out counts as turned
-  down. The usual cap of ``max_positions`` holdings still applies.
+  down. The usual cap of ``max_positions`` holdings still applies, so a
+  full account that sells nothing shows Opus no buys (and with no sells
+  either, makes no call).
 * The model learns from what the account did. A pick that is not placed
   is learned as a hold, as the AI Learner does with a sell its minimum
   holding time blocks and a buy the cap leaves out. Learning a turned-down
   buy as if bought left the model reasoning from holdings the account did
   not have. Random tries are still learned on paper.
 
-One Opus call per evening at most, and none when the model proposes
-nothing. Sessions replayed while catching up after a missed run are not
+One Opus call per evening at most, and none when there is nothing it
+could place. Sessions replayed while catching up after a missed run are not
 traded (today's headlines would not match them). Without
 ``ANTHROPIC_API_KEY``, or when the call fails, it trades nothing that day
 and says why on the dashboard. On those evenings too, every pick is
@@ -166,9 +168,19 @@ class OpusLearnerAgent(LearnerAgent):
             return []
         p = self.params
         sells = [s for s in proposed if s.action is Action.SELL]
+        # A full account can't place a buy unless it sells something too:
+        # asking Opus about buys then only buys a "no" every evening.
+        room = p["max_positions"] - len(portfolio.positions) + len(sells)
         buys = sorted((s for s in proposed if s.action is Action.BUY),
-                      key=lambda s: s.score, reverse=True)[:p["max_review"]]
+                      key=lambda s: s.score, reverse=True)
+        buys = buys[:p["max_review"]] if room > 0 else []
         picks = sells + buys
+        if not picks:
+            self.decided = today
+            self.status = (f"The account is full ({p['max_positions']} "
+                           "holdings) and the model sells none of them, so "
+                           "there is nothing to review")
+            return []
         try:
             result = self.ask(self.brief(picks, date, portfolio),
                               p["model"], p["effort"])

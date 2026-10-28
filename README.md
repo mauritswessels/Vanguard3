@@ -110,7 +110,9 @@ reads the model's proposed sells and its best proposed buys, with recent
 price moves and a few headlines each, and approves or turns down every one.
 Only approved trades are placed, so the race against the AI Learner shows
 whether an AI reviewer improves a simple learning model. One Opus call per
-evening at most, about 0.05 USD (`LEARNER_OPUS_PARAMS` in `config.py`); like
+evening at most, about 0.05 USD (`LEARNER_OPUS_PARAMS` in `config.py`), and
+none when nothing could be placed: a full account (8 holdings) that sells
+nothing shows Opus no buys, because none of them could be bought. Like
 the News Analyst it needs the `ANTHROPIC_API_KEY` secret and only trades on
 the newest session.
 
