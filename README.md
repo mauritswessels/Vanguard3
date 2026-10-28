@@ -61,8 +61,9 @@ run and saves everything (cash, positions, pending orders, trailing stops) to
 York close and midnight in Zurich (after midnight Yahoo leaves out the
 European markets' day), commits the new state, and refreshes `docs/data/`
 (the 5-year backtest only on Fridays: it is 4 MB and barely moves in a day).
-GitHub Pages serves the platform in `docs/` (built from `web/`, see below),
-so nothing needs to run on your own computer.
+GitHub Pages serves the platform in `docs/` (built from `web/`, see below)
+at https://vanguard3.xyz/, so nothing needs to run on your own computer. The
+domain is set by `docs/CNAME`; the old github.io address forwards to it.
 
 Live, each strategy runs twice: a **learning** agent that reviews its own
 settings on the first trading day of every month (`learning.py`: it replays
@@ -393,7 +394,7 @@ backup, and covers Swiss and European markets, whose midday trades fill at
 the close), and the brief adds each US
 company's latest news from Finnhub (`finnhub_feed.py`).
 
-The platform (https://mauritswessels.github.io/Vanguard3/) has these pages:
+The platform (https://vanguard3.xyz/) has these pages:
 
 * **Live race**: a 3D network of every account and market (agents on the
   inner ring, sized by their place in the race; markets in five sectors
@@ -598,6 +599,7 @@ few dozen scored calls per account.
 | `web/src/lib/metrics.ts` | The platform's single source for performance and risk numbers |
 | `web/src/components/network/Network3D.tsx` | The 3D network of accounts and markets on the live page |
 | `docs/index.html`, `docs/app/` | The built platform (GitHub Pages) reading `docs/data/*.json` |
+| `docs/CNAME` | The site's own domain (vanguard3.xyz) for GitHub Pages; the build leaves it alone |
 | `docs/lab/` | 3D AI research lab: a browser-only reinforcement-learning simulation (see below) |
 | `tests/` | Accounting, no-look-ahead, broker timing and full-backtest tests |
 
