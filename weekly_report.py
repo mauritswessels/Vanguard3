@@ -140,7 +140,7 @@ def issue_text(report: dict) -> str:
     """The report as the body of the GitHub issue that emails it."""
     return (f"{report['text']}\n\n---\nWeek of {report['week_start']} to "
             f"{report['week_end']}, written by Claude from the paper-trading "
-            "results. Dashboard: https://mauritswessels.github.io/Vanguard3/\n\n"
+            "results. Dashboard: https://vanguard3.xyz/\n\n"
             "@Mits-Alt-F4 · automatic weekly report.")
 
 
