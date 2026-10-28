@@ -5,7 +5,8 @@
 # * flaw_scan.py: the live accounts add up (cash, shares, waiting orders),
 #   settings agree with each other, the IBKR bridge still trades paper
 #   accounts only, no secret is in the repository, every workflow that
-#   pushes waits its turn, and the website can read its data.
+#   pushes waits its turn, the website can read its data, and the
+#   website's timeline keeps up with the merged pull requests.
 # * ruff: bugs in the Python code (ruff.toml lists which kinds).
 # * pip-audit: known security holes in the pinned Python packages.
 # * npm audit: known security holes in the website's packages.
@@ -33,6 +34,11 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The timeline check reads the list of merged pull requests, so
+          # it needs the history; the old files' contents are left out.
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: actions/setup-python@v5
         with:

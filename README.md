@@ -365,8 +365,9 @@ by themselves:
     still refuses every account that is not a paper account, no secret
     file or API key is in the repository, every workflow that pushes waits
     its turn in the `paper-trading` queue, every scheduled workflow says
-    so when it fails, and the website can read every
-    file in `docs/data/`;
+    so when it fails, the website can read every
+    file in `docs/data/`, and the website's timeline (the Journal page)
+    is no more than a week behind the pull requests merged into `main`;
   * `ruff`: likely bugs in the Python code (`ruff.toml` lists the kinds);
   * `pip-audit` and `npm audit`: known security holes in the pinned
     packages;
@@ -418,7 +419,10 @@ The platform (https://vanguard3.xyz/) has these pages:
 * **Research**: skill or luck (`docs/data/skill.json`), the 5-year replay,
   the walk-forward check and the 3D research lab.
 * **Methodology**, **Journal** (`web/src/content/journal.ts`) and
-  **About** (`web/src/content/about.ts`).
+  **About** (`web/src/content/about.ts`). The Journal's timeline is
+  written by hand: every pull request that changes what the agents do or
+  what the website shows adds an entry (marked "in progress" until it is
+  live), and the flaw scan flags a timeline that falls behind.
 
 Every number is computed once, in `web/src/lib/metrics.ts`, from the fills
 and closing values the simulation saved (`engine/journal.py` groups fills
@@ -579,7 +583,7 @@ few dozen scored calls per account.
 | `ibkr_summary.py` | The paper account next to the simulated agent, for the website (`ibkr_logs/public/ibkr.json`) |
 | `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`); `publish.sh` puts the summary on GitHub |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
-| `flaw_scan.py`, `ruff.toml`, `.github/workflows/flaw-scan.yml` | The flaw scan: accounts that add up, settings that agree, no secrets; ruff and the package audits (Sundays and every pull request) |
+| `flaw_scan.py`, `ruff.toml`, `.github/workflows/flaw-scan.yml` | The flaw scan: accounts that add up, settings that agree, no secrets, a timeline that keeps up; ruff and the package audits (Sundays and every pull request) |
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |

@@ -1,5 +1,9 @@
-/* The project journal: how Vanguard3 grew. Add new entries at the top of
- * the list; each needs a date (YYYY-MM-DD), a title, a short text and a tag. */
+/* The project journal: how Vanguard3 grew. Every pull request that changes
+ * what the agents do or what the website shows adds an entry here (or
+ * updates one), newest at the top: a date (YYYY-MM-DD), a title, a short
+ * plain-English text and a tag. Work that is merged but not live yet gets
+ * pending: true; take it off once it is. The flaw scan flags a journal
+ * that falls more than a week behind the merged pull requests. */
 
 export type Tag = "Agents" | "Research" | "Infrastructure" | "Platform";
 
@@ -14,11 +18,39 @@ export interface Entry {
 
 export const JOURNAL: Entry[] = [
   {
+    date: "2026-10-28", tag: "Infrastructure", title: "A message for every trade", pending: true,
+    text: "An alert as soon as an agent buys or sells, so the race can be followed from a phone without opening the website.",
+  },
+  {
+    date: "2026-10-28", tag: "Platform", title: "The research lab gets the platform's look", pending: true,
+    text: "The 3D Research Lab, where a separate agent practises on past prices, gets the same colours, fonts and gold V3 logo as the rest of the platform, with a warm gold 3D scene.",
+  },
+  {
+    date: "2026-10-28", tag: "Platform", title: "Its own address",
+    text: "The platform now lives at vanguard3.xyz. The old github.io address forwards there by itself.",
+  },
+  {
+    date: "2026-10-22", tag: "Infrastructure", title: "A full audit, and a scan that keeps looking",
+    text: "An audit of the whole project fixed six flaws and four smaller gaps. A flaw scan now checks every change and runs every Sunday: accounts that must add up, the broker's paper-only lock, secrets, and scheduled jobs that fail without telling anyone.",
+  },
+  {
+    date: "2026-10-22", tag: "Infrastructure", title: "Orders the broker accepts",
+    text: "US shares now go to Interactive Brokers as limit orders, because the paper account has no US price feed and was cancelling plain market orders.",
+  },
+  {
+    date: "2026-10-22", tag: "Research", title: "Fair comparisons and report cards",
+    text: "Every account is compared with the yardsticks over exactly the same days, with an equal mix of all markets as a new yardstick. Every trade is graded against the S&P 500, the News Analysts say how sure they are and are checked on it, and the real IBKR paper account is shown next to the simulated Team Manager.",
+  },
+  {
+    date: "2026-10-21", tag: "Agents", title: "Learners that learn from what they did",
+    text: "The AI Learner stops buying and selling the same market a day apart, and both learners now learn from the trades their account really made, not from picks that were turned down or never placed.",
+  },
+  {
     date: "2026-10-20", tag: "Platform", title: "A new home for the race",
     text: "This platform: a 3D network of every account and market, a profile for every agent with its reasoning, a trade explorer, analytics, research and a written methodology. Built with React, TypeScript and Three.js on the same published results.",
   },
   {
-    date: "2026-10-20", tag: "Research", title: "Skill or luck?", pending: true,
+    date: "2026-10-20", tag: "Research", title: "Skill or luck?",
     text: "A study that compares every account with 300 monkeys trading at random under the same rules, and with the S&P 500, and says plainly whether a lead is skill, luck, or too early to tell.",
   },
   {

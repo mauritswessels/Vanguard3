@@ -118,6 +118,7 @@ class ProjectTest(unittest.TestCase):
         self.assertEqual(flaw_scan.workflow_problems(), [])
         self.assertEqual(flaw_scan.data_problems(), [])
         self.assertEqual(flaw_scan.secret_problems(), [])
+        self.assertEqual(flaw_scan.journal_problems(), [])
 
     def test_the_paper_only_check_is_watched(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -175,6 +176,33 @@ class ProjectTest(unittest.TestCase):
             found = flaw_scan.data_problems(folder)
             self.assertEqual(len(found), 1)
             self.assertIn("bad.json", found[0])
+
+    def test_a_timeline_that_falls_behind(self):
+        from datetime import date
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "journal.ts"
+            journal.write_text('{ date: "2026-10-20", title: "a" },\n'
+                               '{ date: "2026-10-07", title: "b" },\n')
+            # Within a week of the newest entry: fine.
+            self.assertEqual(flaw_scan.journal_problems(
+                journal, [(date(2026, 10, 27), "Recent")]), [])
+            found = flaw_scan.journal_problems(
+                journal, [(date(2026, 10, 28), "Own address"),
+                          (date(2026, 10, 22), "Audit")])
+            self.assertEqual(len(found), 1)
+            self.assertIn("stops at 2026-10-20", found[0])
+            self.assertIn("Own address", found[0])
+            self.assertNotIn("Audit", found[0])
+            journal.write_text("export const JOURNAL = [];\n")
+            self.assertEqual(len(flaw_scan.journal_problems(journal, [])), 1)
+
+    def test_merged_pull_requests_read_from_git(self):
+        merged = flaw_scan.merged_pull_requests()
+        # A shallow checkout has no merges; with history, titles are the
+        # pull requests' own and weekly flaw fixes are left out.
+        for day, title in merged:
+            self.assertNotIn("Weekly flaw fixes", title)
+            self.assertFalse(title.startswith("Merge "))
 
 
 if __name__ == "__main__":

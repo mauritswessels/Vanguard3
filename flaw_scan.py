@@ -22,7 +22,9 @@ and stops with exit code 1 when it found any. It looks for:
 * a secret file or an API key in the repository;
 * a workflow that pushes to ``main`` outside the shared ``paper-trading``
   queue (two runs writing the accounts at once lose one run's work);
-* dashboard data that a browser cannot read (not strict JSON).
+* dashboard data that a browser cannot read (not strict JSON);
+* a project journal (the website's timeline) that has fallen more than a
+  week behind the pull requests merged into ``main``.
 
 Pure Python, offline, and no change to anything it checks.
 """
@@ -34,6 +36,7 @@ import json
 import math
 import re
 import subprocess
+from datetime import date, timedelta
 from pathlib import Path
 
 import config
@@ -302,12 +305,68 @@ def data_problems(folder: Path | None = None) -> list[str]:
     return out
 
 
+#: The website's timeline (web/src/content/journal.ts).
+JOURNAL_FILE = ROOT / "web" / "src" / "content" / "journal.ts"
+
+#: How far the journal may trail the newest merged pull request, so a
+#: change can be merged first and written up a few days later.
+JOURNAL_GRACE = timedelta(days=7)
+
+
+def merged_pull_requests(root: Path = ROOT) -> list[tuple[date, str]]:
+    """(day, title) of every pull request merged into the branch checked
+    out, newest first. The weekly flaw fixes are left out: they mend, they
+    add nothing new. Empty without git or without history (a shallow
+    checkout), so the check then passes instead of guessing."""
+    try:
+        done = subprocess.run(
+            ["git", "log", "--first-parent", "--merges",
+             "--format=%cs%x1f%s%x1f%b%x1e", "HEAD"],
+            cwd=root, check=True, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    out = []
+    for record in done.stdout.split("\x1e"):
+        parts = record.strip().split("\x1f")
+        if len(parts) < 3 or not parts[1].startswith("Merge pull request"):
+            continue
+        if "weekly-flaw-fix" in parts[1]:
+            continue
+        title = parts[2].strip().splitlines()[0] if parts[2].strip() else parts[1]
+        out.append((date.fromisoformat(parts[0]), title))
+    return out
+
+
+def journal_problems(path: Path | None = None,
+                     merged: list[tuple[date, str]] | None = None
+                     ) -> list[str]:
+    """The website's timeline keeps up with what was built: a pull request
+    merged more than a week after the journal's newest entry means someone
+    forgot to write it up."""
+    text = (path or JOURNAL_FILE).read_text()
+    days = re.findall(r'date:\s*"(\d{4}-\d{2}-\d{2})"', text)
+    if not days:
+        return ["web/src/content/journal.ts has no dated entries, so the "
+                "website's timeline is empty."]
+    newest = max(date.fromisoformat(d) for d in days)
+    merged = merged_pull_requests() if merged is None else merged
+    late = [(d, t) for d, t in merged if d > newest + JOURNAL_GRACE]
+    if not late:
+        return []
+    titles = "; ".join(f"{t} ({d})" for d, t in late[:3])
+    more = f" and {len(late) - 3} more" if len(late) > 3 else ""
+    return [f"The website's timeline stops at {newest}, but pull requests "
+            f"were merged after it: {titles}{more}. Add an entry for them "
+            "to web/src/content/journal.ts and rebuild the site."]
+
+
 def scan(state_path: Path = config.PAPER_STATE_FILE) -> list[str]:
     """Every check above."""
     state = (json.loads(state_path.read_text())
              if state_path.exists() else None)
     return (state_problems(state) + config_problems() + bridge_problems()
-            + secret_problems() + workflow_problems() + data_problems())
+            + secret_problems() + workflow_problems() + data_problems()
+            + journal_problems())
 
 
 def main() -> None:
