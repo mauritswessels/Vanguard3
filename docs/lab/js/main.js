@@ -15,7 +15,7 @@
     const msg = t => ($("bootMsg").textContent = t);
     try {
       await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 2000))]);
-      await Promise.race([Promise.all(["600 20px 'Saira Semi Condensed'", "700 20px 'Saira Semi Condensed'"].map(x => document.fonts.load(x))),
+      await Promise.race([Promise.all(["500 20px 'Inter'", "600 20px 'Inter'"].map(x => document.fonts.load(x))),
         new Promise(r => setTimeout(r, 1500))]);
     } catch { /* fonts are cosmetic */ }
 
@@ -40,7 +40,7 @@
       graph.onStage = (i, rec) => V3.ui.stage(i, rec);
     } catch (err) {
       console.error(err);
-      $("stage").insertAdjacentHTML("beforeend", `<p style="position:absolute;top:45%;width:100%;text-align:center;color:#7f8ea3">3D view unavailable (WebGL is off). The panels still work.</p>`);
+      $("stage").insertAdjacentHTML("beforeend", `<p style="position:absolute;top:45%;width:100%;text-align:center;color:#8f897b">3D view unavailable (WebGL is off). The panels still work.</p>`);
     }
     V3.graph = graph;
 
@@ -51,9 +51,9 @@
     if (graph) {
       V3.bus.on(E.DECISION, rec => graph.playDecision(rec));
       V3.bus.on(E.REGIME, reg => graph.setRegime(reg));
-      V3.bus.on(E.MODEL, () => { graph.pulse("learning", "#a99bd6", 1.4); graph.pulse("monitor", "#74b9aa", 1); graph.pulse("agent", "#d3a75f", 1); });
-      V3.bus.on(E.EPISODE, () => graph.pulse("monitor", "#74b9aa", 0.8));
-      V3.bus.on(E.RISK, e => graph.pulse("risk", e.level === "high" ? "#e27466" : "#d9a441", 1.3));
+      V3.bus.on(E.MODEL, () => { graph.pulse("learning", "#9085e9", 1.4); graph.pulse("monitor", "#5fb39f", 1); graph.pulse("agent", "#d4b26a", 1); });
+      V3.bus.on(E.EPISODE, () => graph.pulse("monitor", "#5fb39f", 0.8));
+      V3.bus.on(E.RISK, e => graph.pulse("risk", e.level === "high" ? "#ef6f63" : "#e39a3b", 1.3));
       V3.bus.on(E.BACKTEST, () => { graph.emit("data", "backtest", { bright: true, speed: 2 }); graph.emit("learning", "backtest", { bright: true, speed: 2 });
         setTimeout(() => graph.emit("backtest", "monitor", { bright: true, speed: 2 }), 500); });
     }

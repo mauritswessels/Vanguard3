@@ -5,7 +5,7 @@
   const V3 = window.V3, f = V3.fmt, E = V3.EVENTS, ui = V3.ui;
   const $ = id => document.getElementById(id);
   const sign = v => (v > 0 ? "pos" : v < 0 ? "neg" : "");
-  const GREEN = "#6cc391", RED = "#e27466";
+  const GREEN = "#4cc38a", RED = "#ef6f63";
   let engine, active = "training";
   const isOn = tab => active === tab && !document.body.classList.contains("collapsed");
 
@@ -37,15 +37,15 @@
   function initTraining() {
     const C = V3.charts;
     T.reward = C.bars($("chReward"), { label: "Reward", yFmt: v => (+v).toFixed(1) });
-    T.equity = C.line($("chEquity"), { color: "#7fa7d9", label: "CHF", yFmt: v => f.chf(v) });
-    T.win = C.line($("chWin"), { color: "#d3a75f", label: "Win rate", yFmt: v => Math.round(v * 100) + "%" });
+    T.equity = C.line($("chEquity"), { color: "#6fa3e8", label: "CHF", yFmt: v => f.chf(v) });
+    T.win = C.line($("chWin"), { color: "#d4b26a", label: "Win rate", yFmt: v => Math.round(v * 100) + "%" });
     T.dd = C.bars($("chDD"), { label: "Max DD", yFmt: v => (v * 100).toFixed(0) + "%" });
     T.ret = C.bars($("chRet"), { label: "Return", yFmt: v => (v * 100).toFixed(0) + "%" });
-    T.eps = C.line($("chEps"), { color: "#a99bd6", label: "ε", yFmt: v => (+v).toFixed(2) });
+    T.eps = C.line($("chEps"), { color: "#9085e9", label: "ε", yFmt: v => (+v).toFixed(2) });
     T.win.options.scales.y.min = 0; T.win.options.scales.y.max = 1;
     T.eps.options.scales.y.min = 0;
     // Break-even line on the equity chart.
-    T.equity.data.datasets.push({ label: "Start", data: [], borderColor: "rgba(140,170,210,.35)", borderDash: [4, 4], borderWidth: 1, fill: false });
+    T.equity.data.datasets.push({ label: "Start", data: [], borderColor: "rgba(236,222,190,.35)", borderDash: [4, 4], borderWidth: 1, fill: false });
     document.querySelectorAll("#trainRange button").forEach(b => b.addEventListener("click", () => {
       range = +b.dataset.n;
       document.querySelectorAll("#trainRange button").forEach(x => x.classList.toggle("on", x === b));
@@ -71,9 +71,9 @@
     const m = engine.market;
     $("btAsset").innerHTML = m.tickers.map(t => `<option>${t}</option>`).join("");
     $("btAsset").value = m.tickers.includes("SPY") ? "SPY" : m.tickers[0];
-    btChart = V3.charts.line($("chBT"), { color: "#d3a75f", label: "Model", yFmt: v => f.chf(v),
-      extra: [{ label: "Buy & hold", data: [], borderColor: "rgba(140,170,210,.6)", borderWidth: 1.2, borderDash: [4, 3], fill: false }] });
-    btChart.options.plugins.legend = { display: true, position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 2, color: "#8b9ab0" } };
+    btChart = V3.charts.line($("chBT"), { color: "#d4b26a", label: "Model", yFmt: v => f.chf(v),
+      extra: [{ label: "Buy & hold", data: [], borderColor: "rgba(236,222,190,.6)", borderWidth: 1.2, borderDash: [4, 3], fill: false }] });
+    btChart.options.plugins.legend = { display: true, position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 2, color: "#8f897b" } };
     quick("val");
     $("btQuick").addEventListener("click", e => { if (e.target.dataset.q) quick(e.target.dataset.q); });
     $("btAsset").addEventListener("change", () => quick("val"));
@@ -131,11 +131,11 @@
     verChart = new window.Chart(hostCanvas($("chVer")), {
       type: "bar",
       data: { labels: [], datasets: [
-        { label: "Training (avg episode)", data: [], backgroundColor: "#7fa7d9aa", borderRadius: 1 },
-        { label: "Validation (held-out year)", data: [], backgroundColor: "#d3a75faa", borderRadius: 1 }] },
-      options: { plugins: { legend: { display: true, position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 6, color: "#8b9ab0" } },
+        { label: "Training (avg episode)", data: [], backgroundColor: "#6fa3e8aa", borderRadius: 1 },
+        { label: "Validation (held-out year)", data: [], backgroundColor: "#d4b26aaa", borderRadius: 1 }] },
+      options: { plugins: { legend: { display: true, position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 6, color: "#8f897b" } },
         tooltip: { callbacks: { label: c => `${c.dataset.label}: ${f.pct(c.parsed.y)}` } } },
-        scales: { x: { grid: { display: false } }, y: { grid: { color: "rgba(140,170,210,.08)" }, ticks: { callback: v => (v * 100).toFixed(0) + "%" } } } },
+        scales: { x: { grid: { display: false } }, y: { grid: { color: "rgba(236,222,190,.08)" }, ticks: { callback: v => (v * 100).toFixed(0) + "%" } } } },
     });
     $("verTable").addEventListener("change", e => {
       if (e.target.type !== "checkbox") return;
@@ -260,12 +260,12 @@
     miniChart = new window.Chart($("chTrade"), {
       type: "line",
       data: { labels, datasets: [
-        { data: px, borderColor: "#9aa7b8", borderWidth: 1.3, fill: false, tension: 0.2 },
+        { data: px, borderColor: "#c4bdaf", borderWidth: 1.3, fill: false, tension: 0.2 },
         { data: mark(t.entryDate, t.entryPrice), pointRadius: 5, pointBackgroundColor: GREEN, showLine: false },
         { data: t.exitDate ? mark(t.exitDate, t.exitPrice) : [], pointRadius: 5, pointBackgroundColor: RED, showLine: false },
-        { data: labels.map(() => t.stop), borderColor: "rgba(255,107,107,.45)", borderDash: [3, 3], borderWidth: 1, fill: false },
+        { data: labels.map(() => t.stop), borderColor: "rgba(239,111,99,.45)", borderDash: [3, 3], borderWidth: 1, fill: false },
       ] },
-      options: { scales: { x: { ticks: { maxTicksLimit: 4, maxRotation: 0 }, grid: { display: false } }, y: { ticks: { maxTicksLimit: 4 }, grid: { color: "rgba(140,170,210,.08)" } } },
+      options: { scales: { x: { ticks: { maxTicksLimit: 4, maxRotation: 0 }, grid: { display: false } }, y: { ticks: { maxTicksLimit: 4 }, grid: { color: "rgba(236,222,190,.08)" } } },
         plugins: { tooltip: { enabled: false } } },
     });
     $("tradeTable").querySelectorAll("tbody tr").forEach(tr => tr.classList.toggle("sel", +tr.dataset.id === t.id));
