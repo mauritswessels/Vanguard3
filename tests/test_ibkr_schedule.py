@@ -25,6 +25,7 @@ fi
 if [ "$1" = telegram_chart.py ]; then
     echo png > "$2"
     [ "$3" = --why ] && echo "Why the top 3 hold what they hold" > "$4"
+    [ "$5" = --trades ] && echo "Trades on 12 Oct" > "$6"
     echo "The race, day 5"
     exit 0
 fi
@@ -308,12 +309,14 @@ class MorningScriptTest(unittest.TestCase):
         self.assertIn("https://api.telegram.org/bot123:abc/sendPhoto", sent)
         self.assertIn("photo=@ibkr_logs/race.png", sent)
         self.assertIn("caption=The race, day 5", sent)
-        # Then why the top three hold what they hold.
+        # Then why the top three hold what they hold, then the trades.
         self.assertEqual(self.curled[-1],
                          "https://api.telegram.org/bot123:abc/sendMessage")
         self.assertIn("chat_id=42", self.curled)
-        self.assertIn("text@ibkr_logs/why.txt", self.curled)
-        self.assertLess(sent.index("sendPhoto"), sent.rindex("sendMessage"))
+        self.assertIn("text@ibkr_logs/why.txt", sent)
+        self.assertIn("text@ibkr_logs/trades.txt", self.curled)
+        self.assertLess(sent.index("sendPhoto"), sent.index("why.txt"))
+        self.assertLess(sent.index("why.txt"), sent.index("trades.txt"))
 
 
 if __name__ == "__main__":

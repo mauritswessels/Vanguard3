@@ -98,6 +98,51 @@ class ChartTest(unittest.TestCase):
         self.assertNotIn("(fixed)", text)
         self.assertLess(len(text), 4096)         # one Telegram message
 
+    def test_trade_alert_lists_every_trade_and_waiting_order(self):
+        data = payload()
+        buy = {"date": "2026-10-09", "session": "open", "side": "BUY",
+               "ticker": "NESN.SW", "quantity": 20, "value_chf": 1_812.4,
+               "pnl_chf": None, "reason": "Oversold, RSI 28.3"}
+        sell = {"date": "2026-10-09", "session": "midday", "side": "SELL",
+                "ticker": "V", "quantity": 5, "value_chf": 1_400.0,
+                "pnl_chf": -32.6, "reason": "Weak guidance."}
+        old = dict(buy, date="2026-10-08", ticker="ABB.SW")
+        for a in data["agents"]:
+            if a["key"] == "reversion":
+                a["trades"] = [old, buy]
+            if a["key"] == "news":
+                a["trades"] = [sell]
+        text = chart.trades(data)
+        self.assertTrue(text.startswith("Trades on 9 Oct\n"))
+        self.assertIn("Bargain Hunter\n- Bought 20 NESN.SW for 1,812 CHF: "
+                      "fell sharply and looks cheap", text)
+        self.assertNotIn("ABB.SW", text)            # an earlier day
+        self.assertIn("News Analyst\n- Sold 5 V for 1,400 CHF at midday "
+                      "(-33 CHF on it): Weak guidance", text)
+        self.assertIn("Orders for the next open\n\nTrend Follower\n"
+                      "- Sell", text)
+
+    def test_trade_alert_with_nothing_to_say(self):
+        data = payload()
+        for a in data["agents"]:
+            a["pending_orders"] = []
+        self.assertEqual(chart.trades(data),
+                         "Trades on 9 Oct\n\nNo account traded.\n\n"
+                         "Orders for the next open\n\nNo orders waiting.")
+
+    def test_trade_alert_folds_twins_and_fits_one_message(self):
+        data = payload()
+        orders = [{"side": "BUY", "ticker": f"T{i}", "quantity": 1,
+                   "reason": "Up-trend, ADX 30.0 " + "x" * 90}
+                  for i in range(60)]
+        for a in data["agents"]:
+            a["pending_orders"] = list(orders)
+        text = chart.trades(data)
+        self.assertIn("Trend Follower (fixed): the same as Trend Follower",
+                      text)
+        self.assertIn("more", text)
+        self.assertLessEqual(len(text), chart.TELEGRAM_LIMIT)
+
     def test_plain_words(self):
         self.assertEqual(chart.plain("Oversold, RSI 28.3"),
                          "fell sharply and looks cheap")

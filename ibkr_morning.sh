@@ -150,15 +150,20 @@ if [ -n "$HEALTHCHECK_URL" ]; then
 fi
 
 # On Telegram, the race chart follows, then why the top three hold what
-# they hold (telegram_chart.py).
+# they hold, then every trade the accounts made (telegram_chart.py).
 if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
     chart="ibkr_logs/race.png" && reasons="ibkr_logs/why.txt" &&
-    caption=$(.venv/bin/python telegram_chart.py "$chart" --why "$reasons") &&
+    alert="ibkr_logs/trades.txt" &&
+    caption=$(.venv/bin/python telegram_chart.py "$chart" --why "$reasons" \
+        --trades "$alert") &&
     curl -fsS -m 60 -F "chat_id=$TELEGRAM_CHAT_ID" -F "photo=@$chart" \
         -F "caption=$caption" \
         "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendPhoto" > /dev/null &&
     curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
         --data-urlencode "text@$reasons" \
+        "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" > /dev/null &&
+    curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
+        --data-urlencode "text@$alert" \
         "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" > /dev/null ||
         echo "Could not send the race chart to Telegram."
 fi
