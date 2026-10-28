@@ -114,6 +114,13 @@ tests run them on both.
   existing ones: `unittest`, synthetic data, offline and deterministic.
 - Update `README.md` (including its layout table) when behaviour changes.
   It is the owner's manual.
+- **Keep the website's timeline current.** Every PR that changes what the
+  agents do or what the website shows adds an entry at the top of
+  `web/src/content/journal.ts` (or extends a recent one), in plain English,
+  and rebuilds `docs/`. Work merged but not live yet gets `pending: true`;
+  the PR that makes it live removes the flag. The owner keeps this as the
+  project's history, and the flaw scan turns red when the timeline is more
+  than a week behind the merged PRs.
 - Match the surrounding code: a module docstring that says in plain words
   what the file does, `from __future__ import annotations`, and comments
   that explain why.
