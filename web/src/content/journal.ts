@@ -18,8 +18,8 @@ export interface Entry {
 
 export const JOURNAL: Entry[] = [
   {
-    date: "2026-10-28", tag: "Infrastructure", title: "A message for every trade", pending: true,
-    text: "An alert as soon as an agent buys or sells, so the race can be followed from a phone without opening the website.",
+    date: "2026-10-28", tag: "Infrastructure", title: "A message for every trade",
+    text: "Every weekday morning a Telegram message lists each trade the accounts made the day before, with the reason in plain words, and the orders waiting for the next open, so the race can be followed from a phone without opening the website.",
   },
   {
     date: "2026-10-28", tag: "Platform", title: "The research lab gets the platform's look", pending: true,
