@@ -2,6 +2,7 @@
 
     python telegram_chart.py race.png      # writes the chart, prints the caption
     python telegram_chart.py race.png --why why.txt   # and the "why" message
+    python telegram_chart.py race.png --trades trades.txt   # and the trade alert
 
 Draws every account's return since launch from the dashboard results
 (``docs/data/paper.json`` on GitHub) in the dashboard's colours: learning
@@ -11,7 +12,9 @@ different days, so the top three are ranked by their lead over Buy & Hold
 SPY over the same days (``same_days`` in the results), not by their return
 since their own start. ``--why`` also writes a
 message saying, for each of the top three, how it picks, what it holds and
-why it bought it, and what it will trade at the next open, in plain words.
+why it bought it, and what it will trade at the next open, in plain words. ``--trades`` writes
+the trade alert: every trade each account made in the last session (at the
+open and at midday) and every order waiting for the next open.
 ``ibkr_morning.sh`` sends all of it to Telegram when ``TELEGRAM_TOKEN`` is
 set.
 """
@@ -157,6 +160,68 @@ def why(payload: dict, top: int = 3) -> str:
     return "\n".join(lines)
 
 
+#: Telegram refuses messages longer than this.
+TELEGRAM_LIMIT = 4096
+
+
+def fill(t: dict) -> str:
+    """One trade in plain words: bought 3 UNH for 1,044 CHF, why."""
+    verb = "Bought" if t["side"] == "BUY" else "Sold"
+    when = " at midday" if t.get("session") == "midday" else ""
+    text = (f"- {verb} {t['quantity']:g} {t['ticker']} for "
+            f"{t['value_chf']:,.0f} CHF{when}")
+    if t.get("pnl_chf") is not None:
+        text += f" ({t['pnl_chf']:+,.0f} CHF on it)"
+    return f"{text}: {plain(t['reason'])}"
+
+
+def order(o: dict) -> str:
+    verb = "Buy" if o["side"] == "BUY" else "Sell"
+    size = f"{o['quantity']:g} " if o.get("quantity") else ""
+    return f"- {verb} {size}{o['ticker']}: {plain(o['reason'])}"
+
+
+def grouped(blocks: list[tuple[str, list[str]]], most: int) -> list[str]:
+    """One block per account, at most ``most`` lines each. A fixed twin
+    that did exactly the same as the account before it gets one line."""
+    lines, seen = [], {}
+    for name, rows in blocks:
+        if not rows:
+            continue
+        same = seen.get(tuple(rows))
+        seen.setdefault(tuple(rows), name)
+        if same:
+            lines += ["", f"{name}: the same as {same}"]
+            continue
+        lines += ["", name, *rows[:most]]
+        if len(rows) > most:
+            lines.append(f"- and {len(rows) - most} more")
+    return lines
+
+
+def trades(payload: dict, most: int = 6) -> str:
+    """The trade alert: every account's trades in the last session, then
+    the orders waiting for the next open. Fits one Telegram message."""
+    last, agents = payload["last"], payload["agents"]
+    done = grouped([(a["name"], [fill(t) for t in a["trades"]
+                                 if t["date"] == last])
+                    for a in agents], most)
+    waiting = grouped([(a["name"], [order(o) for o in
+                                    a.get("pending_orders", [])])
+                       for a in agents], most)
+    lines = [f"Trades on {day(last)}"]
+    lines += done or ["", "No account traded."]
+    lines += ["", "Orders for the next open"]
+    lines += waiting or ["", "No orders waiting."]
+    text = "\n".join(lines)
+    if len(text) <= TELEGRAM_LIMIT:
+        return text
+    if most > 1:
+        return trades(payload, most - 1)
+    end = "\n... (the full list is on the dashboard)"
+    return text[:TELEGRAM_LIMIT - len(end)].rsplit("\n", 1)[0] + end
+
+
 def caption(payload: dict) -> str:
     """Top three and the yardsticks, one line each."""
     agents = payload["agents"]
@@ -238,6 +303,8 @@ def main() -> None:
                         help="URL or file of paper.json")
     parser.add_argument("--why", type=Path,
                         help="also write the top three's reasons to this file")
+    parser.add_argument("--trades", type=Path,
+                        help="also write the trade alert to this file")
     args = parser.parse_args()
     payload = load_results(args.results)
     if not payload.get("agents"):
@@ -245,6 +312,8 @@ def main() -> None:
     draw(payload, args.png)
     if args.why:
         args.why.write_text(why(payload))
+    if args.trades:
+        args.trades.write_text(trades(payload))
     print(caption(payload))
 
 

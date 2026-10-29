@@ -590,7 +590,7 @@ few dozen scored calls per account.
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
 | `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days, and the News Analysts' calibration |
 | `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |
-| `telegram_chart.py` | Race chart and top three for the Telegram morning message |
+| `telegram_chart.py` | Race chart, top three and trade alert for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `claude_api.py` | Every call to Claude: clear errors, one retry when busy, the check that a reply is finished |
 | `claude_archive.py`, `state/briefs/` | Every Claude call word for word, one file per day, and a reader |
@@ -761,6 +761,10 @@ own computer can stay off.
    yardsticks) after each run, followed by why the top
    three hold what they hold: how each one picks, its biggest holdings
    with the reason it bought them, and what it trades at the next open.
+   A last message is the trade alert: every trade each account made in
+   the last session (at the open, and the News Analysts' midday trades)
+   and every order waiting for the next open. A fixed twin that did the
+   same as its learning version gets one line.
 
 IB Gateway restarts itself every night and logs in afresh on Sundays,
 and the server updates it every Saturday. If it stops answering (IBKR
