@@ -3,17 +3,17 @@
   "use strict";
   const V3 = window.V3;
   const Chart = window.Chart;
-  const GRID = "rgba(140,170,210,0.08)", TICK = "#6b7a8f";
+  const GRID = "rgba(236,222,190,0.08)", TICK = "#8f897b";
 
   if (Chart) {
     Chart.defaults.color = TICK;
-    Chart.defaults.font.family = '"IBM Plex Mono", ui-monospace, monospace';
+    Chart.defaults.font.family = '"Inter", ui-sans-serif, system-ui, sans-serif';
     Chart.defaults.font.size = 10;
     Chart.defaults.animation = false;
     Chart.defaults.maintainAspectRatio = false;
     Chart.defaults.plugins.legend.display = false;
-    Chart.defaults.plugins.tooltip.backgroundColor = "rgba(8,13,21,.95)";
-    Chart.defaults.plugins.tooltip.borderColor = "rgba(140,170,210,.25)";
+    Chart.defaults.plugins.tooltip.backgroundColor = "rgba(14,13,10,.95)";
+    Chart.defaults.plugins.tooltip.borderColor = "rgba(236,222,190,.25)";
     Chart.defaults.plugins.tooltip.borderWidth = 1;
     Chart.defaults.elements.point.radius = 0;
     Chart.defaults.elements.line.borderWidth = 1.5;
@@ -44,7 +44,7 @@
   }
 
   V3.charts = {
-    line(canvas, { color = "#7fa7d9", fill = true, yFmt, label = "", zero = false, extra = [] } = {}) {
+    line(canvas, { color = "#6fa3e8", fill = true, yFmt, label = "", zero = false, extra = [] } = {}) {
       return new Chart(host(canvas), {
         type: "line",
         data: { labels: [], datasets: [{ label, data: [], borderColor: color, fill: fill ? "origin" : false,
