@@ -22,7 +22,7 @@ export const JOURNAL: Entry[] = [
     text: "Every weekday morning a Telegram message lists each trade the accounts made the day before, with the reason in plain words, and the orders waiting for the next open, so the race can be followed from a phone without opening the website.",
   },
   {
-    date: "2026-10-28", tag: "Platform", title: "The research lab gets the platform's look", pending: true,
+    date: "2026-10-28", tag: "Platform", title: "The research lab gets the platform's look",
     text: "The 3D Research Lab, where a separate agent practises on past prices, gets the same colours, fonts and gold V3 logo as the rest of the platform, with a warm gold 3D scene.",
   },
   {
