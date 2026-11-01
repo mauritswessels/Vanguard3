@@ -625,6 +625,13 @@ It is also served by GitHub Pages at `/lab/`. Opening `index.html` straight
 from disk works too, but browsers block the data file there, so it falls back
 to a synthetic market (the System Health panel says so).
 
+The lab is plain HTML, CSS and JavaScript with no build step, but it uses the
+platform's look: the same gold-on-black colours, the Inter fonts and the gold
+V3 logo (`css/lab.css` copies the tokens from `web/src/styles.css`, and the
+logo in the top left leads back to the Research page). If the platform's
+colours change, change them in `css/lab.css` and the colour constants in
+`js/` too.
+
 | File | Layer | Role |
 | --- | --- | --- |
 | `js/core.js` | shared | Event bus, `V3.EVENTS` contract, config, component graph, helpers |

@@ -19,7 +19,7 @@
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   }
 
-  function textSprite(text, { size = 26, color = "#cfd8e3", weight = 500, font = "JetBrains Mono", spacing = 0 } = {}) {
+  function textSprite(text, { size = 26, color = "#c4bdaf", weight = 500, font = "Inter", spacing = 0 } = {}) {
     const c = document.createElement("canvas"), g = c.getContext("2d");
     const label = text;
     g.font = `${weight} ${size * 2}px "${font}", "Arial Narrow", sans-serif`;
@@ -52,24 +52,24 @@
       container.appendChild(r.domElement);
 
       const scene = this.scene = new THREE.Scene();
-      this.bg = new THREE.Color("#0f1113");
+      this.bg = new THREE.Color("#0b0a08");
       scene.background = this.bg.clone();
       scene.fog = new THREE.FogExp2(this.bg.clone(), 0.0016);
       this.camera = new THREE.PerspectiveCamera(48, 1, 1, 3000);
       this.view = { theta: 0.6, phi: 1.18, radius: 270, target: new THREE.Vector3() };
       this.tween = null; this.follow = null;
 
-      scene.add(new THREE.HemisphereLight("#7d93b8", "#0a0e14", 0.55));
-      const key = new THREE.DirectionalLight("#cfe0ff", 1.1);
+      scene.add(new THREE.HemisphereLight("#b3a68a", "#0b0a08", 0.55));
+      const key = new THREE.DirectionalLight("#fff1d6", 1.1);
       key.position.set(60, 220, 90); key.castShadow = true;
       key.shadow.mapSize.set(1024, 1024);
       Object.assign(key.shadow.camera, { left: -170, right: 170, top: 170, bottom: -170, near: 10, far: 500 });
       key.shadow.radius = 6; scene.add(key);
-      this.coreLight = new THREE.PointLight("#e8e4dc", 25, 260, 1); scene.add(this.coreLight);
+      this.coreLight = new THREE.PointLight("#f0d595", 25, 260, 1); scene.add(this.coreLight);
 
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.ShadowMaterial({ opacity: 0.38 }));
       floor.rotation.x = -Math.PI / 2; floor.position.y = -78; floor.receiveShadow = true; scene.add(floor);
-      const grid = new THREE.GridHelper(1400, 70, "#1b2a3d", "#101a27");
+      const grid = new THREE.GridHelper(1400, 70, "#23201a", "#16140f");
       grid.position.y = -77.9; grid.material.transparent = true; grid.material.opacity = 0.45; scene.add(grid);
       this.addDust();
 
@@ -89,7 +89,7 @@
         pos.set([r * Math.sin(p) * Math.cos(t), r * Math.cos(p) * 0.6, r * Math.sin(p) * Math.sin(t)], i * 3);
       }
       const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      this.dust = new THREE.Points(geo, new THREE.PointsMaterial({ color: "#4f6280", size: 1.3, transparent: true, opacity: 0.5, depthWrite: false }));
+      this.dust = new THREE.Points(geo, new THREE.PointsMaterial({ color: "#6b6250", size: 1.3, transparent: true, opacity: 0.5, depthWrite: false }));
       this.scene.add(this.dust);
     }
 
@@ -108,18 +108,18 @@
         glow.scale.setScalar(def.size * (core ? 6.5 : 5)); group.add(glow);
         const hit = new THREE.Mesh(new THREE.SphereGeometry(def.size * 1.7, 12, 8), new THREE.MeshBasicMaterial({ visible: false }));
         group.add(hit);
-        const label = textSprite(def.name, { size: core ? 30 : 24, color: core ? "#e8e4dc" : "#9aa1a8", weight: 500 });
+        const label = textSprite(def.name, { size: core ? 30 : 24, color: core ? "#f3eee4" : "#c4bdaf", weight: 500 });
         label.position.y = -(def.size + (core ? 9 : 6.5));
         if (core) label.scale.multiplyScalar(1.45);
         group.add(label);
         const extras = [];
         if (core) {
           const ico = new THREE.Mesh(new THREE.IcosahedronGeometry(def.size * 1.35, 1),
-            new THREE.MeshBasicMaterial({ color: "#e8e4dc", wireframe: true, transparent: true, opacity: 0.16 }));
+            new THREE.MeshBasicMaterial({ color: "#f3eee4", wireframe: true, transparent: true, opacity: 0.16 }));
           group.add(ico); extras.push(ico);
           [1.9, 2.35].forEach((k, j) => {
             const ring = new THREE.Mesh(new THREE.TorusGeometry(def.size * k, 0.18, 8, 160),
-              new THREE.MeshBasicMaterial({ color: j ? "#a99bd6" : "#d3a75f", transparent: true, opacity: 0.55 }));
+              new THREE.MeshBasicMaterial({ color: j ? "#9085e9" : "#d4b26a", transparent: true, opacity: 0.55 }));
             ring.rotation.x = Math.PI / 2 + (j ? 0.5 : -0.3); group.add(ring); extras.push(ring);
           });
         }
@@ -299,7 +299,7 @@
       this.regime = reg;
       const hv = reg.vol === "High volatility", lv = reg.vol === "Low volatility";
       this.energy = (hv ? 1.6 : lv ? 0.65 : 1) * (reg.trend === "Trending" ? 1.15 : 0.9);
-      const tint = hv ? new THREE.Color("#120a10") : lv ? new THREE.Color("#050b12") : new THREE.Color("#060a11");
+      const tint = hv ? new THREE.Color("#150b08") : lv ? new THREE.Color("#0b0a08") : new THREE.Color("#0b0a08");
       this.fogTarget = tint;
       this.applyDimming();
     }
@@ -329,9 +329,9 @@
       this.flowBusy = true;
       const stages = V3.PIPELINE, per = this.flowDuration / stages.length;
       const action = rec.risk.action, ac = V3.ACTION_COLORS[rec.decision.name];
-      const riskColor = !rec.risk.approved ? "#e27466" : rec.risk.event ? "#d9a441" : "#6cc391";
-      const colorFor = k => ({ analyse: "#d3a75f", decide: ac, risk: riskColor, exec: V3.ACTION_COLORS[action], portfolio: "#6cc391",
-        reward: rec.reward >= 0 ? "#6cc391" : "#e27466", learn: "#a99bd6" }[k] || "#c9cdd2");
+      const riskColor = !rec.risk.approved ? "#ef6f63" : rec.risk.event ? "#e39a3b" : "#4cc38a";
+      const colorFor = k => ({ analyse: "#d4b26a", decide: ac, risk: riskColor, exec: V3.ACTION_COLORS[action], portfolio: "#4cc38a",
+        reward: rec.reward >= 0 ? "#4cc38a" : "#ef6f63", learn: "#9085e9" }[k] || "#c4bdaf");
       let i = 0;
       const next = () => {
         if (i >= stages.length) { this.flowBusy = false; this.onStage(-1, rec); return; }
@@ -340,7 +340,7 @@
         const col = colorFor(st.key);
         if (st.pulse) this.pulse(st.pulse, col, 1);
         if (st.key === "decide") this.showDecision(rec);
-        if (st.key === "data") this.pulse("data", "#7fa7d9", 0.8);
+        if (st.key === "data") this.pulse("data", "#6fa3e8", 0.8);
         if (!st.hops.length) { setTimeout(next, per); return; }
         let left = st.hops.length;
         st.hops.forEach(([a, b]) => this.emit(a, b, { color: col, bright: true, speed: 1000 / Math.max(per, 60),

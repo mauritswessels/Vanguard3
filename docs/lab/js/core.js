@@ -90,10 +90,10 @@
   ];
 
   V3.CAT_COLORS = {
-    data: "#7fa7d9", process: "#8f97c4", core: "#e8e4dc", risk: "#e27466",
-    exec: "#6cc391", research: "#9aa7b8", learn: "#a99bd6", monitor: "#74b9aa",
+    data: "#6fa3e8", process: "#9fb4c8", core: "#e9cf8f", risk: "#ef6f63",
+    exec: "#4cc38a", research: "#c4bdaf", learn: "#9085e9", monitor: "#5fb39f",
   };
-  V3.ACTION_COLORS = { BUY: "#6cc391", SELL: "#e27466", HOLD: "#8b9097" };
+  V3.ACTION_COLORS = { BUY: "#4cc38a", SELL: "#ef6f63", HOLD: "#8f897b" };
 
   // ------------------------------------------------------------ helpers --
   V3.fmt = {
