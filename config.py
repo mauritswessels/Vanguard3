@@ -233,6 +233,33 @@ NEWS_OPUS_PARAMS = {
     "usd_per_m_output": 20.0,
 }
 
+# The Day Trader (models/day_trader_agent.py, day_trader.py): buys US shares
+# that break out of their first half hour's range and sells them the same
+# day, by a stop, a target or 10 minutes before the close. It looks at live
+# prices (Finnhub, real time) every few minutes while New York is open.
+# Pure rules: no Claude calls, so it costs nothing to run.
+DAY_TRADER_PARAMS = {
+    "check_minutes": 5,          # looks at the prices this often
+    "range_minutes": 30,         # the opening range: the first half hour
+    "last_entry": "15:00",       # New York time: no new buys after this
+    "flat_minutes": 10,          # sells everything this long before the close
+    "min_range": 0.004,          # opening range at least 0.4% of the price...
+    "max_range": 0.03,           # ...and at most 3% (the stop would be too far)
+    "max_chase": 0.5,            # buys only up to half a range above its top
+    "risk_pct": 0.005,           # a stop-out costs about 0.5% of the account
+    "max_position_pct": 0.20,    # at most 20% of the account per share
+    "max_positions": 4,          # open at once
+    "max_entries": 6,            # new buys per day
+    "target_r": 2.0,             # takes profit at twice the risk
+    "day_loss_limit": 0.01,      # no new buys once the day has lost 1%
+    "stale_minutes": 10,         # a price older than this is not used
+}
+# The markets it trades: the US shares on the watchlist (real-time prices
+# are free only for US markets). SPY tells it which way the market goes.
+DAY_TRADER_MARKETS = list(_US_STOCKS)
+# One file per trading day with every check and fill (written live).
+DAY_TRADER_DIR = PROJECT_ROOT / "state" / "day_trader"
+
 # ---------------------------------------------------------------------------
 # Skill or luck study (luck_study.py)
 # ---------------------------------------------------------------------------

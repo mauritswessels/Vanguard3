@@ -167,7 +167,8 @@ TELEGRAM_LIMIT = 4096
 def fill(t: dict) -> str:
     """One trade in plain words: bought 3 UNH for 1,044 CHF, why."""
     verb = "Bought" if t["side"] == "BUY" else "Sold"
-    when = " at midday" if t.get("session") == "midday" else ""
+    when = {"midday": " at midday",
+            "intraday": " during the day"}.get(t.get("session"), "")
     text = (f"- {verb} {t['quantity']:g} {t['ticker']} for "
             f"{t['value_chf']:,.0f} CHF{when}")
     if t.get("pnl_chf") is not None:

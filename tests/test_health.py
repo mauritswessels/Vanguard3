@@ -35,6 +35,23 @@ class HealthTest(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("News Analyst (Opus) made no decision", found[0])
 
+    def test_a_day_trader_day_not_traded_live_is_reported(self):
+        s = state("2026-11-04", "2026-11-04")
+        s["accounts"].append({"agent": "daytrader", "name": "Day Trader",
+                              "agent_state": {"days": [
+                                  {"date": "2026-11-03", "source": "live"},
+                                  {"date": "2026-11-04",
+                                   "source": "live, then replayed",
+                                   "notes": ["The live run stopped at 13:20"]}
+                              ]}})
+        found = problems(s, pd.Timestamp("2026-11-04"))
+        self.assertEqual(len(found), 1)
+        self.assertIn("Day Trader's live run did not cover all of Wed 04 "
+                      "Nov, so the evening run replayed the rest", found[0])
+        self.assertIn("stopped at 13:20", found[0])
+        s["accounts"][-1]["agent_state"]["days"][-1]["source"] = "live"
+        self.assertEqual(problems(s, pd.Timestamp("2026-11-04")), [])
+
     def test_orders_that_did_not_go_through_are_reported(self):
         s = state("2026-10-20", "2026-10-20")
         s["accounts"][0].update(name="Volatility Protected", activity=[

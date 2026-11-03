@@ -5,7 +5,8 @@ own, and each month it decides whom to back:
 
 * Until the team has ``min_history`` sessions of results, it backs every
   racing agent equally (learning agents, AI Learner, News Analyst; fixed
-  twins and yardsticks are left out).
+  twins, yardsticks and the Day Trader, which holds nothing overnight to
+  copy, are left out).
 * After that, on the first session of each month, it backs the ``top_n``
   agents with the best return over the last ``lookback`` sessions, in
   equal shares. Each agent counts only from the day it joined the race;
@@ -70,7 +71,9 @@ class ManagerAgent(BaseAgent):
         return [a for a in self.team if a.agent is not self
                 and not a.agent.benchmark
                 and "(fixed)" not in a.agent.name
-                and not getattr(a.agent, "uses_team", False)]
+                and not getattr(a.agent, "uses_team", False)
+                # Holds nothing at the close, so there is nothing to copy.
+                and not getattr(a.agent, "intraday", False)]
 
     def choose(self, date: pd.Timestamp) -> None:
         """Pick whom to back, from results up to ``date`` only."""

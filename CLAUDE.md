@@ -1,10 +1,11 @@
 # Vanguard3: notes for Claude
 
-End-of-day paper-trading race: 13 accounts (rule-based agents and their
+End-of-day paper-trading race: 15 accounts (rule-based agents and their
 fixed twins, an RL learner, Claude-driven news agents, a Team Manager, the
-Monkey and buy-and-hold SPY) each trade 100,000 CHF on 108 IBKR-tradable
-markets. GitHub Actions runs it every weekday and GitHub Pages serves the
-dashboard from `docs/`. `README.md` is the full manual with a layout table.
+Monkey, buy-and-hold SPY and all markets, and a rule-based Day Trader that
+trades US shares on live prices during the day) each trade 100,000 CHF on
+108 IBKR-tradable markets. GitHub Actions runs it every weekday and GitHub
+Pages serves the dashboard from `docs/`. `README.md` is the full manual with a layout table.
 Read the section you need there instead of exploring the whole repo.
 
 ## Before you change anything
@@ -57,7 +58,8 @@ tests run them on both.
 ## Rules that keep the simulation honest
 
 - **No look-ahead.** Agents decide after the close of day t using data up
-  to t, and orders fill at the open of t+1. Tests check this. Never weaken
+  to t, and orders fill at the open of t+1 (the Day Trader: at time t on
+  prices up to t, filled at that price). Tests check this. Never weaken
   them.
 - **Accounting.** Cash never goes negative, buys are scaled to the cash
   that is free (waiting orders keep theirs reserved), and every fill pays

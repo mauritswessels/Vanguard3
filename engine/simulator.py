@@ -4,6 +4,7 @@
 
 1. the broker fills yesterday's orders at today's open (with all costs),
    then the orders the midday check placed for today's close at that close,
+   and the Day Trader's trades during the day are booked (``trade_day``),
 2. the portfolio is marked to market at today's close,
 3. the agent reads data up to today's close and submits new orders.
 
@@ -116,6 +117,12 @@ class Simulator:
             # Orders placed at midday for today's close (markets whose
             # midday price was delayed), before the day is marked.
             closing = acc.broker.process_close(date)
+            # The Day Trader's trades during the day (live, or replayed
+            # where the live run did not reach), before the day is marked.
+            intraday = (acc.agent.trade_day(date, acc.portfolio, acc.broker)
+                        if hasattr(acc.agent, "trade_day") else None)
+            if intraday:
+                acc.activity.append(intraday)
             acc.portfolio.mark_to_market(date, prices_chf)
             signals = acc.agent.calculate_signals(date, acc.portfolio)
             orders = acc.agent.execute_trade(signals, date, acc.portfolio,

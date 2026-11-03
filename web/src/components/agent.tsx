@@ -57,7 +57,7 @@ export function DecisionBlock({ d, label }: { d: Decision | null; label: string 
   const heads = (det.headlines as string[] | undefined) || [];
   return (
     <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-      <div className="eyebrow mb-2">{label} · decided {dateShort(d.date)}{d.time === "midday" ? " at midday" : " after the close"}</div>
+      <div className="eyebrow mb-2">{label} · decided {dateShort(d.date)}{d.time === "midday" ? " at midday" : d.time === "intraday" ? " during the day" : " after the close"}</div>
       <p className="text-[14px] text-ink">{d.reason}</p>
       {d.check && <p className="mt-1.5 text-[13px] text-muted">{d.check}</p>}
       <div className="mt-2 flex flex-wrap gap-2 text-[12px] text-muted">
@@ -134,7 +134,7 @@ export function ActivityFeed({ a, limit = 20 }: { a: Agent; limit?: number }) {
       {days.map((day: Activity, i) => (
         <li key={i} className="relative">
           <span className="absolute -left-[29px] top-1.5 size-2.5 rounded-full border-2 border-gold bg-bg" />
-          <div className="eyebrow mb-2">{date(day.date)}{day.time === "midday" ? " · midday check" : " · after the close"}</div>
+          <div className="eyebrow mb-2">{date(day.date)}{day.time === "midday" ? " · midday check" : day.time === "intraday" ? " · during the day" : " · after the close"}</div>
           <ul className="grid gap-1.5 text-[13.5px]">
             {day.fills.map((f, j) => (
               <li key={"f" + j} className="flex flex-wrap items-center gap-2">

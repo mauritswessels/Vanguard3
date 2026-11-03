@@ -29,7 +29,8 @@ export interface Fill {
   id: number;
   date: string;
   decided: string;
-  session: "open" | "midday" | string;
+  /** "intraday": the Day Trader, bought and sold during the day. */
+  session: "open" | "midday" | "intraday" | string;
   ticker: string;
   side: "BUY" | "SELL";
   quantity: number;
@@ -117,7 +118,7 @@ export interface Corporate {
 
 export interface Activity {
   date: string;
-  time?: "midday" | string;
+  time?: "midday" | "intraday" | string;
   fills: DayFill[];
   signals: Decision[];
   rejected?: Rejected[];
@@ -200,6 +201,29 @@ export interface LearnerAI {
   };
 }
 
+/** The Day Trader's latest days (models/day_trader_agent.py day_view). */
+export interface DayTradingDay {
+  date: string;
+  /** "live", "live, then replayed" (the live run stopped) or "replayed" (no live run). */
+  source: string;
+  live_checks: number;
+  replayed_checks: number;
+  trades: number;
+  pnl_chf: number;
+  start_chf: number;
+  notes: string[];
+  fills: {
+    time: string; ticker: string; side: "BUY" | "SELL"; quantity: number;
+    price: number; pnl_chf: number | null; live: boolean; reason: string;
+  }[];
+}
+
+export interface DayTrading {
+  first_live: string | null;
+  params: Record<string, number | string>;
+  days: DayTradingDay[];
+}
+
 export interface Team {
   backing: Record<string, number>;
   chosen: string;
@@ -277,6 +301,8 @@ export interface Agent {
   watch: Watch[] | null;
   ai: NewsAI | LearnerAI | null;
   team: Team | null;
+  /** Newer files, Day Trader only: its latest days, trade by trade. */
+  day_trading?: DayTrading | null;
   scans: [string, Record<string, number>][] | null;
   events?: { date: string; chf?: number }[];
   /** Newer files: every fill graded against SPY. */

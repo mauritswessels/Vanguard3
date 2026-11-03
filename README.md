@@ -20,6 +20,7 @@ python3 -m venv .venv
 .venv/bin/python walk_forward.py              # tune on the past, test blind
 .venv/bin/python main.py --days 1825 --dashboard   # refresh dashboard backtest
 .venv/bin/python luck_study.py                # skill or luck: everyone against 300 monkeys
+.venv/bin/python day_trader.py --replay 30    # the Day Trader's rules on the last 30 days
 ```
 
 ### Pinned packages
@@ -290,6 +291,62 @@ over the last 3 months. Each agent counts only from the day it joined:
 one that joined less than 35 days before is too new to judge and waits
 for a later month.
 
+The **Day Trader** (`models/day_trader_agent.py`, `day_trader.py`) is
+the only account that trades during the day. Every other agent decides once,
+after the close; it looks at live prices every 5 minutes while New York is
+open and is back in cash before every close, so it never holds anything
+overnight. It trades the 50 US shares on the watchlist (real-time prices
+are free only for US markets) with the opening-range breakout, one of the
+oldest day-trading rules (settings in `DAY_TRADER_PARAMS` in `config.py`):
+
+* the first half hour (9:30 to 10:00 New York time) sets each share's
+  opening range, its highest and lowest price;
+* after that, a share whose price climbs above the top of its range is
+  bought when it is up on yesterday's close, SPY is above today's opening
+  price, the range is between 0.4% and 3% of the price, and the price has
+  not already run more than half a range past the top (the strongest
+  shares against SPY go first);
+* each buy gets a stop in the middle of the range and a target twice as
+  far above the buy as the stop is below it, and is sized so that the stop
+  costs about 0.5% of the account (at most 20% of it);
+* it sells at the stop, at the target, or 10 minutes before the close;
+* at most 4 shares at once, 6 buys a day, each share once a day, no new
+  buys after 15:00 New York time (an hour before an early close) or once
+  the day has lost 1%.
+
+Every fill pays the usual costs, so a round trip of 20,000 CHF costs about
+32 CHF (two fees, slippage and the currency spread both ways): the race
+shows whether its gains beat that. It uses no Claude calls and costs
+nothing to run.
+
+It runs on GitHub Actions (workflow "Day trader", weekdays): one job from
+before the open to 12:45 New York time, a second one to the close (a job
+may run at most 6 hours). Each check reads real-time prices from Finnhub
+(`FINNHUB_API_KEY`; a 5-minute check of 51 quotes stays under the free
+plan's 60 a minute) and the dollar rate from Yahoo, and the run writes the
+day's record, every check and fill, to `state/day_trader/<day>.json`.
+That is all it commits, so it has its own queue and never makes the
+evening or midday runs wait. The evening run books the record into the
+account with the usual costs (`trade_day`, called by `Simulator.step`
+before the day is marked). If the live run stopped early or never ran (a
+failure, no Finnhub key, GitHub starting it late), the evening run replays
+the missing part under the same rules on Yahoo's 5-minute prices, each
+check seeing only the bars finished by then, and sells whatever is still
+held at the official close. The website marks such days "replayed", and
+the alert issue says why. The account joins the race on its first live
+day; a replay alone never starts it. A run that started after 10:00 reads
+the opening range from Yahoo's 5-minute bars, because the live high and
+low would already include later prices. New York's early closes (13:00 on
+the day after Thanksgiving, and on 24 December and 3 July from Monday to
+Thursday) are built in.
+
+To see how the rules would have done on past days (Yahoo keeps 5-minute
+prices for 60 days), open the "Day trader" workflow on GitHub, click "Run
+workflow" and enter a number of days (at most about 55): the run's page
+shows each day's result next to SPY. On your Mac: `.venv/bin/python
+day_trader.py --replay 30`. Either way it starts a fresh 100,000 CHF
+account and saves nothing.
+
 Three shared safety rules (`BaseAgent.guard`, off by default) can be
 switched on by the monthly review of the learning agents, which tries every
 mix of them on top of its best core settings; the fixed twins keep them off,
@@ -364,7 +421,9 @@ by themselves:
     every US fund, no two markets with one IBKR symbol), the IBKR bridge
     still refuses every account that is not a paper account, no secret
     file or API key is in the repository, every workflow that pushes waits
-    its turn in the `paper-trading` queue, every scheduled workflow says
+    its turn in the `paper-trading` queue (only one that commits nothing
+    but the Day Trader's own records may keep its own), every scheduled
+    workflow says
     so when it fails, the website can read every
     file in `docs/data/`, and the website's timeline (the Journal page)
     is no more than a week behind the pull requests merged into `main`;
@@ -457,7 +516,8 @@ To start over, delete `state/paper_state.json` and change
 The accounts joined on different days: the rule-based agents, Buy & Hold
 SPY and the News Analyst on 7 Oct 2026, the Team Manager and the Monkey on
 12 Oct, the AI Learner on 13 Oct (when its practice run ended), the News
-Analyst (Opus) on 14 Oct and the Opus Learner on 15 Oct. Buy & Hold SPY lost
+Analyst (Opus) on 14 Oct and the Opus Learner on 15 Oct; the Day Trader
+joins on its first live day. Buy & Hold SPY lost
 about 3% between 12 and 16 Oct, so a late joiner skipped part of that fall,
 and its return since its own start flatters it next to "SPY since launch". Each
 account in `docs/data/paper.json` (and `backtest.json`) therefore also says
@@ -590,6 +650,9 @@ few dozen scored calls per account.
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
 | `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days, and the News Analysts' calibration |
 | `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |
+| `models/day_trader_agent.py` | The Day Trader: opening-range breakout rules, the day's record, the evening booking and the replay on 5-minute prices |
+| `day_trader.py`, `.github/workflows/day-trader.yml` | The Day Trader's live run every weekday (Finnhub prices every 5 minutes), and `--replay` to test the rules on past days |
+| `state/day_trader/` | One record per trading day: every live check and fill (written by the live run, booked by the evening run) |
 | `telegram_chart.py` | Race chart, top three and trade alert for the Telegram morning message |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `claude_api.py` | Every call to Claude: clear errors, one retry when busy, the check that a reply is finished |
@@ -652,10 +715,13 @@ Agents decide after the close of day *t* using data up to *t*. Orders fill
 at the **open of day t+1** with 5 bp adverse slippage, a 2 bp CHF/USD
 conversion spread and a flat 2 CHF commission. Buys are scaled down to
 available cash; cash can never go negative. Positions are marked at the
-close in CHF using the daily USDCHF rate. The one exception is the midday
-check's market-on-close orders (see the News Analyst above): they fill at
+close in CHF using the daily USDCHF rate. There are two exceptions. The
+midday check's market-on-close orders (see the News Analyst above) fill at
 the close of the day they were placed, with the same costs, just before
-that day is marked.
+that day is marked. The Day Trader decides during the day on prices up to
+that moment (the live quote, or the 5-minute bars finished by then) and
+fills at that price, with the same costs, and is back in cash before the
+day is marked.
 
 Backtests use Yahoo's dividend- and split-adjusted prices. The live paper
 accounts are paid each dividend in cash on its ex-date, after the tax a

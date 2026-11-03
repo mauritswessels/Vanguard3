@@ -12,6 +12,8 @@ the repository owner. It looks for:
   failed, or a scheduled run GitHub never started),
 * a News Analyst or the Opus Learner that could not make its latest
   decision,
+* a day the Day Trader's live run did not cover in full (the evening run
+  replayed the rest on 5-minute prices),
 * orders that did not go through in the latest session (not enough cash,
   or their market did not open for a week),
 * with ``--midday``: a News Analyst whose midday check failed today,
@@ -101,6 +103,14 @@ def problems(state: dict | None, expected: pd.Timestamp,
         if acc["agent"] in CLAUDE_KEYS and s.get("decided") != state["last_date"]:
             out.append(f"The {acc.get('name', 'News Analyst')} made no decision for "
                        f"{last:%a %d %b}: {s.get('status', 'no reason given')}")
+        day = next((d for d in s.get("days", []) if acc["agent"] ==
+                    "daytrader" and d["date"] == state["last_date"]), None)
+        if day and day["source"] != "live" and not midday:
+            notes = "; ".join(day.get("notes", [])) or "no reason given"
+            out.append(f"The {name}'s live run did not cover all of "
+                       f"{last:%a %d %b}, so the evening run replayed "
+                       f"{'the day' if day['source'] == 'replayed' else 'the rest'}"
+                       f" on 5-minute prices: {notes}.")
         if midday:
             m = s.get("midday") or {}
             day = (today or pd.Timestamp.now(tz="UTC")).strftime("%Y-%m-%d")

@@ -3,7 +3,7 @@
  * the descriptions, written from the agents' code (models/*.py, config.py). */
 import type { Agent } from "./types";
 
-export type Family = "Rules" | "Reinforcement learning" | "Claude AI" | "Manager" | "Yardstick";
+export type Family = "Rules" | "Day trading" | "Reinforcement learning" | "Claude AI" | "Manager" | "Yardstick";
 
 export interface AgentInfo {
   tagline: string;
@@ -78,6 +78,16 @@ export const INFO: Record<string, AgentInfo> = {
     ],
     rules: ["Same brief and limits as the News Analyst", "Model: Claude Opus", "Evening decision plus a midday check"],
   },
+  daytrader: {
+    tagline: "Buys and sells within the same day, on live prices.",
+    family: "Day trading",
+    thinks: [
+      "Every other agent decides once a day, after the close. The Day Trader watches 50 US shares and the S&P 500 every 5 minutes while New York is open, on real-time prices, and is back in cash before every close.",
+      "It uses the opening-range breakout, one of the oldest day-trading rules. The first half hour sets each share's range. When a share then climbs above the top of its range, while it is up on the day and the S&P 500 is above its opening price, it buys. It sells at a stop in the middle of the range, at a target twice as far up, or 10 minutes before the close.",
+      "It uses no AI, so it costs nothing to run. Every trade pays the same fee, slippage and currency costs as the other agents, and day trading trades a lot, so the race shows whether its gains beat those costs.",
+    ],
+    rules: ["Buy: a breakout above the first half hour's range, share up on the day, S&P 500 above its open", "Sell: stop in the middle of the range, target at twice the risk, or 10 minutes before the close", "A stop-out costs about 0.5% of the account; at most 4 shares and 6 buys a day"],
+  },
   manager: {
     tagline: "Picks agents, not markets.",
     family: "Manager",
@@ -127,7 +137,7 @@ export function hex(key: string, el: Element = document.documentElement) {
 }
 
 /** The order agents are listed in when not ranked. */
-export const ORDER = ["trend", "reversion", "volatility", "learner", "learner_opus", "news", "news_opus", "manager", "benchmark", "equal_weight", "monkey"];
+export const ORDER = ["trend", "reversion", "volatility", "learner", "learner_opus", "news", "news_opus", "daytrader", "manager", "benchmark", "equal_weight", "monkey"];
 
 export const isYardstick = (a: Agent) => a.benchmark;
 export const learns = (a: Agent) => a.learning || !!a.ai;
@@ -141,6 +151,7 @@ export function badge(a: Agent): string {
   if (a.ai) return "Learns daily";
   if (a.learning) return "Re-tunes monthly";
   if (a.team) return "Backs the best agents";
+  if (a.day_trading) return "Live prices · in cash every night";
   return info(a).family;
 }
 

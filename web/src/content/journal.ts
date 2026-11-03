@@ -18,6 +18,10 @@ export interface Entry {
 
 export const JOURNAL: Entry[] = [
   {
+    date: "2026-11-03", tag: "Agents", title: "A day trader", pending: true,
+    text: "The Day Trader joins the race with its own 100,000 CHF. Instead of deciding once after the close, it checks 50 US shares every 5 minutes on live prices while New York is open, buys shares that break out of their first half hour's range, and sells them the same day. It uses no AI and runs free on GitHub. A day the live run misses is completed on 5-minute prices and marked as replayed.",
+  },
+  {
     date: "2026-10-28", tag: "Infrastructure", title: "A message for every trade",
     text: "Every weekday morning a Telegram message lists each trade the accounts made the day before, with the reason in plain words, and the orders waiting for the next open, so the race can be followed from a phone without opening the website.",
   },

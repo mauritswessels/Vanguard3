@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from models.benchmark_agent import BuyHoldAgent
+from models.day_trader_agent import DayTraderAgent
 from models.equal_weight_agent import EqualWeightAgent
 from models.learner_agent import LearnerAgent
 from models.manager_agent import ManagerAgent
@@ -13,7 +14,7 @@ from models.reversion_agent import ReversionAgent
 from models.trend_agent import TrendAgent
 from models.volatility_agent import VolatilityAgent
 
-__all__ = ["AGENT_TYPES", "BuyHoldAgent", "EqualWeightAgent", "LearnerAgent", "ManagerAgent", "MonkeyAgent", "NewsAgent", "OpusNewsAgent", "OpusLearnerAgent", "ReversionAgent", "TrendAgent",
+__all__ = ["AGENT_TYPES", "BuyHoldAgent", "DayTraderAgent", "EqualWeightAgent", "LearnerAgent", "ManagerAgent", "MonkeyAgent", "NewsAgent", "OpusNewsAgent", "OpusLearnerAgent", "ReversionAgent", "TrendAgent",
            "VolatilityAgent", "NEWS_KEYS", "CLAUDE_KEYS", "agent_key", "make_agent"]
 
 #: Registry used to rebuild agents from saved state and config.
@@ -29,6 +30,7 @@ AGENT_TYPES = {
     "news_opus": OpusNewsAgent,
     "monkey": MonkeyAgent,
     "manager": ManagerAgent,
+    "daytrader": DayTraderAgent,
 }
 
 

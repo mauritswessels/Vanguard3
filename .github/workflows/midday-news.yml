@@ -57,8 +57,13 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Midday news check $(date -u +%F)"
-            git pull --rebase origin main
-            git push
+            # The Day Trader pushes its own records during the day: a
+            # push that loses that race pulls again and retries.
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              [ "$i" = 3 ] && exit 1
+              sleep 15
+            done
           fi
 
       - name: Health check
