@@ -23,10 +23,11 @@ if [ "$1" = ibkr_summary.py ]; then
     exit "${FAKE_SUMMARY_CODE:-0}"
 fi
 if [ "$1" = telegram_chart.py ]; then
+    [ "${FAKE_CHART_CODE:-0}" = 0 ] || exit "$FAKE_CHART_CODE"
     echo png > "$2"
-    [ "$3" = --why ] && echo "Why the top 3 hold what they hold" > "$4"
-    [ "$5" = --trades ] && echo "Trades on 12 Oct" > "$6"
-    echo "The race, day 5"
+    [ "$3" = --details ] && echo "<b>The details</b>" > "$4"
+    [ "$5" = --ibkr ] && printf '%s' "$6" > "$CALLS.ibkr"
+    echo "<b>Vanguard3</b> race day 5"
     exit 0
 fi
 echo "$@" >> "$CALLS"
@@ -163,6 +164,8 @@ class MorningScriptTest(unittest.TestCase):
         self.docker = dock.read_text().splitlines() if dock.exists() else []
         every = tmp / "curled.all"
         self.all_curled = every.read_text() if every.exists() else ""
+        ibkr = tmp / "calls.ibkr"
+        self.ibkr_arg = ibkr.read_text() if ibkr.exists() else None
         published = tmp / "published"
         self.published = (published.read_text().splitlines()
                           if published.exists() else [])
@@ -299,25 +302,43 @@ class MorningScriptTest(unittest.TestCase):
         self.run_script([0], publish=True)
         self.assertEqual(self.published, [])
 
+    TELEGRAM = "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n"
+
     def test_telegram(self):
-        self.run_script([0], "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n")
+        """Two messages: the chart with the headline (which carries the
+        run's result), then the details. Both as HTML."""
+        self.run_script([0], self.TELEGRAM)
         sent = self.all_curled
-        self.assertIn("https://api.telegram.org/bot123:abc/sendMessage", sent)
-        self.assertIn("text=Vanguard3: Done: 2 of 3 orders placed; "
-                      "not accepted: EWZ.", sent)
-        # Then the race chart, with its caption.
+        self.assertEqual(sent.count("api.telegram.org"), 2)
+        self.assertNotIn("text=Vanguard3:", sent)    # no separate message
         self.assertIn("https://api.telegram.org/bot123:abc/sendPhoto", sent)
         self.assertIn("photo=@ibkr_logs/race.png", sent)
-        self.assertIn("caption=The race, day 5", sent)
-        # Then why the top three hold what they hold, then the trades.
+        # --form-string: a caption starting with "<" is text, not a file.
+        self.assertIn("--form-string\ncaption=<b>Vanguard3</b> race day 5",
+                      sent)
+        self.assertIn("parse_mode=HTML", sent)
+        self.assertEqual(self.ibkr_arg, "Done: 2 of 3 orders placed; "
+                                        "not accepted: EWZ.")
+        # Then the details.
         self.assertEqual(self.curled[-1],
                          "https://api.telegram.org/bot123:abc/sendMessage")
         self.assertIn("chat_id=42", self.curled)
-        self.assertIn("text@ibkr_logs/why.txt", sent)
-        self.assertIn("text@ibkr_logs/trades.txt", self.curled)
-        self.assertLess(sent.index("sendPhoto"), sent.index("why.txt"))
-        self.assertLess(sent.index("why.txt"), sent.index("trades.txt"))
+        self.assertIn("text@ibkr_logs/details.txt", self.curled)
+        self.assertLess(sent.index("sendPhoto"), sent.index("details.txt"))
 
+    def test_telegram_after_a_failed_run(self):
+        self.run_script([1, 1, 1], self.TELEGRAM)
+        self.assertTrue(self.ibkr_arg.startswith(
+            "Morning run failed: Is TWS open"))
+        self.assertIn("sendPhoto", self.all_curled)
+
+    def test_telegram_without_the_chart(self):
+        """If the chart cannot be made, the result still arrives."""
+        self.run_script([0], self.TELEGRAM, FAKE_CHART_CODE="1")
+        sent = self.all_curled
+        self.assertNotIn("sendPhoto", sent)
+        self.assertIn("text=Vanguard3: Done: 2 of 3 orders placed; "
+                      "not accepted: EWZ.", sent)
 
 if __name__ == "__main__":
     unittest.main()

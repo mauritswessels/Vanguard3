@@ -653,7 +653,7 @@ few dozen scored calls per account.
 | `models/day_trader_agent.py` | The Day Trader: opening-range breakout rules, the day's record, the evening booking and the replay on 5-minute prices |
 | `day_trader.py`, `.github/workflows/day-trader.yml` | The Day Trader's live run every weekday (Finnhub prices every 5 minutes), and `--replay` to test the rules on past days |
 | `state/day_trader/` | One record per trading day: every live check and fill (written by the live run, booked by the evening run) |
-| `telegram_chart.py` | Race chart, top three and trade alert for the Telegram morning message |
+| `telegram_chart.py` | The two Telegram morning messages: race charts with the headline, then the details |
 | `weekly_report.py` | Saturday report: Claude explains the week in plain words |
 | `claude_api.py` | Every call to Claude: clear errors, one retry when busy, the check that a reply is finished |
 | `claude_archive.py`, `state/briefs/` | Every Claude call word for word, one file per day, and a reader |
@@ -828,16 +828,18 @@ own computer can stay off.
    app and subscribe to the topic the setup prints (it is kept in
    `ibkr_morning.env`). Prefer Telegram? Make a bot with @BotFather in
    Telegram, then run `bash /opt/Vanguard3/server/telegram.sh` on the
-   server and paste the bot's token. Telegram then also gets the race
-   chart (`telegram_chart.py`: every account's return since launch, the
-   top three by their lead over SPY over the same days, and the
-   yardsticks) after each run, followed by why the top
-   three hold what they hold: how each one picks, its biggest holdings
-   with the reason it bought them, and what it trades at the next open.
-   A last message is the trade alert: every trade each account made in
-   the last session (at the open, and the News Analysts' midday trades)
-   and every order waiting for the next open. A fixed twin that did the
-   same as its learning version gets one line.
+   server and paste the bot's token. Telegram then gets two messages
+   after each run (`telegram_chart.py`), meant to be read in two or three
+   minutes. The headline is a picture with two charts (who is ahead of or
+   behind Buy & Hold SPY over the same days, and every account's return
+   since launch with the top three and the last place in colour), and
+   underneath it the top three, the last place, the yardsticks and how
+   the IBKR run went. The details follow: the full IBKR result, then for
+   the top three and the last place how each one picks, its biggest
+   holdings with the reason it bought them, its big trades of the last
+   session (5% of the account or more) with the reason, and what it
+   trades at the next open. Smaller trades are only counted; every trade
+   is on the website.
 
 IB Gateway restarts itself every night and logs in afresh on Sundays,
 and the server updates it every Saturday. If it stops answering (IBKR
