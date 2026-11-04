@@ -1,0 +1,363 @@
+{
+ "day": "2026-11-04",
+ "equity": 100000.0,
+ "source": "live",
+ "ranges": {
+  "AAPL": [
+   336.4425,
+   351.5
+  ],
+  "MSFT": [
+   532.2075,
+   553.6
+  ],
+  "NVDA": [
+   200.94,
+   206.79
+  ],
+  "GOOGL": [
+   281.31,
+   291.725
+  ],
+  "AMZN": [
+   258.4325,
+   270.73
+  ],
+  "META": [
+   629.0,
+   643.09
+  ],
+  "AVGO": [
+   326.03,
+   334.12
+  ],
+  "TSLA": [
+   375.5001,
+   385.2
+  ],
+  "ORCL": [
+   121.78,
+   129.85
+  ],
+  "ADBE": [
+   243.25,
+   252.73
+  ],
+  "CRM": [
+   226.94,
+   231.96
+  ],
+  "AMD": [
+   476.5,
+   514.6099
+  ],
+  "CSCO": [
+   102.74,
+   104.48
+  ],
+  "INTC": [
+   58.3,
+   60.21
+  ],
+  "QCOM": [
+   165.11,
+   172.26
+  ],
+  "TXN": [
+   309.73,
+   317.2
+  ],
+  "IBM": [
+   252.08,
+   257.095
+  ],
+  "NFLX": [
+   64.0,
+   65.76
+  ],
+  "DIS": [
+   115.355,
+   118.73
+  ],
+  "BRK-B": [
+   561.835,
+   568.36
+  ],
+  "JPM": [
+   342.15,
+   348.31
+  ],
+  "V": [
+   423.28,
+   429.5909
+  ],
+  "MA": [
+   654.55,
+   664.9022
+  ],
+  "BAC": [
+   50.525,
+   51.38
+  ],
+  "GS": [
+   900.3,
+   930.66
+  ],
+  "UNH": [
+   392.5,
+   404.44
+  ],
+  "LLY": [
+   1418.255,
+   1445.96
+  ],
+  "JNJ": [
+   270.565,
+   273.12
+  ],
+  "ABBV": [
+   286.2001,
+   294.19
+  ],
+  "MRK": [
+   146.05,
+   148.54
+  ],
+  "PFE": [
+   30.34,
+   30.9
+  ],
+  "TMO": [
+   700.005,
+   712.1723
+  ],
+  "ABT": [
+   111.71,
+   115.74
+  ],
+  "PG": [
+   163.585,
+   166.55
+  ],
+  "KO": [
+   94.515,
+   96.3115
+  ],
+  "PEP": [
+   138.8201,
+   141.8
+  ],
+  "WMT": [
+   125.84,
+   128.69
+  ],
+  "COST": [
+   1028.5,
+   1042.21
+  ],
+  "HD": [
+   342.84,
+   351.55
+  ],
+  "MCD": [
+   265.705,
+   276.23
+  ],
+  "NKE": [
+   39.22,
+   40.325
+  ],
+  "XOM": [
+   170.69,
+   175.135
+  ],
+  "CVX": [
+   217.3301,
+   223.405
+  ],
+  "CAT": [
+   593.3961,
+   617.2
+  ],
+  "GE": [
+   324.605,
+   330.7
+  ],
+  "HON": [
+   224.34,
+   229.37
+  ],
+  "BA": [
+   175.53,
+   179.19
+  ],
+  "LIN": [
+   513.02,
+   520.45
+  ],
+  "T": [
+   21.64,
+   21.95
+  ],
+  "VZ": [
+   45.5,
+   45.99
+  ]
+ },
+ "held": {
+  "NKE": {
+   "quantity": 606,
+   "entry": 40.33,
+   "stop": 39.7725,
+   "target": 41.445,
+   "time": "10:05"
+  },
+  "NFLX": {
+   "quantity": 369,
+   "entry": 66.22,
+   "stop": 64.88,
+   "target": 68.9,
+   "time": "10:05"
+  },
+  "DIS": {
+   "quantity": 205,
+   "entry": 118.93,
+   "stop": 117.0425,
+   "target": 122.705,
+   "time": "10:05"
+  },
+  "BAC": {
+   "quantity": 474,
+   "entry": 51.6,
+   "stop": 50.9525,
+   "target": 52.895,
+   "time": "11:05"
+  }
+ },
+ "traded": [
+  "NKE",
+  "NFLX",
+  "DIS",
+  "VZ",
+  "BAC"
+ ],
+ "realized_chf": 161.40130319622403,
+ "fills": [
+  {
+   "time": "10:05",
+   "ticker": "NKE",
+   "side": "BUY",
+   "quantity": 606,
+   "price": 40.33,
+   "fx": 0.8177499771118164,
+   "reason": "Breakout: 40.33 is above the opening range (39.22 to 40.33), the share is up +4.8% on the day and SPY is above its open",
+   "check": "Opening range 39.22 to 40.33; price 40.33 at 10:05 New York; stop 39.77, target 41.44",
+   "live": true,
+   "details": {
+    "range_low": 39.22,
+    "range_high": 40.325,
+    "stop": 39.7725,
+    "target": 41.445,
+    "day_move": 0.04808,
+    "spy_move": 0.01815,
+    "lead_on_spy": 0.02993
+   }
+  },
+  {
+   "time": "10:05",
+   "ticker": "NFLX",
+   "side": "BUY",
+   "quantity": 369,
+   "price": 66.22,
+   "fx": 0.8177499771118164,
+   "reason": "Breakout: 66.22 is above the opening range (64.00 to 65.76), the share is up +4.4% on the day and SPY is above its open",
+   "check": "Opening range 64.00 to 65.76; price 66.22 at 10:05 New York; stop 64.88, target 68.90",
+   "live": true,
+   "details": {
+    "range_low": 64.0,
+    "range_high": 65.76,
+    "stop": 64.88,
+    "target": 68.9,
+    "day_move": 0.04415,
+    "spy_move": 0.01815,
+    "lead_on_spy": 0.026
+   }
+  },
+  {
+   "time": "10:05",
+   "ticker": "DIS",
+   "side": "BUY",
+   "quantity": 205,
+   "price": 118.93,
+   "fx": 0.8177499771118164,
+   "reason": "Breakout: 118.93 is above the opening range (115.36 to 118.73), the share is up +4.2% on the day and SPY is above its open",
+   "check": "Opening range 115.36 to 118.73; price 118.93 at 10:05 New York; stop 117.04, target 122.71",
+   "live": true,
+   "details": {
+    "range_low": 115.355,
+    "range_high": 118.73,
+    "stop": 117.0425,
+    "target": 122.705,
+    "day_move": 0.0416,
+    "spy_move": 0.01815,
+    "lead_on_spy": 0.02345
+   }
+  },
+  {
+   "time": "10:10",
+   "ticker": "VZ",
+   "side": "BUY",
+   "quantity": 530,
+   "price": 46.0,
+   "fx": 0.8182799816131592,
+   "reason": "Breakout: 46.00 is above the opening range (45.50 to 45.99), the share is up +1.7% on the day and SPY is above its open",
+   "check": "Opening range 45.50 to 45.99; price 46.00 at 10:10 New York; stop 45.75, target 46.51",
+   "live": true,
+   "details": {
+    "range_low": 45.5,
+    "range_high": 45.99,
+    "stop": 45.745,
+    "target": 46.51,
+    "day_move": 0.0168,
+    "spy_move": 0.01799,
+    "lead_on_spy": -0.00119
+   }
+  },
+  {
+   "time": "11:05",
+   "ticker": "VZ",
+   "side": "SELL",
+   "quantity": 530,
+   "price": 46.52,
+   "fx": 0.8169800043106079,
+   "reason": "Target: rose to 46.52, at or over the target at 46.51 (twice the risk taken)",
+   "live": true,
+   "pnl_chf": 161.4,
+   "check": "Bought at 46.00 (10:10); stop 45.74, target 46.51; now 46.52"
+  },
+  {
+   "time": "11:05",
+   "ticker": "BAC",
+   "side": "BUY",
+   "quantity": 474,
+   "price": 51.6,
+   "fx": 0.8169800043106079,
+   "reason": "Breakout: 51.60 is above the opening range (50.52 to 51.38), the share is up +3.9% on the day and SPY is above its open",
+   "check": "Opening range 50.52 to 51.38; price 51.60 at 11:05 New York; stop 50.95, target 52.90",
+   "live": true,
+   "details": {
+    "range_low": 50.525,
+    "range_high": 51.38,
+    "stop": 50.9525,
+    "target": 52.895,
+    "day_move": 0.03907,
+    "spy_move": 0.0145,
+    "lead_on_spy": 0.02456
+   }
+  }
+ ],
+ "checks": 34,
+ "last_check": "2026-11-04T17:45:52.539180+00:00",
+ "finished": false,
+ "notes": []
+}
