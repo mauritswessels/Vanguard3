@@ -67,8 +67,13 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Paper trading update $(date -u +%F)"
-            git pull --rebase origin main
-            git push
+            # The Day Trader pushes its own records during the day: a
+            # push that loses that race pulls again and retries.
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              [ "$i" = 3 ] && exit 1
+              sleep 15
+            done
           fi
 
       # A failure here sends the alert below.
@@ -98,8 +103,13 @@ jobs:
           git add docs/data/backtest.json
           if ! git diff --cached --quiet; then
             git commit -m "Backtest update $(date -u +%F)"
-            git pull --rebase origin main
-            git push
+            # The Day Trader pushes its own records during the day: a
+            # push that loses that race pulls again and retries.
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              [ "$i" = 3 ] && exit 1
+              sleep 15
+            done
           fi
 
       - name: Health check

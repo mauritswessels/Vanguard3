@@ -21,7 +21,9 @@ and stops with exit code 1 when it found any. It looks for:
 * the IBKR bridge's paper-only check gone missing;
 * a secret file or an API key in the repository;
 * a workflow that pushes to ``main`` outside the shared ``paper-trading``
-  queue (two runs writing the accounts at once lose one run's work);
+  queue (two runs writing the accounts at once lose one run's work); only
+  one that adds nothing but the Day Trader's own records
+  (``state/day_trader``) may keep a queue of its own;
 * dashboard data that a browser cannot read (not strict JSON);
 * a project journal (the website's timeline) that has fallen more than a
   week behind the pull requests merged into ``main``.
@@ -266,15 +268,32 @@ def secret_problems(root: Path = ROOT, files: list[str] | None = None
     return out
 
 
+#: What a workflow outside the shared queue may commit: the Day Trader's
+#: day records, which no other run writes (its day lasts hours, and the
+#: evening and midday runs must not wait for it).
+OWN_QUEUE_PATHS = ("state/day_trader",)
+
+
+def _only_own_records(text: str) -> bool:
+    """True when every ``git add`` in a workflow adds only paths in
+    ``OWN_QUEUE_PATHS``."""
+    adds = re.findall(r"git add ([^\n;&|]+)", text)
+    return bool(adds) and all(
+        any(p == own or p.startswith(own + "/") for own in OWN_QUEUE_PATHS)
+        for line in adds for p in line.split())
+
+
 def workflow_problems(folder: Path | None = None) -> list[str]:
     """Every workflow that pushes waits its turn in the shared queue, so
-    two runs never write the accounts at the same time. Every workflow that
-    runs on a schedule says so when it fails: nobody watches it start."""
+    two runs never write the accounts at the same time (one that commits
+    only the Day Trader's own records may keep its own queue). Every
+    workflow that runs on a schedule says so when it fails: nobody watches
+    it start."""
     out = []
     folder = folder or ROOT / ".github" / "workflows"
     for path in sorted(folder.glob("*.y*ml")):
         text = path.read_text()
-        if "git push" in text and not re.search(
+        if "git push" in text and not _only_own_records(text) and not re.search(
                 r"concurrency:\s*\n\s*group:\s*paper-trading", text):
             out.append(f"{path.name} pushes to GitHub outside the "
                        "paper-trading queue (add 'concurrency: group: "

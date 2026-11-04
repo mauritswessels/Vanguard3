@@ -150,9 +150,17 @@ class ProjectTest(unittest.TestCase):
                 "concurrency:\n  group: paper-trading\nsteps: git push\n")
             (folder / "bad.yml").write_text("steps: git push\n")
             (folder / "quiet.yml").write_text("steps: echo hi\n")
+            # The Day Trader's own records may keep a queue of their own,
+            # but nothing else may ride along with them.
+            (folder / "own.yml").write_text(
+                "concurrency:\n  group: day-trader\n"
+                "steps: git add state/day_trader\n git push\n")
+            (folder / "sneaky.yml").write_text(
+                "steps: git add state/day_trader state\n git push\n")
             found = flaw_scan.workflow_problems(folder)
-            self.assertEqual(len(found), 1)
+            self.assertEqual(len(found), 2)
             self.assertIn("bad.yml", found[0])
+            self.assertIn("sneaky.yml", found[1])
 
     def test_a_scheduled_workflow_that_fails_silently(self):
         with tempfile.TemporaryDirectory() as tmp:

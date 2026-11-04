@@ -1,0 +1,179 @@
+# The Day Trader: live checks every 5 minutes while New York is open
+# (day_trader.py). It writes only its own day records (state/day_trader/);
+# the evening run books them into its account, and replays on Yahoo's
+# 5-minute prices whatever a run here missed.
+name: Day trader
+
+on:
+  schedule:
+    # Before New York opens (09:30 there): 13:07 UTC is 09:07 New York in
+    # summer and 08:07 in winter; the script waits for 10:00 New York. The
+    # second start covers a run GitHub starts very late or never; when the
+    # first one ran, it waits its turn and then finds the day done.
+    - cron: "7 13 * * 1-5"
+    - cron: "7 14 * * 1-5"
+  # By hand: "Run workflow" trades today, or, with a number of days, only
+  # replays the rules on that many past days of 5-minute prices (at most
+  # about 55) and shows the result on the run's page. A replay saves nothing.
+  workflow_dispatch:
+    inputs:
+      replay_days:
+        description: "Replay the rules on this many past days instead (empty: trade today)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  issues: write
+
+# Its own queue: a day takes hours, and the evening and midday runs must
+# not wait for it. It never writes the accounts or the dashboard files,
+# only state/day_trader/, so it cannot overwrite their results.
+concurrency:
+  group: day-trader
+  cancel-in-progress: false
+
+jobs:
+  # A job may run at most 6 hours, and the day from before the open to the
+  # close is longer in winter, so the day comes in two parts. Each saves
+  # the day's record; the second picks it up.
+  morning:
+    if: ${{ !inputs.replay_days }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # A little under the job's limit, so the record is still saved.
+      - name: Trade until 12:45 New York time
+        timeout-minutes: 315
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: python day_trader.py --until 12:45
+
+      - name: Save the morning
+        if: always()
+        run: |
+          git config user.name "vanguard3-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -d state/day_trader ] || { echo "Nothing to save"; exit 0; }
+          git add state/day_trader
+          if git diff --cached --quiet; then
+            echo "Nothing to save"
+            exit 0
+          fi
+          git commit -m "Day trader $(date -u +%F) (morning)"
+          # The other runs push too. Only this folder changed here, so a
+          # rebase never conflicts; a push that loses the race tries again.
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && exit 0
+            sleep $((i * 15))
+          done
+          exit 1
+
+  afternoon:
+    needs: morning
+    if: ${{ !cancelled() && !inputs.replay_days }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      # The newest main: it holds the morning's record.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Trade until the close
+        timeout-minutes: 285
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: python day_trader.py
+
+      - name: Save the day
+        if: always()
+        run: |
+          git config user.name "vanguard3-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -d state/day_trader ] || { echo "Nothing to save"; exit 0; }
+          git add state/day_trader
+          if git diff --cached --quiet; then
+            echo "Nothing to save"
+            exit 0
+          fi
+          git commit -m "Day trader $(date -u +%F)"
+          # The other runs push too. Only this folder changed here, so a
+          # rebase never conflicts; a push that loses the race tries again.
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && exit 0
+            sleep $((i * 15))
+          done
+          exit 1
+
+  replay:
+    if: ${{ inputs.replay_days }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Replay the rules on past days
+        env:
+          DAYS: ${{ inputs.replay_days }}
+        run: |
+          python day_trader.py --replay "$DAYS" | tee replay.txt
+          { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  # Opens (or adds to) one GitHub issue; GitHub emails it to the owner.
+  # The evening run replays whatever was missed, so the account stays
+  # complete; this says that it happened.
+  alert:
+    needs: [morning, afternoon]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Alert
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The **${{ github.workflow }}** run on $(date -u '+%a %d %b %H:%M UTC') needs a look."
+            echo
+            echo "- The live day trading stopped with an error. The evening run replays the rest of the day on 5-minute prices, so the account stays complete. Log: $RUN_URL"
+            echo
+            echo "@Mits-Alt-F4 · automatic message. Close this issue once things are fine again."
+          } > alert.md
+          n=$(gh issue list --state open --search '"Vanguard3 needs attention" in:title' --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file alert.md
+          else
+            gh issue create --title "Vanguard3 needs attention" --body-file alert.md
+          fi

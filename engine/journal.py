@@ -47,6 +47,9 @@ def fills(portfolio, activity: list[dict]) -> list[dict]:
     at_close = {(d["date"], f["ticker"], f["side"]) for d in activity
                 if d.get("time", "close") == "close"
                 for f in d.get("fills", []) if f.get("at_close")}
+    # Fills of the Day Trader's trades during the day.
+    intraday = {(d["date"], f["ticker"], f["side"]) for d in activity
+                if d.get("time") == "intraday" for f in d.get("fills", [])}
     rows = []
     for i, t in enumerate(portfolio.trades):
         date = t.date.strftime("%Y-%m-%d")
@@ -61,8 +64,10 @@ def fills(portfolio, activity: list[dict]) -> list[dict]:
             "date": date,
             "decided": decided,
             # Orders fill at the next open; the midday check fills at once
-            # or, where its price was delayed, at that day's close.
+            # or, where its price was delayed, at that day's close; the Day
+            # Trader buys and sells during the day.
             "session": ("close" if (date, t.ticker, t.side) in at_close
+                        else "intraday" if (date, t.ticker, t.side) in intraday
                         else "midday" if decided == date else "open"),
             "ticker": t.ticker, "side": t.side, "quantity": t.quantity,
             "price": t.exec_price, "market_price": t.market_price,

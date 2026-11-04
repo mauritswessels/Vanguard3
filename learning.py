@@ -159,6 +159,8 @@ def paper_lineup(market) -> list:
     agents.append(make_agent("news"))
     # The same, on a stronger model: is a smarter AI a better trader?
     agents.append(make_agent("news_opus"))
+    # Trades within the day on live prices, in cash every night (rules only).
+    agents.append(make_agent("daytrader"))
     if config.BENCHMARK_TICKER in market.bars:
         agents.append(make_agent("benchmark"))
     # An equal share of every watched market: the wider yardstick.

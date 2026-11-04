@@ -541,6 +541,8 @@ NOT_REPLAYED = {
     "learner_opus": "Claude reviews its picks and already knows how those "
                     "years turned out",
     "manager": "it copies the other agents, the news agents included",
+    "daytrader": "it trades on 5-minute prices, which Yahoo keeps for only "
+                 "60 days",
 }
 
 

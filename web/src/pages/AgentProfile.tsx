@@ -14,7 +14,7 @@ import { badge, color, info, ranked } from "../lib/agents";
 import { useJSON, useLive } from "../lib/data";
 import { chf, date, dateShort, num, pct, plural, share, signedChf, swissTime } from "../lib/format";
 import { aiCosts, curve, pairs, range, stats } from "../lib/metrics";
-import type { Agent, LearnerAI, NewsAI, Point, RunData, SkillData } from "../lib/types";
+import type { Agent, DayTrading, LearnerAI, NewsAI, Point, RunData, SkillData } from "../lib/types";
 
 export default function AgentProfile() {
   const { id } = useParams();
@@ -309,6 +309,7 @@ function Learning({ a, d }: { a: Agent; d: RunData }) {
       </Panel>
     );
   }
+  if (a.day_trading) return <DayTradingPanel dt={a.day_trading} />;
   const ai = a.ai;
   if (ai && "kind" in ai && ai.kind === "news") return <NewsPanel ai={ai as NewsAI} />;
   if (ai) return <LearnerPanel ai={ai as LearnerAI} d={d} />;
@@ -352,6 +353,60 @@ function Panel({ eyebrow, title, children }: { eyebrow: string; title: string; c
       <h2 className="display mb-4 text-[2rem]">{title}</h2>
       {children}
     </div>
+  );
+}
+
+const SOURCE: Record<string, { label: string; tone: "gold" | "neutral" }> = {
+  live: { label: "Live", tone: "gold" },
+  "live, then replayed": { label: "Live, rest replayed", tone: "neutral" },
+  replayed: { label: "Replayed", tone: "neutral" },
+};
+
+/** The Day Trader: its latest days, trade by trade, with the New York time
+ *  of each, and whether that part of the day ran live or was replayed. */
+function DayTradingPanel({ dt }: { dt: DayTrading }) {
+  const days = dt.days.slice(0, 5);
+  return (
+    <Panel eyebrow="Day trading · live prices" title="Its latest days">
+      <p className="text-[14px] text-muted">
+        It checks 50 US shares every 5 minutes from 10:00 to 15:50 New York time (16:00 to 21:50 in Zurich for most of the year) and sells everything before the close.
+        A day the live run did not finish is completed on 5-minute prices with the same rules, and marked as replayed.
+      </p>
+      {days.length ? (
+        <ul className="mt-5 grid gap-3">
+          {days.map((day) => {
+            const src = SOURCE[day.source] || SOURCE.replayed;
+            return (
+              <li key={day.date} className="rounded-xl border border-line p-4 text-[13px]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>{date(day.date)}</span>
+                  <span className="flex items-center gap-2">
+                    <Badge tone={src.tone}>{src.label}</Badge>
+                    <Delta value={day.pnl_chf}>{signedChf(day.pnl_chf)}</Delta>
+                  </span>
+                </div>
+                {day.fills.length ? (
+                  <ul className="mt-3 grid gap-1.5">
+                    {day.fills.map((f, k) => (
+                      <li key={k} className="flex flex-wrap items-baseline gap-2">
+                        <span className="tabular w-11 text-faint">{f.time}</span>
+                        <span className={cx("text-[10.5px] font-semibold tracking-wider", f.side === "BUY" ? "text-up" : "text-down")}>{f.side}</span>
+                        <span className="font-mono">{f.ticker}</span>
+                        <span className="tabular text-muted">{f.quantity} at {num(f.price, 2)}</span>
+                        {f.pnl_chf != null && <Delta value={f.pnl_chf}>{signedChf(f.pnl_chf)}</Delta>}
+                        {!f.live && <span className="text-faint">(replayed)</span>}
+                        <span className="w-full pl-[3.25rem] text-[12px] text-muted">{f.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-2 text-muted">No breakout passed its rules: no trades.</p>}
+                {day.notes.length > 0 && <p className="mt-2 text-[12px] text-faint">{day.notes.join(" · ")}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      ) : <div className="mt-5"><Empty>Its first live day is the next weekday New York is open. The results appear here that evening.</Empty></div>}
+    </Panel>
   );
 }
 

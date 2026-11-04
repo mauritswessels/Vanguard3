@@ -8,6 +8,7 @@ import type { SkillData } from "../lib/types";
 
 const FAMILIES: { family: Family; title: string; text: string }[] = [
   { family: "Rules", title: "Rule-based strategies", text: "Classic trading rules written by hand. Each runs twice: a version that re-tunes its settings every month, and a fixed twin that never changes." },
+  { family: "Day trading", title: "The day trader", text: "Rules again, but on live prices every few minutes while New York is open: it buys and sells within the same day and holds nothing overnight." },
   { family: "Reinforcement learning", title: "Learning machines", text: "A small model that teaches itself by trial and error, updating after every close." },
   { family: "Claude AI", title: "Claude, reading the world", text: "Large language models that read the news and company results, or check another model's picks, and explain every decision." },
   { family: "Manager", title: "The manager", text: "An agent that picks agents instead of markets." },

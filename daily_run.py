@@ -13,7 +13,9 @@ What it does:
 3. simulates every *completed* session since the last run, exactly like a
    backtest day (yesterday's orders fill at today's open, then new
    decisions at today's close), plus dividends and share splits,
-4. saves the state and refreshes ``docs/data/paper.json`` for the dashboard.
+4. books the Day Trader's trades of each new day (``day_trader.py`` makes
+   them live; what it missed is replayed on 5-minute prices),
+5. saves the state and refreshes ``docs/data/paper.json`` for the dashboard.
 
 If a run is missed, the next one catches up on all skipped sessions.
 Paper trading never uses synthetic data unless explicitly asked to (tests).
@@ -120,6 +122,17 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
                     f"{config.INITIAL_CAPITAL_CHF:,.0f}")
         sim = Simulator(market, build_accounts(market, paper_lineup(market)),
                         tuner=retune)
+
+    # The Day Trader books what its live run did today (day_trader.py) and
+    # replays on Yahoo's 5-minute prices whatever that run missed. On
+    # made-up prices (tests) it is not connected and keeps its cash.
+    if source == "yfinance":
+        from day_trader import yahoo_bars
+        for acc in sim.accounts:
+            if hasattr(acc.agent, "trade_day"):
+                acc.agent.folder = config.DAY_TRADER_DIR
+                acc.agent.bars_loader = (
+                    lambda tickers, day: yahoo_bars(tickers, day=day))
 
     # Dividends are paid and splits applied in live paper trading only.
     sim.corporate_actions = True
