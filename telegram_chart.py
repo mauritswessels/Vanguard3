@@ -259,7 +259,7 @@ def holdings(agent: dict, most: int) -> list[str]:
     cash = agent["cash_chf"] / value if value else 1
     held = sorted(agent["positions"], key=lambda p: -p["value_chf"])
     if not held:
-        return [f"💼 <b>Holds</b> nothing yet, all cash"]
+        return ["💼 <b>Holds</b> nothing yet, all cash"]
     lines = [f"💼 <b>Holds</b> {1 - cash:.0%} invested · {cash:.0%} cash"]
     bought = {}
     for t in agent["trades"]:
