@@ -204,36 +204,7 @@
    45.99
   ]
  },
- "held": {
-  "NKE": {
-   "quantity": 606,
-   "entry": 40.33,
-   "stop": 39.7725,
-   "target": 41.445,
-   "time": "10:05"
-  },
-  "NFLX": {
-   "quantity": 369,
-   "entry": 66.22,
-   "stop": 64.88,
-   "target": 68.9,
-   "time": "10:05"
-  },
-  "DIS": {
-   "quantity": 205,
-   "entry": 118.93,
-   "stop": 117.0425,
-   "target": 122.705,
-   "time": "10:05"
-  },
-  "BAC": {
-   "quantity": 474,
-   "entry": 51.6,
-   "stop": 50.9525,
-   "target": 52.895,
-   "time": "11:05"
-  }
- },
+ "held": {},
  "traded": [
   "NKE",
   "NFLX",
@@ -241,7 +212,7 @@
   "VZ",
   "BAC"
  ],
- "realized_chf": 161.40130319622403,
+ "realized_chf": 164.73525233998225,
  "fills": [
   {
    "time": "10:05",
@@ -354,10 +325,58 @@
     "spy_move": 0.0145,
     "lead_on_spy": 0.02456
    }
+  },
+  {
+   "time": "15:50",
+   "ticker": "BAC",
+   "side": "SELL",
+   "quantity": 474,
+   "price": 51.51,
+   "fx": 0.8169400095939636,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -67.78,
+   "check": "Bought at 51.60 (11:05); stop 50.95, target 52.90; now 51.51"
+  },
+  {
+   "time": "15:50",
+   "ticker": "DIS",
+   "side": "SELL",
+   "quantity": 205,
+   "price": 119.08,
+   "fx": 0.8169400095939636,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -26.54,
+   "check": "Bought at 118.93 (10:05); stop 117.04, target 122.70; now 119.08"
+  },
+  {
+   "time": "15:50",
+   "ticker": "NFLX",
+   "side": "SELL",
+   "quantity": 369,
+   "price": 66.74,
+   "fx": 0.8169400095939636,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 104.89,
+   "check": "Bought at 66.22 (10:05); stop 64.88, target 68.90; now 66.74"
+  },
+  {
+   "time": "15:50",
+   "ticker": "NKE",
+   "side": "SELL",
+   "quantity": 606,
+   "price": 40.42,
+   "fx": 0.8169400095939636,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -7.24,
+   "check": "Bought at 40.33 (10:05); stop 39.77, target 41.45; now 40.42"
   }
  ],
- "checks": 34,
- "last_check": "2026-11-04T17:45:52.539180+00:00",
- "finished": false,
+ "checks": 71,
+ "last_check": "2026-11-04T20:50:52.553048+00:00",
+ "finished": true,
  "notes": []
 }
