@@ -36,13 +36,13 @@ if [ -f ibkr_morning.env ]; then
     . ./ibkr_morning.env
 fi
 
-notify() {  # message [ntfy priority]
+notify() {  # message [ntfy priority] [skip-telegram]
     if [ -n "$NTFY_TOPIC" ]; then
         curl -fsS -m 30 -H "Title: Vanguard3" -H "Priority: ${2:-default}" \
             -d "$1" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null ||
             echo "Could not send the phone notification."
     fi
-    if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ] && [ -z "$3" ]; then
         curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
             --data-urlencode "text=Vanguard3: $1" \
             "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
@@ -137,10 +137,15 @@ account summary for the website: ${why:-no reason given}" | sed '/^$/d')
 fi
 [ -n "$warnings" ] && last="$last
 $warnings"
+# On Telegram, this goes into the headline under the race chart (below)
+# instead of a message of its own.
+[ "$status" -eq 0 ] || last="Morning run failed: $last"
+telegram=""
+[ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ] && telegram=yes
 if [ "$status" -eq 0 ]; then
-    notify "$last"
+    notify "$last" default "$telegram"
 else
-    notify "Morning run failed: $last" high
+    notify "$last" high "$telegram"
 fi
 if [ -n "$HEALTHCHECK_URL" ]; then
     ping="$HEALTHCHECK_URL"
@@ -149,22 +154,26 @@ if [ -n "$HEALTHCHECK_URL" ]; then
         echo "Could not reach healthchecks.io."
 fi
 
-# On Telegram, the race chart follows, then why the top three hold what
-# they hold, then every trade the accounts made (telegram_chart.py).
-if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-    chart="ibkr_logs/race.png" && reasons="ibkr_logs/why.txt" &&
-    alert="ibkr_logs/trades.txt" &&
-    caption=$(.venv/bin/python telegram_chart.py "$chart" --why "$reasons" \
-        --trades "$alert") &&
+# On Telegram, two messages: the headline (the race chart, with the top
+# three, the last place, the yardsticks and how this run went underneath),
+# then the details (telegram_chart.py). Both use Telegram's HTML for bold
+# headings. If they cannot be made, the result goes out as plain text.
+if [ -n "$telegram" ]; then
+    chart="ibkr_logs/race.png" && details="ibkr_logs/details.txt" &&
+    caption=$(.venv/bin/python telegram_chart.py "$chart" \
+        --details "$details" --ibkr "$last") &&
     curl -fsS -m 60 -F "chat_id=$TELEGRAM_CHAT_ID" -F "photo=@$chart" \
-        -F "caption=$caption" \
+        --form-string "caption=$caption" --form-string "parse_mode=HTML" \
         "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendPhoto" > /dev/null &&
-    curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
-        --data-urlencode "text@$reasons" \
-        "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" > /dev/null &&
-    curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
-        --data-urlencode "text@$alert" \
-        "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" > /dev/null ||
+    curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" -d "parse_mode=HTML" \
+        -d "disable_web_page_preview=true" \
+        --data-urlencode "text@$details" \
+        "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" > /dev/null || {
         echo "Could not send the race chart to Telegram."
+        curl -fsS -m 30 -d "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=Vanguard3: $last" \
+            "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
+            > /dev/null || echo "Could not send the Telegram message."
+    }
 fi
 exit "$status"

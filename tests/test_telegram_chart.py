@@ -1,8 +1,13 @@
 """The race chart and caption for the Telegram morning message."""
 
+import contextlib
 import importlib.util
+import io
+import json
+import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -39,15 +44,24 @@ def payload():
     ]}
 
 
+TODAY = date(2026, 10, 12)
+
+
 class ChartTest(unittest.TestCase):
     def test_caption_ranks_racers_and_lists_yardsticks(self):
-        lines = chart.caption(payload()).splitlines()
-        self.assertEqual(lines[0], "The race, day 3 (close of 2026-10-09)")
-        self.assertEqual(lines[1:4], ["1. Trend Follower +1.00%",
-                                      "2. Bargain Hunter +0.20%",
-                                      "3. AI Learner +0.00%"])
-        self.assertEqual(lines[4:], ["Yardstick Buy & Hold SPY +0.50%",
-                                     "Yardstick Monkey +2.00%"])
+        text = chart.caption(payload(), today=TODAY)
+        self.assertEqual(text.splitlines()[:2], [
+            "<b>📊 Vanguard3 · Mon 12 Oct</b>",
+            "Race day 3, results of the close on Fri 9 Oct"])
+        self.assertIn("🥇 <b>Trend Follower</b>  +1.00%\n"
+                      "🥈 <b>Bargain Hunter</b>  +0.20%\n"
+                      "🥉 <b>AI Learner</b>  +0.00%", text)
+        self.assertIn("<b>🔻 Last place</b>\n<b>News Analyst</b>  -0.50%",
+                      text)
+        self.assertIn("<b>📏 Yardsticks</b>\nSPY +0.50%\nMonkey +2.00%",
+                      text)
+        self.assertNotIn("(fixed)", text)
+        self.assertNotIn("IBKR", text)          # nothing to say about it
 
     def test_ranks_on_the_lead_over_spy_over_the_same_days(self):
         """A late joiner that skipped a fall must not lead just for that."""
@@ -61,18 +75,66 @@ class ChartTest(unittest.TestCase):
                               else {"from": lead[a["name"]][0],
                                     "difference": lead[a["name"]][1]}}
         data["agents"][-1]["joined"] = "2026-10-08"         # the Monkey
-        lines = chart.caption(data).splitlines()
-        self.assertEqual(lines[1:4], [
-            "1. Bargain Hunter +0.20%, 1.10% ahead of SPY since 7 Oct",
-            "2. News Analyst -0.50%, 0.60% ahead of SPY since 8 Oct",
-            "3. Trend Follower +1.00%, 0.40% ahead of SPY since 7 Oct"])
-        self.assertEqual(lines[4:], ["Yardstick Buy & Hold SPY +0.50%",
-                                     "Yardstick Monkey +2.00% since 8 Oct"])
-        self.assertIn("1. Bargain Hunter +0.20%, 1.10% ahead",
-                      chart.why(data))
+        text = chart.caption(data, today=TODAY)
+        self.assertIn(
+            "🥇 <b>Bargain Hunter</b>  +0.20%\n"
+            "      ✅ 1.10% ahead of SPY\n"
+            "🥈 <b>News Analyst</b>  -0.50%\n"
+            "      ✅ 0.60% ahead of SPY since 8 Oct\n"
+            "🥉 <b>Trend Follower</b>  +1.00%\n"
+            "      ✅ 0.40% ahead of SPY", text)
+        self.assertIn("Monkey +2.00% (since 8 Oct)", text)
         # Not trading yet (no same-days figures): last.
         self.assertEqual(chart.ranked(data)[-1]["name"], "AI Learner")
+        # The last place shown is the last one already trading.
+        data["agents"].append(dict(data["agents"][2], name="News 2",
+                                   same_days={"benchmark": {
+                                       "from": "2026-10-07",
+                                       "difference": -0.02}}))
+        self.assertEqual(chart.podium(data)[-1][1]["name"], "News 2")
         self.assertEqual(chart.COLORS["equal_weight"], "#c9ccd1")
+
+    def test_ibkr_result_in_tidy_lines(self):
+        text = ("Done: 2 of 3 orders placed; not accepted: EWZ; currency: "
+                "bought 1,200 USD; kept in cash: FXI (IBKR does not sell "
+                "these to this account).\nWarning: the orders for V sent on "
+                "8 Oct did not fill.")
+        self.assertEqual(chart.ibkr_lines(text), [
+            "⚠️ 2 of 3 orders placed", "❌ Not accepted: EWZ",
+            "💱 Currency: bought 1,200 USD",
+            "💵 Kept in cash: FXI (IBKR does not sell these to this "
+            "account)",
+            "⚠️ The orders for V sent on 8 Oct did not fill."])
+        self.assertEqual(chart.ibkr_lines("Done: 3 of 3 orders placed."),
+                         ["✅ 3 of 3 orders placed"])
+        self.assertEqual(chart.ibkr_lines("Done: no orders needed."),
+                         ["✅ No orders needed, it already matches"])
+        self.assertEqual(chart.ibkr_lines("Morning run failed: no TWS"),
+                         ["❌ Morning run failed: no TWS"])
+        head = chart.caption(payload(), text, today=TODAY)
+        self.assertIn("<b>🏦 IBKR this morning</b>\n⚠️ 2 of 3 orders "
+                      "placed\n➕ 4 more in the next message", head)
+        self.assertIn("❌ Not accepted: EWZ", chart.details(payload(), text))
+
+    def test_fits_telegram_and_escapes_html(self):
+        data = payload()
+        for a in data["agents"]:
+            a["name"] = a["name"].replace("Bargain", "Bargain <&>")
+            a["positions"] = [{"ticker": f"T{i}", "value_chf": 9_000.0,
+                               "pnl_pct": 0.01} for i in range(40)]
+            a["trades"] = [{"date": "2026-10-09", "side": "BUY",
+                            "ticker": f"T{i}", "quantity": 1,
+                            "value_chf": 9_000.0, "pnl_chf": None,
+                            "reason": "x" * 200} for i in range(40)]
+            a["pending_orders"] = [{"side": "BUY", "ticker": f"T{i}",
+                                    "reason": "y" * 200} for i in range(40)]
+        head = chart.caption(data, "Done: 1 of 1 orders placed; kept in "
+                             "cash: " + "Z, " * 300, today=TODAY)
+        more = chart.details(data, "Warning: " + "w" * 900)
+        self.assertLessEqual(len(chart.visible(head)), chart.CAPTION_LIMIT)
+        self.assertLessEqual(len(chart.visible(more)), chart.TELEGRAM_LIMIT)
+        self.assertIn("Bargain &lt;&amp;&gt; Hunter", more)
+        self.assertNotIn("<&>", more)
 
     def test_labels_keep_apart(self):
         self.assertEqual(chart.spread([1.0, 5.0], 1.0), [1.0, 5.0])
@@ -80,68 +142,66 @@ class ChartTest(unittest.TestCase):
         self.assertAlmostEqual(b - a, 1.0)
         self.assertAlmostEqual(c - b, 1.0)
 
-    def test_why_explains_the_top_three(self):
-        text = chart.why(payload())
-        self.assertTrue(text.startswith("Why the top 3 hold what they hold "
-                                        "(close of 9 Oct)"))
-        self.assertIn("1. Trend Follower +1.00%\nBuys markets in a steady "
-                      "rise", text)
-        self.assertIn("- MA 30% of the account (+2.1%), bought 8 Oct: in a "
-                      "steady rise", text)
-        self.assertIn("- V 20% of the account (-1.0%)\n", text)
-        self.assertIn("- Cash: 25%", text)
-        self.assertIn("- Next open: sells V (Down-trend)", text)
-        self.assertIn("3. AI Learner", text)
-        self.assertIn("- Holds nothing yet\n- Cash: 25%\n"
-                      "- Next open: no trades planned", text)
+    def test_details_explain_the_top_three_and_the_last(self):
+        text = chart.details(payload())
+        self.assertTrue(text.startswith("<b>🔎 The details · close of "
+                                        "Fri 9 Oct</b>"))
+        self.assertIn("🥇 <b>Trend Follower</b>  +1.00%\n<i>Buys markets "
+                      "in a steady rise", text)
+        self.assertIn("💼 <b>Holds</b> 75% invested · 25% cash\n"
+                      "▸ <b>MA</b> · 30% of the account · 📈 +2.1%\n"
+                      "   <i>in a steady rise, bought 8 Oct</i>\n"
+                      "▸ <b>V</b> · 20% of the account · 📉 -1.0%\n", text)
+        self.assertIn("⏭️ <b>Next open</b>\n🔴 Sell <b>V</b>\n"
+                      "   <i>Down-trend</i>", text)
+        self.assertIn("🥉 <b>AI Learner</b>", text)
+        self.assertIn("💼 <b>Holds</b> nothing yet, all cash\n\n"
+                      "⏭️ <b>Next open</b> nothing planned", text)
+        self.assertIn("🔻 <b>Last place: News Analyst</b>", text)
         self.assertNotIn("Monkey", text)
         self.assertNotIn("(fixed)", text)
-        self.assertLess(len(text), 4096)         # one Telegram message
+        self.assertTrue(text.endswith("https://vanguard3.xyz/"))
 
-    def test_trade_alert_lists_every_trade_and_waiting_order(self):
+    def test_only_big_trades_get_a_reason(self):
         data = payload()
-        buy = {"date": "2026-10-09", "session": "open", "side": "BUY",
-               "ticker": "NESN.SW", "quantity": 20, "value_chf": 1_812.4,
+        big = {"date": "2026-10-09", "session": "open", "side": "BUY",
+               "ticker": "NESN.SW", "quantity": 80, "value_chf": 7_250.0,
                "pnl_chf": None, "reason": "Oversold, RSI 28.3"}
-        sell = {"date": "2026-10-09", "session": "midday", "side": "SELL",
-                "ticker": "V", "quantity": 5, "value_chf": 1_400.0,
-                "pnl_chf": -32.6, "reason": "Weak guidance."}
-        old = dict(buy, date="2026-10-08", ticker="ABB.SW")
+        sale = {"date": "2026-10-09", "session": "midday", "side": "SELL",
+                "ticker": "ROG.SW", "quantity": 20, "value_chf": 6_000.0,
+                "pnl_chf": -32.6, "reason": "Reverted to 20-day mean"}
+        small = dict(big, ticker="ABB.SW", value_chf=900.0)
+        old = dict(big, date="2026-10-08", ticker="UBSG.SW")
         for a in data["agents"]:
             if a["key"] == "reversion":
-                a["trades"] = [old, buy]
-            if a["key"] == "news":
-                a["trades"] = [sell]
-        text = chart.trades(data)
-        self.assertTrue(text.startswith("Trades on 9 Oct\n"))
-        self.assertIn("Bargain Hunter\n- Bought 20 NESN.SW for 1,812 CHF: "
-                      "fell sharply and looks cheap", text)
-        self.assertNotIn("ABB.SW", text)            # an earlier day
-        self.assertIn("News Analyst\n- Sold 5 V for 1,400 CHF at midday "
-                      "(-33 CHF on it): Weak guidance", text)
-        self.assertIn("Orders for the next open\n\nTrend Follower\n"
-                      "- Sell", text)
+                a["trades"] = [old, small, big, sale]
+        text = chart.details(data)
+        self.assertIn("🔁 <b>Traded on 9 Oct</b>\n"
+                      "🟢 Bought 80 <b>NESN.SW</b> · 7,250 CHF\n"
+                      "   <i>fell sharply and looks cheap</i>\n"
+                      "🔴 Sold 20 <b>ROG.SW</b> at midday · 6,000 CHF · "
+                      "❌ -33 CHF on it\n"
+                      "   <i>recovered to its usual price</i>\n"
+                      "➕ 1 smaller trade (under 5% of the account)", text)
+        self.assertNotIn("ABB.SW", text)
+        self.assertNotIn("UBSG.SW", text)           # an earlier day
 
-    def test_trade_alert_with_nothing_to_say(self):
-        data = payload()
-        for a in data["agents"]:
-            a["pending_orders"] = []
-        self.assertEqual(chart.trades(data),
-                         "Trades on 9 Oct\n\nNo account traded.\n\n"
-                         "Orders for the next open\n\nNo orders waiting.")
-
-    def test_trade_alert_folds_twins_and_fits_one_message(self):
-        data = payload()
-        orders = [{"side": "BUY", "ticker": f"T{i}", "quantity": 1,
-                   "reason": "Up-trend, ADX 30.0 " + "x" * 90}
-                  for i in range(60)]
-        for a in data["agents"]:
-            a["pending_orders"] = list(orders)
-        text = chart.trades(data)
-        self.assertIn("Trend Follower (fixed): the same as Trend Follower",
-                      text)
-        self.assertIn("more", text)
-        self.assertLessEqual(len(text), chart.TELEGRAM_LIMIT)
+    def test_the_older_script_gets_plain_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            results = tmp / "paper.json"
+            results.write_text(json.dumps(payload()))
+            argv = ["telegram_chart.py", str(tmp / "race.png"),
+                    "--results", str(results), "--why", str(tmp / "why"),
+                    "--trades", str(tmp / "trades")]
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(chart, "draw"), \
+                    contextlib.redirect_stdout(out):
+                chart.main()
+            self.assertTrue(out.getvalue().startswith("📊 Vanguard3 · "))
+            self.assertNotIn("<b>", (tmp / "why").read_text())
+            self.assertIn("vanguard3.xyz", (tmp / "trades").read_text())
 
     def test_plain_words(self):
         self.assertEqual(chart.plain("Oversold, RSI 28.3"),
