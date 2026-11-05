@@ -116,7 +116,7 @@ class JobTest(unittest.TestCase):
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
 class MorningScriptTest(unittest.TestCase):
     def run_script(self, codes, settings=None, failure=None, docker=False,
-                   publish=False, **env_extra):
+                   publish=False, git="#!/bin/bash\n", **env_extra):
         """Run ibkr_morning.sh with fake tools; the bridge exits with
         ``codes`` on its attempts. ``settings`` is the text of
         ibkr_morning.env, if any. Returns (notification, calls, log); the
@@ -134,7 +134,7 @@ class MorningScriptTest(unittest.TestCase):
             (repo / "ibkr_morning.env").write_text(settings)
         fakes = {repo / ".venv" / "bin" / "python": FAKE_PYTHON,
                  repo / ".venv" / "bin" / "pip": "#!/bin/bash\n",
-                 tools / "git": "#!/bin/bash\n",
+                 tools / "git": git,
                  tools / "sleep": "#!/bin/bash\n",
                  tools / "osascript": FAKE_OSASCRIPT,
                  tools / "curl": FAKE_CURL}
@@ -301,6 +301,20 @@ class MorningScriptTest(unittest.TestCase):
     def test_publishes_nothing_unless_set_up(self):
         self.run_script([0], publish=True)
         self.assertEqual(self.published, [])
+
+    def test_runs_the_new_version_of_itself_after_an_update(self):
+        """The pull changed this script: the run starts again with the
+        new version (once), so the change is live the same morning."""
+        changing = ('#!/bin/bash\n[ "$1" = rev-parse ] || exit 0\n'
+                    'echo x >> "$CALLS.git"; wc -l < "$CALLS.git"\n')
+        note, calls, log = self.run_script([0], git=changing)
+        self.assertEqual(log.count("running the new version"), 1)
+        self.assertEqual(calls, ["ibkr_bridge.py --send"])   # orders once
+        self.assertEqual(note, "Done: 2 of 3 orders placed; "
+                               "not accepted: EWZ.")
+        # Unchanged (the usual morning): no second start.
+        _, _, log = self.run_script([0])
+        self.assertNotIn("running the new version", log)
 
     TELEGRAM = "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n"
 
