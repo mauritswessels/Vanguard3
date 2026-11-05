@@ -796,7 +796,8 @@ the bridge then remembers that and keeps their share in cash.
     .venv/bin/python ibkr_schedule.py --time 08:15
     .venv/bin/python ibkr_schedule.py --remove     # stop
 
-Each morning run (`ibkr_morning.sh`) updates this folder from GitHub, runs
+Each morning run (`ibkr_morning.sh`) updates this folder from GitHub (if
+that changed the script itself, it starts again with the new version), runs
 `ibkr_bridge.py --send` (up to three tries, two minutes apart) and shows a
 notification with the result; details go to `ibkr_logs/morning.log`. The
 Mac has to be on: if it is asleep at that time, the run starts as soon as

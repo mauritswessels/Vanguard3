@@ -77,9 +77,17 @@ gateway_minutes() {  # how long the IB Gateway container has been running
 }
 
 warnings=""
+before=$(git rev-parse HEAD:ibkr_morning.sh 2> /dev/null)
 if ! limit 120 git pull --ff-only --quiet; then
     warnings="Warning: could not update from GitHub, so this run used older code."
     echo "$warnings"
+elif [ -z "$MORNING_UPDATED" ] &&
+        [ "$(git rev-parse HEAD:ibkr_morning.sh 2> /dev/null)" != "$before" ]; then
+    # Bash keeps running the copy of this script it already opened, so
+    # without this a change to it would only take effect the next morning.
+    # Once only (MORNING_UPDATED), and before any order is sent.
+    echo "This script was updated; running the new version."
+    MORNING_UPDATED=1 exec bash ./ibkr_morning.sh "$@"
 fi
 # Exact versions, each file checked against its hash in
 # requirements-ibkr.txt: a new or tampered release on PyPI never reaches
