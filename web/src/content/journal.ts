@@ -22,8 +22,8 @@ export const JOURNAL: Entry[] = [
     text: "The Telegram morning update shrinks from four messages to two that take a couple of minutes to read. The first is a picture with two charts, who is ahead of SPY and how the race has gone since launch, with the top three, the last place and the IBKR result underneath. The second gives the details for those four accounts: what they hold and why, their big trades, and what they buy or sell next.",
   },
   {
-    date: "2026-11-03", tag: "Agents", title: "A day trader", pending: true,
-    text: "The Day Trader joins the race with its own 100,000 CHF. Instead of deciding once after the close, it checks 50 US shares every 5 minutes on live prices while New York is open, buys shares that break out of their first half hour's range, and sells them the same day. It uses no AI and runs free on GitHub. A day the live run misses is completed on 5-minute prices and marked as replayed.",
+    date: "2026-11-03", tag: "Agents", title: "A day trader",
+    text: "The Day Trader joins the race with its own 100,000 CHF. Instead of deciding once after the close, it checks 50 US shares every 5 minutes on live prices while New York is open, buys shares that break out of their first half hour's range, and sells them the same day. It uses no AI and runs free on GitHub. A day the live run misses is completed on 5-minute prices and marked as replayed. It traded live for the first time on 4 November.",
   },
   {
     date: "2026-10-28", tag: "Infrastructure", title: "A message for every trade",
