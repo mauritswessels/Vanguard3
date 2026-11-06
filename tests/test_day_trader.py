@@ -16,11 +16,12 @@ from data_manager import load_market_data
 from engine import journal
 from engine.broker import SimulatedBroker
 from engine.portfolio import Portfolio
-from engine.simulator import Simulator, build_accounts
+from engine.simulator import Account, Simulator, build_accounts
 from models import agent_key, make_agent
 from models.day_trader_agent import (DayBook, DayRun, check_times,
                                      early_close, entry_deadline, load_book,
                                      save_book, session, slice_day, snapshot)
+from reporting import same_days
 
 DAY = "2025-03-31"          # a Monday, New York on summer time (UTC-4)
 PREV = "2025-03-28"
@@ -346,7 +347,16 @@ class EveningBookingTest(unittest.TestCase):
         self.assertEqual(acc.portfolio.trades, [])
         sim.step(pd.Timestamp(DAY))
         pf = acc.portfolio
-        self.assertEqual(acc.joined, pd.Timestamp(DAY))
+        # It traded during its first day, so its record starts at the close
+        # before, and that day counts against SPY.
+        self.assertEqual(acc.joined, pd.Timestamp(PREV))
+        spy = Account(make_agent("benchmark"), *fresh_account(),
+                      joined=pd.Timestamp(PREV))
+        for d in (PREV, DAY):                    # a flat yardstick
+            spy.portfolio.mark_to_market(pd.Timestamp(d), pd.Series(dtype=float))
+        vs = same_days(acc, spy, pd.Timestamp(DAY))
+        self.assertEqual((vs["from"], vs["days"]), (PREV, 1))
+        self.assertAlmostEqual(vs["return"], pf.cash / 100_000 - 1, places=9)
         self.assertEqual(pf.positions, {})
         self.assertEqual(len(pf.trades), len(book.fills))
         live_pf, _ = fresh_account()
@@ -369,6 +379,11 @@ class EveningBookingTest(unittest.TestCase):
         again = Simulator.from_dict(state, self.market)
         self.assertEqual(again.accounts[0].agent.first_live, DAY)
         self.assertEqual(agent_key(again.accounts[0].agent), "daytrader")
+        self.assertEqual(again.accounts[0].joined, pd.Timestamp(PREV))
+        # A file saved when its start was its first day is corrected.
+        state["accounts"][0]["joined"] = DAY
+        again = Simulator.from_dict(state, self.market)
+        self.assertEqual(again.accounts[0].joined, pd.Timestamp(PREV))
 
     def test_replays_what_the_live_run_missed(self):
         self.live_book(until="11:10")
