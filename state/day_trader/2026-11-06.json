@@ -204,43 +204,14 @@
    45.83
   ]
  },
- "held": {
-  "HON": {
-   "quantity": 112,
-   "entry": 217.22,
-   "stop": 214.4275,
-   "target": 222.805,
-   "time": "10:05"
-  },
-  "MRK": {
-   "quantity": 166,
-   "entry": 147.01,
-   "stop": 144.79,
-   "target": 151.45,
-   "time": "10:10"
-  },
-  "TSLA": {
-   "quantity": 67,
-   "entry": 359.81,
-   "stop": 352.3513,
-   "target": 374.7275,
-   "time": "10:15"
-  },
-  "GE": {
-   "quantity": 75,
-   "entry": 323.92,
-   "stop": 319.2052,
-   "target": 333.3495,
-   "time": "10:15"
-  }
- },
+ "held": {},
  "traded": [
   "HON",
   "MRK",
   "TSLA",
   "GE"
  ],
- "realized_chf": 0.0,
+ "realized_chf": 139.85248126338774,
  "fills": [
   {
    "time": "10:05",
@@ -321,10 +292,58 @@
     "spy_move": 0.01115,
     "lead_on_spy": 0.01805
    }
+  },
+  {
+   "time": "15:50",
+   "ticker": "GE",
+   "side": "SELL",
+   "quantity": 75,
+   "price": 323.5,
+   "fx": 0.8209199905395508,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -35.64,
+   "check": "Bought at 323.92 (10:15); stop 319.21, target 333.35; now 323.50"
+  },
+  {
+   "time": "15:50",
+   "ticker": "HON",
+   "side": "SELL",
+   "quantity": 112,
+   "price": 220.11,
+   "fx": 0.8209199905395508,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 240.38,
+   "check": "Bought at 217.22 (10:05); stop 214.43, target 222.81; now 220.11"
+  },
+  {
+   "time": "15:50",
+   "ticker": "MRK",
+   "side": "SELL",
+   "quantity": 166,
+   "price": 146.64,
+   "fx": 0.8209199905395508,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -65.58,
+   "check": "Bought at 147.01 (10:10); stop 144.79, target 151.45; now 146.64"
+  },
+  {
+   "time": "15:50",
+   "ticker": "TSLA",
+   "side": "SELL",
+   "quantity": 67,
+   "price": 360.0,
+   "fx": 0.8209199905395508,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 0.69,
+   "check": "Bought at 359.81 (10:15); stop 352.35, target 374.73; now 360.00"
   }
  ],
- "checks": 34,
- "last_check": "2026-11-06T17:45:52.592248+00:00",
- "finished": false,
+ "checks": 71,
+ "last_check": "2026-11-06T20:50:52.601141+00:00",
+ "finished": true,
  "notes": []
 }
