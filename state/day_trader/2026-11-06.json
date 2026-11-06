@@ -1,0 +1,330 @@
+{
+ "day": "2026-11-06",
+ "equity": 100164.74,
+ "source": "live",
+ "ranges": {
+  "AAPL": [
+   338.3,
+   343.6
+  ],
+  "MSFT": [
+   524.47,
+   532.439
+  ],
+  "NVDA": [
+   187.0,
+   194.895
+  ],
+  "GOOGL": [
+   284.61,
+   290.49
+  ],
+  "AMZN": [
+   258.53,
+   263.55
+  ],
+  "META": [
+   606.66,
+   622.1893
+  ],
+  "AVGO": [
+   301.2504,
+   311.52
+  ],
+  "TSLA": [
+   347.6,
+   357.1025
+  ],
+  "ORCL": [
+   116.63,
+   119.7
+  ],
+  "ADBE": [
+   236.84,
+   241.09
+  ],
+  "CRM": [
+   214.08,
+   218.77
+  ],
+  "AMD": [
+   433.93,
+   459.8
+  ],
+  "CSCO": [
+   96.13,
+   97.53
+  ],
+  "INTC": [
+   54.5601,
+   56.75
+  ],
+  "QCOM": [
+   159.11,
+   165.2
+  ],
+  "TXN": [
+   275.77,
+   285.1
+  ],
+  "IBM": [
+   240.35,
+   244.1144
+  ],
+  "NFLX": [
+   63.4596,
+   64.44000000000001
+  ],
+  "DIS": [
+   113.79,
+   116.22
+  ],
+  "BRK-B": [
+   559.61,
+   567.9999
+  ],
+  "JPM": [
+   333.0,
+   339.46
+  ],
+  "V": [
+   412.75,
+   420.77
+  ],
+  "MA": [
+   638.01,
+   653.66
+  ],
+  "BAC": [
+   49.27,
+   50.16
+  ],
+  "GS": [
+   865.79,
+   886.33
+  ],
+  "UNH": [
+   388.0,
+   396.63
+  ],
+  "LLY": [
+   1333.22,
+   1377.2771
+  ],
+  "JNJ": [
+   265.5495,
+   271.455
+  ],
+  "ABBV": [
+   281.07,
+   288.71
+  ],
+  "MRK": [
+   142.8,
+   146.78
+  ],
+  "PFE": [
+   28.54,
+   29.22
+  ],
+  "TMO": [
+   661.6,
+   691.64
+  ],
+  "ABT": [
+   109.81,
+   111.81
+  ],
+  "PG": [
+   162.36,
+   165.26
+  ],
+  "KO": [
+   93.05,
+   94.64
+  ],
+  "PEP": [
+   138.3,
+   140.32
+  ],
+  "WMT": [
+   123.03,
+   125.56
+  ],
+  "COST": [
+   1043.0,
+   1057.97
+  ],
+  "HD": [
+   338.12,
+   343.095
+  ],
+  "MCD": [
+   269.11,
+   273.2299
+  ],
+  "NKE": [
+   37.9605,
+   38.81
+  ],
+  "XOM": [
+   163.51,
+   166.79
+  ],
+  "CVX": [
+   210.43,
+   214.17
+  ],
+  "CAT": [
+   555.7664,
+   572.0
+  ],
+  "GE": [
+   315.06,
+   323.3505
+  ],
+  "HON": [
+   211.935,
+   216.92
+  ],
+  "BA": [
+   169.88,
+   173.22
+  ],
+  "LIN": [
+   510.01,
+   518.01
+  ],
+  "T": [
+   21.23,
+   21.64
+  ],
+  "VZ": [
+   45.0,
+   45.83
+  ]
+ },
+ "held": {
+  "HON": {
+   "quantity": 112,
+   "entry": 217.22,
+   "stop": 214.4275,
+   "target": 222.805,
+   "time": "10:05"
+  },
+  "MRK": {
+   "quantity": 166,
+   "entry": 147.01,
+   "stop": 144.79,
+   "target": 151.45,
+   "time": "10:10"
+  },
+  "TSLA": {
+   "quantity": 67,
+   "entry": 359.81,
+   "stop": 352.3513,
+   "target": 374.7275,
+   "time": "10:15"
+  },
+  "GE": {
+   "quantity": 75,
+   "entry": 323.92,
+   "stop": 319.2052,
+   "target": 333.3495,
+   "time": "10:15"
+  }
+ },
+ "traded": [
+  "HON",
+  "MRK",
+  "TSLA",
+  "GE"
+ ],
+ "realized_chf": 0.0,
+ "fills": [
+  {
+   "time": "10:05",
+   "ticker": "HON",
+   "side": "BUY",
+   "quantity": 112,
+   "price": 217.22,
+   "fx": 0.8206400275230408,
+   "reason": "Breakout: 217.22 is above the opening range (211.94 to 216.92), the share is up +0.7% on the day and SPY is above its open",
+   "check": "Opening range 211.94 to 216.92; price 217.22 at 10:05 New York; stop 214.43, target 222.80",
+   "live": true,
+   "details": {
+    "range_low": 211.935,
+    "range_high": 216.92,
+    "stop": 214.4275,
+    "target": 222.805,
+    "day_move": 0.00667,
+    "spy_move": 0.00843,
+    "lead_on_spy": -0.00176
+   }
+  },
+  {
+   "time": "10:10",
+   "ticker": "MRK",
+   "side": "BUY",
+   "quantity": 166,
+   "price": 147.01,
+   "fx": 0.8202300071716309,
+   "reason": "Breakout: 147.01 is above the opening range (142.80 to 146.78), the share is up +0.0% on the day and SPY is above its open",
+   "check": "Opening range 142.80 to 146.78; price 147.01 at 10:10 New York; stop 144.79, target 151.45",
+   "live": true,
+   "details": {
+    "range_low": 142.8,
+    "range_high": 146.78,
+    "stop": 144.79,
+    "target": 151.45,
+    "day_move": 0.00048,
+    "spy_move": 0.00884,
+    "lead_on_spy": -0.00836
+   }
+  },
+  {
+   "time": "10:15",
+   "ticker": "TSLA",
+   "side": "BUY",
+   "quantity": 67,
+   "price": 359.81,
+   "fx": 0.8200100064277649,
+   "reason": "Breakout: 359.81 is above the opening range (347.60 to 357.10), the share is up +4.7% on the day and SPY is above its open",
+   "check": "Opening range 347.60 to 357.10; price 359.81 at 10:15 New York; stop 352.35, target 374.73",
+   "live": true,
+   "details": {
+    "range_low": 347.6,
+    "range_high": 357.1025,
+    "stop": 352.3513,
+    "target": 374.7275,
+    "day_move": 0.0469,
+    "spy_move": 0.01115,
+    "lead_on_spy": 0.03576
+   }
+  },
+  {
+   "time": "10:15",
+   "ticker": "GE",
+   "side": "BUY",
+   "quantity": 75,
+   "price": 323.92,
+   "fx": 0.8200100064277649,
+   "reason": "Breakout: 323.92 is above the opening range (315.06 to 323.35), the share is up +2.9% on the day and SPY is above its open",
+   "check": "Opening range 315.06 to 323.35; price 323.92 at 10:15 New York; stop 319.21, target 333.35",
+   "live": true,
+   "details": {
+    "range_low": 315.06,
+    "range_high": 323.3505,
+    "stop": 319.2052,
+    "target": 333.3495,
+    "day_move": 0.0292,
+    "spy_move": 0.01115,
+    "lead_on_spy": 0.01805
+   }
+  }
+ ],
+ "checks": 34,
+ "last_check": "2026-11-06T17:45:52.592248+00:00",
+ "finished": false,
+ "notes": []
+}
