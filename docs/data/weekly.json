@@ -1,6 +1,29 @@
 {
  "reports": [
   {
+   "week_start": "2026-11-02",
+   "week_end": "2026-11-06",
+   "generated_utc": "2026-11-07T07:55+00:00",
+   "text": "Rough week for the stock market. The S&P 500 fund (SPY) fell 3.2%, and the \"all markets\" mix fell 1.3%. Tech and AI shares sold off hard, oil dropped sharply on hopes of an Iran ceasefire, and the Fed sounded tough on interest rates.\n\nAlmost every agent lost less than SPY. The best week belonged to Trend Follower (fixed) at +0.46%. It sold fading shares (EWZ, META, AMD) and bought steady climbers (BRK-B, WMT, PG). Since the start it is at -3.9%, against -6.5% for SPY over the same days. Bargain Hunter gained 0.27% by selling shares that had bounced back (FXI and CFR.SW gave about 800 CHF each), then buying beaten-down ones. It is up 1.9% since the start, while SPY is down 6.5%. The weakest agents were the two Volatility Protected ones, at about -2.6% and -3.0%. Their automatic safety sales hit XOM, CVX and XLE as oil fell, and they sold MSFT at a loss. They are still ahead of SPY since the start.\n\nSome notable things. The AI Learner holds 18% cash and has two orders waiting. It sold CAT at a loss of about 2,500 CHF and bought ABT, both based on recent price momentum. The News Analyst (-2.0%) and its Opus twin (-2.2%) both sold energy shares because of the oil slump, but Opus still held XLE, which is down 10%. Opus also holds less cash (24% versus 42%), so it felt more of the fall. The Opus Learner approved none of 13 picks and moved toward bonds. The Day Trader, new this week, ends every day fully in cash and made +0.3%.\n\nOne week is far too short to judge skill, so none of this proves anything.\n\nThe lesson: when one big thing falls, owning a mix of different investments, or keeping some cash, cushions the blow. SPY, held on its own with nothing else, had the worst week of all.",
+   "model": "claude-sonnet-5-5",
+   "usage": {
+    "input_tokens": 13929,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 1973,
+    "output_tokens_details": {
+     "thinking_tokens": 1300
+    },
+    "service_tier": "standard",
+    "inference_geo": "global",
+    "speed": "standard"
+   }
+  },
+  {
    "week_start": "2026-10-26",
    "week_end": "2026-10-30",
    "generated_utc": "2026-10-31T07:47+00:00",
