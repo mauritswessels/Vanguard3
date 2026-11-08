@@ -308,9 +308,17 @@ const T95 = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 
 const t95 = (df: number) => (df < 1 ? NaN : df <= 30 ? T95[df - 1] : 1.96);
 
 /** The close an account first decided at (its first activity), or the
- *  launch: from then on it was trading. */
+ *  launch: from then on it was trading. The Day Trader already trades
+ *  during its first day, so it counts from the close before (as
+ *  own_start in engine/simulator.py does). */
 export function joined(a: Agent, d: RunData): string {
-  return a.activity[0]?.date || d.start;
+  const first = a.activity[0];
+  if (!first) return d.start;
+  if (first.time === "intraday") {
+    const before = a.equity.filter(([t]) => t < first.date).pop();
+    if (before) return before[0];
+  }
+  return first.date;
 }
 
 export interface Pair {
