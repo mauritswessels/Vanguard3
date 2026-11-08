@@ -338,7 +338,9 @@ day; a replay alone never starts it. A run that started after 10:00 reads
 the opening range from Yahoo's 5-minute bars, because the live high and
 low would already include later prices. New York's early closes (13:00 on
 the day after Thanksgiving, and on 24 December and 3 July from Monday to
-Thursday) are built in.
+Thursday) are built in. On a New York holiday when Europe trades
+(Thanksgiving, 4 July) the evening run skips the Day Trader: there is no
+day to book or replay.
 
 To see how the rules would have done on past days (Yahoo keeps 5-minute
 prices for 60 days), open the "Day trader" workflow on GitHub, click "Run
