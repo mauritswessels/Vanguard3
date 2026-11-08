@@ -536,6 +536,12 @@ class DayTraderAgent(BaseAgent):
         not reach, then a sale at the close of anything still held.
         Returns the day's activity entry (``None`` if nothing traded)."""
         day = date.strftime("%Y-%m-%d")
+        # The race has a session whenever any of its markets trades, so it
+        # also steps US holidays when Europe is open (Thanksgiving, 4 July).
+        # New York has no session then: nothing to book or replay, and a
+        # replayed day would only raise a false alarm.
+        if not self._ny_open(date):
+            return None
         book = load_book(self.folder, date) if self.folder else None
         if self.first_live is None or date < pd.Timestamp(self.first_live):
             if book is None:
@@ -622,6 +628,11 @@ class DayTraderAgent(BaseAgent):
             run.book.note("Yahoo's 5-minute prices could not be loaded")
             return 0
         return run.replay(data, self._usd(date, "Open"))
+
+    def _ny_open(self, date: pd.Timestamp) -> bool:
+        """Whether New York traded on ``date``: SPY has a daily price."""
+        spy = self.market.bars.get(BENCH) if self.market is not None else None
+        return spy is None or date in spy.index
 
     def _usd(self, date: pd.Timestamp, field_: str) -> float:
         """CHF per dollar on ``date`` from the daily prices."""

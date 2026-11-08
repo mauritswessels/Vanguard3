@@ -409,6 +409,21 @@ class EveningBookingTest(unittest.TestCase):
         self.assertEqual(acc.agent.days[-1]["source"], "replayed")
         self.assertEqual(len(acc.portfolio.trades), 6)
 
+    def test_a_new_york_holiday_is_skipped(self):
+        # Europe trades on Thanksgiving and 4 July, so the race has a
+        # session; New York has none, and nothing is replayed or flagged.
+        spy = self.market.bars["SPY"]
+        self.market.bars["SPY"] = spy.drop(pd.Timestamp(DAY))
+        self.addCleanup(self.market.bars.__setitem__, "SPY", spy)
+        only_fx = {"bars": {}, "fx": market_bars()["fx"]}
+        sim, acc = self.sim(loader=lambda tickers, day: only_fx)
+        acc.agent.first_live = PREV
+        sim.step(pd.Timestamp(DAY))
+        self.assertEqual(acc.agent.days, [])
+        self.assertEqual(acc.portfolio.trades, [])
+        self.assertFalse(any(a.get("time") == "intraday"
+                             for a in acc.activity))
+
     def test_unconnected_keeps_its_cash(self):
         agent = make_agent("daytrader")                 # folder None
         sim = Simulator(self.market, build_accounts(self.market, [agent]))
