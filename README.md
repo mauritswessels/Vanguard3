@@ -518,8 +518,9 @@ To start over, delete `state/paper_state.json` and change
 The accounts joined on different days: the rule-based agents, Buy & Hold
 SPY and the News Analyst on 7 Oct 2026, the Team Manager and the Monkey on
 12 Oct, the AI Learner on 13 Oct (when its practice run ended), the News
-Analyst (Opus) on 14 Oct and the Opus Learner on 15 Oct; the Day Trader
-joins on its first live day. Buy & Hold SPY lost
+Analyst (Opus) on 14 Oct and the Opus Learner on 15 Oct, and the Day Trader
+from the close of 3 Nov (it trades during the day, so its first live day,
+4 Nov, counts from the close before). Buy & Hold SPY lost
 about 3% between 12 and 16 Oct, so a late joiner skipped part of that fall,
 and its return since its own start flatters it next to "SPY since launch". Each
 account in `docs/data/paper.json` (and `backtest.json`) therefore also says
@@ -528,7 +529,7 @@ both were trading. The older fields are unchanged.
 
 | Field | Meaning |
 | --- | --- |
-| `joined` | First session the account could trade (`YYYY-MM-DD`), or `null` before that. The days before are filled in with its starting cash and are not its own |
+| `joined` | The close the account's own record starts from (`YYYY-MM-DD`): the first session it could trade, or for the Day Trader the session before its first live day; `null` before that. The days before are filled in with its starting cash and are not its own |
 | `same_days.benchmark`, `same_days.equal_weight` | The account against Buy & Hold SPY and against Buy & Hold All Markets; `null` for the yardstick itself, or while either has not joined |
 | ... `name` | The yardstick's name |
 | ... `from`, `to`, `days` | Counted from the close of `from` (the later of the two join dates) to the close of `to`: `days` sessions |

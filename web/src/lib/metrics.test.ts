@@ -55,6 +55,14 @@ describe("head to head", () => {
     expect(p.days).toBe(base.equity.length - 5);
   });
 
+  it("a day trader counts from the close before its first day", () => {
+    const first = base.equity[4][0];
+    const day = { ...clone(base.equity), activity: [{ date: first, time: "intraday", fills: [], signals: [] }] };
+    const p = headToHead(base, day, d);
+    expect(p.from).toBe(base.equity[3][0]);
+    expect(p.days).toBe(base.equity.length - 4);
+  });
+
   it("a steady daily lead is called once the range clears zero", () => {
     const up = clone(base.equity.map(([t], i) => [t, 100000 * 1.002 ** i]));
     const flat = clone(base.equity.map(([t], i) => [t, 100000 * (1 + (i % 2 ? 0.0005 : -0.0005))]));

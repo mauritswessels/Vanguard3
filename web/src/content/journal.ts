@@ -23,7 +23,7 @@ export const JOURNAL: Entry[] = [
   },
   {
     date: "2026-11-03", tag: "Agents", title: "A day trader",
-    text: "The Day Trader joins the race with its own 100,000 CHF. Instead of deciding once after the close, it checks 50 US shares every 5 minutes on live prices while New York is open, buys shares that break out of their first half hour's range, and sells them the same day. It uses no AI and runs free on GitHub. A day the live run misses is completed on 5-minute prices and marked as replayed.",
+    text: "The Day Trader joins the race with its own 100,000 CHF. Instead of deciding once after the close, it checks 50 US shares every 5 minutes on live prices while New York is open, buys shares that break out of their first half hour's range, and sells them the same day. It uses no AI and runs free on GitHub. A day the live run misses is completed on 5-minute prices and marked as replayed. It traded live for the first time on 4 November.",
   },
   {
     date: "2026-10-28", tag: "Infrastructure", title: "A message for every trade",

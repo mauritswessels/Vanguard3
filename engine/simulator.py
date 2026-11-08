@@ -56,11 +56,28 @@ class Account:
     broker: SimulatedBroker
     #: Days on which the agent did something: signals, orders and fills.
     activity: list[dict] = field(default_factory=list)
-    #: First session the account could trade (``None`` until then). An
-    #: account added later has starting cash on the days before, and the
-    #: AI Learners practise without orders until their ``live_from``, so
-    #: only the days from here on are its own.
+    #: The close the account's own record starts from (``None`` until it
+    #: can trade): the first session it could trade, or for the Day Trader
+    #: the session before (see ``own_start``). An account added later has
+    #: starting cash on the days before, and the AI Learners practise
+    #: without orders until their ``live_from``, so only the days from
+    #: here on are its own.
     joined: pd.Timestamp | None = None
+
+
+def own_start(agent: BaseAgent, first: pd.Timestamp,
+              before: pd.Timestamp | None) -> pd.Timestamp:
+    """The close an account's record starts from, given ``first``, the
+    first session it could trade, and ``before``, the session before.
+
+    Most agents decide after the close of ``first`` and their orders fill
+    the next day, so their record starts at that close. The Day Trader
+    already trades during ``first``, so its record starts at the close
+    before; otherwise its first day would be left out of every
+    comparison."""
+    if getattr(agent, "intraday", False) and before is not None:
+        return before
+    return first
 
 
 def build_accounts(market: MarketData,
@@ -104,7 +121,7 @@ class Simulator:
             if getattr(acc.agent, "uses_team", False):
                 acc.agent.team = self.accounts   # the Team Manager
             if acc.joined is None and acc.agent.trades_on(date):
-                acc.joined = date
+                acc.joined = own_start(acc.agent, date, self.last_date)
             seen = len(acc.broker.rejected)
             if self.corporate_actions:
                 self._pay_dividends(acc, date)
@@ -262,6 +279,12 @@ class Simulator:
             joined = (pd.Timestamp(a["joined"]) if a.get("joined")
                       else None if "joined" in a
                       else joined_before_records(a, agent))
+            if (joined is not None and getattr(agent, "intraday", False)
+                    and agent.trades_on(joined)):
+                # Saved before own_start: the Day Trader's record starts at
+                # the close before its first day.
+                before = [d for d in pf.equity_curve.index if d < joined]
+                joined = own_start(agent, joined, max(before, default=None))
             accounts.append(Account(agent, pf, broker, a["activity"], joined))
         sim = cls(market, accounts, tuner)
         if data["last_date"]:
