@@ -6,14 +6,17 @@ import { Link } from "react-router";
 import { ORDER } from "../../lib/agents";
 import { chf, pct, signedChf, dateShort, tone } from "../../lib/format";
 import { curve, range as makeRange, RANGES, type CurveMode, type RangeKind } from "../../lib/metrics";
-import type { RunData } from "../../lib/types";
+import type { Agent, MixData, RunData } from "../../lib/types";
 import { Segmented, Swatch, cx } from "../ui";
 import { LineChart, type Line } from "./LineChart";
 import { useChartTheme } from "./useChartTheme";
 
 const MODES: [CurveMode, string][] = [["return", "Return"], ["value", "CHF"], ["pnl", "Profit"]];
 
-export function RaceChart({ data, height = 400, compact = false }: { data: RunData; height?: number; compact?: boolean }) {
+/** The id of the owner's mix line (not an account, so not an agent id). */
+const MIX = "owner-mix";
+
+export function RaceChart({ data, mix, height = 400, compact = false }: { data: RunData; mix?: MixData | null; height?: number; compact?: boolean }) {
   const theme = useChartTheme();
   const [mode, setMode] = useState<CurveMode>("return");
   const [kind, setKind] = useState<RangeKind>("all");
@@ -24,14 +27,22 @@ export function RaceChart({ data, height = 400, compact = false }: { data: RunDa
   const agents = useMemo(() => data.agents.slice().sort((a, b) =>
     (b.stats.final_equity_chf ?? 0) - (a.stats.final_equity_chf ?? 0) || ORDER.indexOf(a.key) - ORDER.indexOf(b.key)), [data]);
 
-  const lines: Line[] = useMemo(() => agents.map((a) => ({
+  const lines: Line[] = useMemo(() => agents.map((a): Line => ({
     id: a.id,
     points: curve(a, data, r, mode),
     color: theme.series(a.key),
     style: a.key === "monkey" ? "dotted" : a.fixed_twin || a.benchmark ? "dashed" : "solid",
     width: a.fixed_twin || a.benchmark ? 1 : 2,
     hidden: hidden.has(a.id),
-  })), [agents, data, r.from, r.to, mode, theme, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+  })).concat(mix?.equity.length ? [{
+    // Watch only: the same curve maths as an account, on the mix's values.
+    id: MIX,
+    points: curve({ equity: mix.equity } as Agent, data, r, mode),
+    color: theme.text,
+    style: "dashed" as const,
+    width: 2,
+    hidden: hidden.has(MIX),
+  }] : []), [agents, mix, data, r.from, r.to, mode, theme, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmt = (v: number) => (mode === "return" ? pct(v, 1) : mode === "pnl" ? signedChf(v) : chf(v));
   const last = (id: string) => { const l = lines.find((x) => x.id === id); return l?.points[l.points.length - 1]?.[1]; };
@@ -69,7 +80,21 @@ export function RaceChart({ data, height = 400, compact = false }: { data: RunDa
               </li>
             );
           })}
-          <li className="mt-2 px-2 text-[11.5px] leading-relaxed text-faint">Dashed: fixed twins and the buy-and-hold yardsticks. Dotted: the Monkey. Click a name to hide its line.</li>
+          {mix?.equity.length ? (() => {
+            const v = hover.date ? hover.values.get(MIX) : last(MIX);
+            const off = hidden.has(MIX);
+            return (
+              <li className="mt-1 border-t border-line pt-1">
+                <button type="button" onClick={() => toggle(MIX)} aria-pressed={!off} title={off ? "Show this line" : "Hide this line"}
+                  className={cx("flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-[5px] text-left text-[13px] transition hover:bg-surface-2", off && "opacity-40")}>
+                  <span aria-hidden className="inline-block h-[2px] w-[9px] shrink-0 bg-ink" />
+                  <span className="truncate">{mix.name} <span className="text-faint">· watch only</span></span>
+                  <span className={cx("tabular ml-auto pl-2 font-medium", mode !== "value" && tone(v))}>{v == null ? "–" : fmt(v)}</span>
+                </button>
+              </li>
+            );
+          })() : null}
+          <li className="mt-2 px-2 text-[11.5px] leading-relaxed text-faint">Dashed: fixed twins and the buy-and-hold yardsticks. Dotted: the Monkey.{mix?.equity.length ? <> {mix.name}: the owner's own {mix.holdings.length} holdings{mix.missing.length ? ` (without ${mix.missing.join(", ")}, no prices)` : ""}, scaled to {chf(mix.capital_chf)} and held without trading or costs. Not an account and not in the rankings.</> : null} Click a name to hide its line.</li>
         </ul>
       </div>
     </div>

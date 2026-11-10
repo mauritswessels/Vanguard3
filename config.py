@@ -300,6 +300,24 @@ IBKR_PARAMS = {
     "summary_days": 750,         # mornings the website summary keeps (ibkr_summary.py)
 }
 
+# The owner's own real-money mix (owner_mix.py), shown on the website as a
+# watch-only line next to the race: the same number of shares of each
+# holding, scaled to 100,000 CHF at the close the race started from, held
+# without trading or costs. It is not an account: no agent, no orders, not
+# in the rankings, and nothing reaches the IBKR copy. Yahoo ticker ->
+# (shares held, trading currency, name on the website).
+OWNER_MIX = {
+    "name": "Owner's mix",
+    "start": PAPER_START_DATE,
+    "holdings": {
+        "ASML.AS": (0.75, "EUR", "ASML"),
+        "GOOGL": (3.0, "USD", "Alphabet (Google)"),
+        "TSM": (0.9, "USD", "TSMC"),
+        "IUSC.SW": (2.5, "CHF", "iShares S&P 500, CHF hedged"),
+        "DFEU.AS": (65.0, "EUR", "iShares Europe Defence"),
+    },
+}
+
 # IBKR does not sell US-listed funds to Swiss and EU private investors (they
 # have no KID, the key information sheet). The IBKR copy holds a European
 # version of the same fund instead; the agents keep trading the US funds.

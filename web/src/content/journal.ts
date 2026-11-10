@@ -18,6 +18,10 @@ export interface Entry {
 
 export const JOURNAL: Entry[] = [
   {
+    date: "2026-11-10", tag: "Platform", title: "The owner's own mix on the race chart", pending: true,
+    text: "The race chart gets one more line: the five shares and funds the owner holds with real money (ASML, Alphabet, TSMC, an S&P 500 fund and a European defence fund). It keeps the same number of shares of each, scaled to 100,000 CHF on 7 October like the accounts, so it shows how the mix moved, not the real amounts. It never trades, pays no costs, is not in the rankings and nothing is copied to IBKR. It is there to compare a small, focused portfolio with the agents day by day.",
+  },
+  {
     date: "2026-11-04", tag: "Infrastructure", title: "Clearer morning messages", pending: true,
     text: "The Telegram morning update shrinks from four messages to two that take a couple of minutes to read. The first is a picture with two charts, who is ahead of SPY and how the race has gone since launch, with the top three, the last place and the IBKR result underneath. The second gives the details for those four accounts: what they hold and why, their big trades, and what they buy or sell next.",
   },

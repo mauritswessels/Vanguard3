@@ -207,6 +207,17 @@ strategy of its own (selling winners, buying losers). It joined the live race
 on the first evening run after it was added, so it started later than the
 others; the same-days comparisons below take care of that.
 
+The race chart also shows one line that is not an account: the **owner's
+mix** (`owner_mix.py`, `OWNER_MIX` in `config.py`), the shares and funds
+the owner holds with real money. It keeps the same number of shares of each
+holding, valued in CHF at every close and scaled to 100,000 CHF at the close
+the race started from (7 October 2026), so it shows how the mix moved and
+never the real amounts. It does not trade, pays no costs, is not in the
+rankings or the Team Manager, and its markets are not added to the agents'
+watchlist. The evening run writes it to `docs/data/mix.json` after the
+accounts (a failed download keeps the day before). To change the holdings,
+edit `OWNER_MIX`: the whole line is worked out again from the start.
+
 How many weeks? `luck_study.py` puts a number on it. It runs 300 monkeys,
 each with its own dice, over the same days as each account: on five years
 of past prices for every agent that can be replayed honestly, and live for
@@ -650,6 +661,7 @@ few dozen scored calls per account.
 | `reporting.py` | Scoreboard and dashboard JSON export |
 | `main.py` | Backtest entry point |
 | `daily_run.py` | Live paper trading, one step per completed session |
+| `owner_mix.py` | The owner's own holdings as a watch-only line on the race chart (`docs/data/mix.json`) |
 | `engine/journal.py` | Fills with their decisions, grouped into positions (entry to exit) |
 | `engine/grading.py` | Report cards: every fill graded against SPY after 5 and 20 trading days, and the News Analysts' calibration |
 | `midday_news.py` | News agents' midday check: live prices; real-time markets fill at once, delayed ones at that day's close |

@@ -455,3 +455,14 @@ export interface IbkrSummary {
   };
   history: IbkrRow[];
 }
+
+/** The owner's own mix (data/mix.json, owner_mix.py): fixed shares valued
+ *  in CHF and scaled to the starting capital. A watch-only line, never an
+ *  account. */
+export interface MixData {
+  name: string; start: string; last: string; capital_chf: number;
+  generated_utc: string; data_source: string;
+  holdings: { ticker: string; name: string; currency: string; weight_start: number; weight_now: number; return: number }[];
+  missing: string[];
+  equity: Point[];
+}
