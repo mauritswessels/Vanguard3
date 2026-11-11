@@ -57,6 +57,14 @@ jobs:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python daily_run.py
 
+      # The owner's own mix, a watch-only line on the website (no account,
+      # no trades). A failed download keeps yesterday's line.
+      - name: Owner's mix
+        if: steps.advance.outputs.new_sessions != '0'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python owner_mix.py
+
       - name: Commit results
         if: steps.advance.outputs.new_sessions != '0'
         run: |

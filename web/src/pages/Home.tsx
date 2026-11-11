@@ -13,10 +13,10 @@ import { PairRows } from "../components/HeadToHead";
 import type { NetworkApi } from "../components/network/Network3D";
 import { Container, Delta, Empty, Section, Stat, Swatch, cx } from "../components/ui";
 import { badge, color, ranked } from "../lib/agents";
-import { useLive } from "../lib/data";
+import { useJSON, useLive } from "../lib/data";
 import { chf, date, dateShort, nextRunLabel, pct, share, signedChf } from "../lib/format";
 import { drawdownCurve, exposure, pairs, range } from "../lib/metrics";
-import type { Agent, RunData } from "../lib/types";
+import type { Agent, MixData, RunData } from "../lib/types";
 
 const Network3D = lazy(() => import("../components/network/Network3D"));
 
@@ -28,6 +28,7 @@ const SECTORS: [string, string][] = [
 
 export default function Home() {
   const d = useLive();
+  const mix = useJSON<MixData>("mix");
   if (d === undefined) return <HeroShell />;
   if (d === null || d.status === "waiting") {
     return <Section><Empty>The live race has not started yet. The first results appear after the next evening run.</Empty></Section>;
@@ -38,7 +39,7 @@ export default function Home() {
       <Headline d={d} />
       <Section className="py-10">
         <Title eyebrow="The race" title="Return since launch" />
-        <RaceChart data={d} />
+        <RaceChart data={d} mix={mix} />
       </Section>
       <Section className="pt-0">
         <div className="grid gap-6 lg:grid-cols-2">
