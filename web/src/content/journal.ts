@@ -18,7 +18,7 @@ export interface Entry {
 
 export const JOURNAL: Entry[] = [
   {
-    date: "2026-11-10", tag: "Platform", title: "The owner's own mix on the race chart", pending: true,
+    date: "2026-11-10", tag: "Platform", title: "The owner's own mix on the race chart",
     text: "The race chart gets one more line: the five shares and funds the owner holds with real money (ASML, Alphabet, TSMC, an S&P 500 fund and a European defence fund). It keeps the same number of shares of each, scaled to 100,000 CHF on 7 October like the accounts, so it shows how the mix moved, not the real amounts. It never trades, pays no costs, is not in the rankings and nothing is copied to IBKR. It is there to compare a small, focused portfolio with the agents day by day.",
   },
   {
