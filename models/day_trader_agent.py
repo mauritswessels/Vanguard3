@@ -454,9 +454,10 @@ class DayRun:
 
     # -- the replay ----------------------------------------------------------
     def replay(self, day_data: dict, fallback_fx: float | None = None,
-               ) -> int:
+               until: pd.Timestamp | None = None) -> int:
         """Run the checks after the book's last check on 5-minute bars
-        (``slice_day``). Returns the number of checks replayed."""
+        (``slice_day``), up to ``until`` (UTC; ``None``: the whole day).
+        Returns the number of checks replayed."""
         b, p = self.book, self.params
         after = pd.Timestamp(b.last_check) if b.last_check else None
         bars, prev = day_data["bars"], day_data["prev_close"]
@@ -464,6 +465,8 @@ class DayRun:
         for now in check_times(b.day, p):
             if after is not None and now <= after:
                 continue
+            if until is not None and now > until:
+                break
             fx = fx_at(day_data.get("fx"), now) or fallback_fx
             if not fx:
                 continue

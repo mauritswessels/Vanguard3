@@ -1,8 +1,9 @@
 """Midday news check: the news agents read the news again during the day.
 
 Runs on weekdays at 14:37 UTC (GitHub Actions, see
-``.github/workflows/midday-news.yml``), when New York has been open for a
-while and the European exchanges are still open::
+``.github/workflows/midday-news.yml``, or on time from the IBKR server),
+when New York has been open for a while and the European exchanges are
+still open; a second start on the same day does nothing::
 
     python midday_news.py            # add --dry-run to save nothing
 
@@ -298,6 +299,19 @@ def midday_check(sim: Simulator, now: pd.Timestamp, quotes: dict,
     return agent.midday
 
 
+def checked_today(saved: dict, now: pd.Timestamp) -> bool:
+    """Whether every news agent already had a midday check today (UTC).
+
+    The run can be started twice a day (by GitHub's schedule, which can be
+    hours late, and by the IBKR server on time), and each check costs a
+    Claude call: the second start does nothing."""
+    day = now.tz_convert("UTC").strftime("%Y-%m-%d")
+    news = [a for a in saved.get("accounts", []) if a["agent"] in NEWS_KEYS]
+    return bool(news) and all(
+        ((a.get("agent_state") or {}).get("midday") or {})
+        .get("time", "").startswith(day) for a in news)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--state", type=Path, default=config.PAPER_STATE_FILE)
@@ -321,6 +335,9 @@ def main() -> None:
         logger.info("No paper accounts yet")
         return
     saved = json.loads(args.state.read_text())
+    if checked_today(saved, now):
+        logger.info("Today's midday check is already done")
+        return
     start = pd.Timestamp(args.start)
     market = load_for_state(saved, "yfinance", start, cutoff)
     if saved.get("last_date") != market.calendar[-1].strftime("%Y-%m-%d"):

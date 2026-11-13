@@ -18,6 +18,10 @@ export interface Entry {
 
 export const JOURNAL: Entry[] = [
   {
+    date: "2026-11-13", tag: "Infrastructure", title: "Coping with late starts",
+    text: "From 10 November GitHub started the automatic runs 3 to 7 hours late. The Day Trader began after New York had closed and sat out three days, the midday check found the market shut, and on 10 November the evening run started after midnight, when Yahoo briefly has no European prices, so that day was booked a night late. Now a late evening run waits for those prices until 04:30 Swiss time instead of giving up, a late Day Trader first catches up on the checks it missed using 5-minute prices, and the midday check never runs twice in a day. The IBKR server can also start the runs on time itself, once it has a token for it.",
+  },
+  {
     date: "2026-11-10", tag: "Platform", title: "The owner's own mix on the race chart",
     text: "The race chart gets one more line: the five shares and funds the owner holds with real money (ASML, Alphabet, TSMC, an S&P 500 fund and a European defence fund). It keeps the same number of shares of each, scaled to 100,000 CHF on 7 October like the accounts, so it shows how the mix moved, not the real amounts. It never trades, pays no costs, is not in the rankings and nothing is copied to IBKR. It is there to compare a small, focused portfolio with the agents day by day.",
   },

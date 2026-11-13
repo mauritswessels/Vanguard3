@@ -522,6 +522,73 @@ class PersistenceTest(unittest.TestCase):
         self.assertEqual((n1, n2), (29, 1))
         self.assertEqual(sim.last_date, last)
 
+    def test_after_midnight_it_waits_for_europe_then_books_the_day(self):
+        """GitHub sometimes starts the evening run hours late, inside
+        Yahoo's gap after midnight in Zurich: the run downloads again every
+        ten minutes and books the day once Europe's prices are there,
+        straight from Yahoo (not the copy on disk)."""
+        market = synthetic_market(days=60)
+        start, last = market.calendar[-30], market.calendar[-1]
+        europe = [t for t in market.bars if t.endswith(daily_run.EUROPE)]
+        late = MarketData(
+            bars={t: df.drop(last) if t in europe else df
+                  for t, df in market.bars.items()},
+            fx=market.fx, currencies=market.currencies, source=market.source)
+        clock = {"t": pd.Timestamp("2026-11-11 01:00", tz="UTC")}
+        calls = []
+
+        def loader(*a, **k):
+            calls.append(k.get("cache_dir", "default"))
+            # Europe's prices arrive with the third download.
+            return market if len(calls) >= 3 else late
+
+        def sleep(seconds):
+            clock["t"] += pd.Timedelta(seconds=seconds)
+
+        deadline = daily_run.europe_wait_deadline(clock["t"])
+        self.assertEqual(deadline, pd.Timestamp("2026-11-11 03:30", tz="UTC"))
+        with tempfile.TemporaryDirectory() as tmp:
+            sim, n = advance(Path(tmp) / "state.json", "synthetic", start,
+                             last, wait_until=deadline,
+                             now_fn=lambda: clock["t"], sleep_fn=sleep,
+                             loader=loader)
+        self.assertEqual(sim.last_date, last)
+        self.assertEqual(n, 30)
+        self.assertEqual(calls, ["default", None, None])
+        self.assertEqual(clock["t"], pd.Timestamp("2026-11-11 01:20", tz="UTC"))
+
+    def test_the_wait_for_europe_has_an_end(self):
+        market = synthetic_market(days=60)
+        start, last = market.calendar[-30], market.calendar[-1]
+        europe = [t for t in market.bars if t.endswith(daily_run.EUROPE)]
+        late = MarketData(
+            bars={t: df.drop(last) if t in europe else df
+                  for t, df in market.bars.items()},
+            fx=market.fx, currencies=market.currencies, source=market.source)
+        clock = {"t": pd.Timestamp("2026-11-11 03:00", tz="UTC")}
+
+        def sleep(seconds):
+            clock["t"] += pd.Timedelta(seconds=seconds)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sim, _ = advance(Path(tmp) / "state.json", "synthetic", start,
+                             last, wait_until=daily_run.europe_wait_deadline(
+                                 clock["t"]),
+                             now_fn=lambda: clock["t"], sleep_fn=sleep,
+                             loader=lambda *a, **k: late)
+        self.assertEqual(sim.last_date, market.calendar[-2])
+        self.assertLessEqual(clock["t"],
+                             pd.Timestamp("2026-11-11 03:30", tz="UTC"))
+
+    def test_no_waiting_before_midnight_in_zurich(self):
+        """Before midnight a missing European day is a European holiday:
+        the run does not wait for it. (Summer: Zurich is UTC+2.)"""
+        wait = daily_run.europe_wait_deadline
+        self.assertIsNone(wait(pd.Timestamp("2026-11-10 21:40", tz="UTC")))
+        self.assertIsNone(wait(pd.Timestamp("2026-11-11 03:31", tz="UTC")))
+        self.assertEqual(wait(pd.Timestamp("2026-07-01 23:30", tz="UTC")),
+                         pd.Timestamp("2026-07-02 02:30", tz="UTC"))
+
     def test_waits_for_new_york_close(self):
         before = pd.Timestamp("2026-10-07 19:00", tz="UTC")  # 15:00 NY
         after = pd.Timestamp("2026-10-07 21:00", tz="UTC")   # 17:00 NY
