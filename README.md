@@ -59,9 +59,16 @@ scan"), which are installed apart and never next to the others.
 run and saves everything (cash, positions, pending orders, trailing stops) to
 `state/paper_state.json`. The GitHub Actions workflow in
 `.github/workflows/daily.yml` runs it every weekday evening between the New
-York close and midnight in Zurich (after midnight Yahoo leaves out the
-European markets' day), commits the new state, and refreshes `docs/data/`
-(the 5-year backtest only on Fridays: it is 4 MB and barely moves in a day).
+York close and midnight in Zurich, commits the new state, and refreshes
+`docs/data/` (the 5-year backtest only on Fridays: it is 4 MB and barely
+moves in a day). After midnight in Zurich Yahoo leaves out the European
+markets' newest day for a few hours (until about 03:30). GitHub sometimes
+starts the run hours late (3 to 7 hours in November 2026), so a run that
+starts after midnight downloads again every 10 minutes until those prices
+are there, at most until 04:30 Swiss time, and books the day then; after
+that it leaves the day to the next evening. To have the runs start on
+time, the IBKR server can start them itself (see "Starting the GitHub runs
+on time" below).
 GitHub Pages serves the platform in `docs/` (built from `web/`, see below)
 at https://vanguard3.xyz/, so nothing needs to run on your own computer. The
 domain is set by `docs/CNAME`; the old github.io address forwards to it.
@@ -160,8 +167,9 @@ once and handed to both) under the same rules and limits but asks Claude Opus, a
 race between the two shows whether a smarter model trades better.
 
 It also checks once around midday (`midday_news.py`, workflow "Midday news
-check", weekdays 14:37 UTC, while New York and Europe are both open). That
-run first fills last evening's orders at the morning's open (at the
+check", weekdays 14:37 UTC, while New York and Europe are both open; a
+second start on the same day does nothing, so it never pays for two
+Claude calls). That run first fills last evening's orders at the morning's open (at the
 morning's exchange rate too), reads the news
 again with live prices and asks Claude whether anything changed. How a
 change trades depends on how fresh its market's price is:
@@ -345,9 +353,14 @@ the missing part under the same rules on Yahoo's 5-minute prices, each
 check seeing only the bars finished by then, and sells whatever is still
 held at the official close. The website marks such days "replayed", and
 the alert issue says why. The account joins the race on its first live
-day; a replay alone never starts it. A run that started after 10:00 reads
-the opening range from Yahoo's 5-minute bars, because the live high and
-low would already include later prices. New York's early closes (13:00 on
+day; a replay alone never starts it. A live run that starts late (GitHub
+sometimes starts it hours late) first catches up on the checks it missed
+on Yahoo's 5-minute prices, exactly as the evening replay would, and then
+trades the rest of the day live; the website marks those trades
+"replayed". If it cannot load those prices, it trades nothing live and
+leaves the whole day to the evening replay, so a day with skipped checks
+never counts as live. If the run starts after the close, the evening run
+replays the day. New York's early closes (13:00 on
 the day after Thanksgiving, and on 24 December and 3 July from Monday to
 Thursday) are built in. On a New York holiday when Europe trades
 (Thanksgiving, 4 July) the evening run skips the Day Trader: there is no
@@ -655,7 +668,7 @@ few dozen scored calls per account.
 | `ibkr_bridge.py` | Copies one agent into an IBKR paper account through TWS or IB Gateway |
 | `ibkr_schedule.py`, `ibkr_morning.sh` | Run the bridge by itself every weekday morning (Mac or cloud server) |
 | `ibkr_summary.py` | The paper account next to the simulated agent, for the website (`ibkr_logs/public/ibkr.json`) |
-| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`); `publish.sh` puts the summary on GitHub |
+| `server/` | Cloud server: IB Gateway in Docker and the weekday runs (`setup.sh`); `publish.sh` puts the summary on GitHub; `trigger.sh` starts the GitHub runs on time |
 | `health_check.py` | Notices missed or failed runs for the alert issue |
 | `flaw_scan.py`, `ruff.toml`, `.github/workflows/flaw-scan.yml` | The flaw scan: accounts that add up, settings that agree, no secrets, a timeline that keeps up; ruff and the package audits (Sundays and every pull request) |
 | `reporting.py` | Scoreboard and dashboard JSON export |
@@ -871,6 +884,38 @@ Useful commands on the server:
     tail -n 40 /opt/Vanguard3/ibkr_logs/morning.log
     docker logs --tail 30 ib-gateway          # what IB Gateway is doing
     bash /opt/Vanguard3/server/setup.sh --login   # type a new login
+
+### Starting the GitHub runs on time
+
+GitHub starts scheduled runs when it has room, usually within half an
+hour. From 10 November 2026 it started them 3 to 7 hours late: the Day
+Trader began after New York had closed, the midday check found the market
+shut, and the evening run landed in Yahoo's gap after midnight. The server's
+clock is reliable, so it can ask GitHub to start each run on time
+(`server/trigger.sh`), every weekday in New York time: the Day trader at
+09:05, the midday check at 10:37 and the evening run at 16:40. GitHub's own
+timetable stays as a backup; a run that finds its work done stops after a
+minute.
+
+It needs a GitHub token that can only start runs of this repository. Set
+it up once:
+
+1. On GitHub, signed in as the repository's owner, open
+   https://github.com/settings/personal-access-tokens/new: name "Vanguard3
+   server", expiration 1 year, Repository access > Only select
+   repositories > `mauritswessels/Vanguard3`, Permissions > Repository
+   permissions > **Actions: Read and write** > Generate token, and copy it.
+2. On the server, as root:
+
+       cd /opt/Vanguard3 && git pull && bash server/trigger.sh --setup
+
+   and paste the token. It checks the token with GitHub, keeps it in
+   `ibkr_morning.env` (never in git) and plans the three starts.
+
+The token cannot change the code, the secrets or the settings. When it
+expires, a start fails, Telegram says so and GitHub's timetable takes
+over again; make a new token and run `trigger.sh --setup` again. What it
+did: `tail /opt/Vanguard3/ibkr_logs/trigger.log`.
 
 ### The paper account on the website
 

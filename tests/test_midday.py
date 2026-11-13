@@ -318,6 +318,28 @@ class MiddayTest(unittest.TestCase):
         self.assertIsNotNone(opus.midday)
 
 
+class OncePerDayTest(unittest.TestCase):
+    """The check can be started twice a day (GitHub late, the server on
+    time); each costs a Claude call, so the second start does nothing."""
+
+    def state(self, *times):
+        return {"accounts": [
+            {"agent": "news", "agent_state": {"midday": {"time": times[0]}}},
+            {"agent": "news_opus",
+             "agent_state": {"midday": {"time": times[1]} if times[1]
+                             else None}},
+            {"agent": "trend", "agent_state": {}}]}
+
+    def test_checked_today(self):
+        from midday_news import checked_today
+        now = pd.Timestamp("2026-11-12 15:40", tz="UTC")
+        today, before = "2026-11-12T14:38+00:00", "2026-11-11T14:38+00:00"
+        self.assertTrue(checked_today(self.state(today, today), now))
+        self.assertFalse(checked_today(self.state(today, before), now))
+        self.assertFalse(checked_today(self.state(today, None), now))
+        self.assertFalse(checked_today({"accounts": []}, now))
+
+
 class FinnhubQuoteTest(unittest.TestCase):
     def test_parse_quote(self):
         from finnhub_feed import parse_quote

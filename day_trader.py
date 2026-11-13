@@ -46,7 +46,7 @@ from engine.portfolio import Portfolio
 from main import setup_logging
 from models.day_trader_agent import (BENCH, NY, DayBook, DayRun, _usable,
                                      book_path, check_times, load_book,
-                                     ny_time, opening_ranges, save_book,
+                                     ny_time, save_book,
                                      session, slice_day)
 
 logger = logging.getLogger("vanguard3.daytrader")
@@ -207,8 +207,24 @@ def run_live(until: str | None = None, folder: Path = config.DAY_TRADER_DIR,
     for rec in list(book.fills):              # this morning's (afternoon part)
         run.apply(rec)
     done_before = pd.Timestamp(book.last_check) if book.last_check else None
-    range_end = session(day)[0] + pd.Timedelta(minutes=p["range_minutes"])
-    late = pd.Timedelta(minutes=2 * p["check_minutes"])
+    # GitHub sometimes starts this run late (in November 2026 often by
+    # hours). Checks already missed are first caught up on Yahoo's 5-minute
+    # prices, as the evening run would, so the day has no hole in it; the
+    # rest is then traded live. If that fails, the day is left to the
+    # evening replay: a day with skipped checks must not count as live.
+    late_by = pd.Timedelta(minutes=p["check_minutes"])
+    missed = [t for t in times if t <= end and t < now_fn() - late_by
+              and (done_before is None or t > done_before)]
+    if missed:
+        if not _catch_up(run, bars_fn, fx_fn, day, markets, missed[-1]):
+            logger.warning("Started at %s New York and could not catch up "
+                           "on the missed checks: the evening run replays "
+                           "the day from %s on 5-minute prices",
+                           ny_time(now_fn()),
+                           ny_time(done_before) if done_before else "the open")
+            return load_book(folder, day)
+        save_book(book, folder)
+        done_before = pd.Timestamp(book.last_check)
     fx, misses = None, 0
     for t in times:
         if t > end:
@@ -223,8 +239,6 @@ def run_live(until: str | None = None, folder: Path = config.DAY_TRADER_DIR,
         quotes = quotes_fn(markets + [BENCH])
         now = now_fn()
         fx = fx_fn() or fx
-        if not book.ranges and now - range_end > late:
-            book.ranges = _late_ranges(bars_fn, day, p, markets, book)
         spy_ok = _usable(quotes.get(BENCH), now,
                          pd.Timedelta(minutes=p["stale_minutes"]))
         if not spy_ok or not fx:
@@ -254,21 +268,23 @@ def run_live(until: str | None = None, folder: Path = config.DAY_TRADER_DIR,
     return book
 
 
-def _late_ranges(bars_fn, day, p, markets, book) -> dict:
-    """A live run that starts after the opening range has ended reads the
-    range from Yahoo's 5-minute bars (the live high and low would include
-    later prices); failing that, the next check uses the day's range so
-    far."""
+def _catch_up(run: DayRun, bars_fn, fx_fn, day: str, markets: list[str],
+              until: pd.Timestamp) -> bool:
+    """Replay the checks up to ``until`` that a late live run missed, on
+    Yahoo's 5-minute prices (each check sees only the bars up to its own
+    time). Returns False when there was nothing to replay them with."""
     try:
-        ranges = opening_ranges(slice_day(bars_fn(markets, day), day), day,
-                                p, markets)
-    except Exception as exc:
-        logger.warning("Opening ranges from Yahoo failed: %s", exc)
-        ranges = {}
-    if not ranges:
-        book.note("Started late: the opening range is the day's range so "
-                  "far")
-    return ranges
+        data = slice_day(bars_fn(markets + [BENCH], day), day)
+    except Exception as exc:                 # network: leave it to the evening
+        logger.warning("No 5-minute prices to catch up with: %s", exc)
+        return False
+    n = run.replay(data, fx_fn(), until=until)
+    if n == 0:
+        return False
+    run.book.note(f"Started late: the checks until {ny_time(until)} were "
+                  "caught up on 5-minute prices")
+    logger.info("Caught up %d missed checks on 5-minute prices", n)
+    return True
 
 
 # ---------------------------------------------------------------------------

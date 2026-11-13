@@ -92,9 +92,10 @@ def problems(state: dict | None, expected: pd.Timestamp,
     if last < expected:
         out.append(f"The accounts were last updated for {last:%a %d %b}, but "
                    f"the latest finished trading day is {expected:%a %d %b}. "
-                   "The evening run failed or did not start (or Yahoo had no "
-                   "European prices for that day yet; on a European holiday "
-                   "that is normal). The next successful run catches up.")
+                   "The evening run failed, did not start, or started so "
+                   "late that Yahoo still had no European prices for that "
+                   "day at 04:30 Swiss time (on a European holiday that is "
+                   "normal). The next successful run catches up.")
     if only_late:
         return out
     for acc in state["accounts"]:

@@ -265,4 +265,6 @@ Useful commands on this server:
   docker logs --tail 30 ib-gateway        what IB Gateway is doing
   bash $HERE/setup.sh --publish
                                           show the paper account on the website
+  bash $HERE/trigger.sh --setup
+                                          start the GitHub runs on time
 EOF

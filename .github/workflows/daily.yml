@@ -6,10 +6,14 @@ on:
   schedule:
     # The prices must be downloaded after New York has closed (16:00 there,
     # plus 30 minutes) but before midnight in Zurich: after that, Yahoo
-    # leaves out the European markets' day (daily_run.py then leaves that
-    # day for the next run). GitHub often starts a run 15-30 minutes late,
-    # so there are several runs; one before the close, or one after a
-    # successful run, finds nothing new and stops early.
+    # leaves out the European markets' day for a few hours (until about
+    # 03:30 Zurich). GitHub often starts a run 15-30 minutes late, and since
+    # November 2026 sometimes 3-7 hours late, so there are several runs; one
+    # before the close, or one after a successful run, finds nothing new
+    # and stops early. A run that starts after midnight in Zurich waits for
+    # the European prices until 04:30 Zurich (daily_run.py), so the day is
+    # still booked before the IBKR copy at 08:30. The IBKR server can also
+    # start this run on time (server/setup.sh --trigger).
     - cron: "40 20 * * 1-5"   # summer: 22:40 Zurich, 16:40 New York
     - cron: "5 21 * * 1-5"    # summer: a second chance before midnight
     - cron: "40 21 * * 1-5"   # winter: 22:40 Zurich, 16:40 New York
@@ -27,7 +31,9 @@ concurrency:
 jobs:
   trade:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Up to 4.5 hours of waiting for Europe's prices (see the schedule
+    # above), then about 15 minutes of work.
+    timeout-minutes: 330
     env:
       # Optional (healthchecks.io, free): it warns you when an evening
       # passes without a successful run, even one GitHub never started.

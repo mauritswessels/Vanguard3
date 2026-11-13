@@ -464,5 +464,136 @@ class TelegramTest(unittest.TestCase):
         self.assertIn("No message reached the bot", out)
 
 
+# GitHub's API as the trigger sees it: records the arguments, and whether
+# the token came on standard input (never on the command line).
+FAKE_GITHUB_CURL = """#!/bin/bash
+stdin=$(cat)
+case "$stdin" in *"Bearer github_pat_good"*) auth=token ;; *) auth=none ;; esac
+echo "curl [$auth] $*" >> "$CALLS"
+case "$*" in
+  *api.telegram.org*) exit 0 ;;
+esac
+[ "$auth" = token ] && [ "${FAKE_GITHUB_OK:-1}" = 1 ] || exit 22
+echo '{"total_count": 8}'
+"""
+
+
+@unittest.skipUnless(shutil.which("bash"), "needs bash")
+class TriggerTest(unittest.TestCase):
+    def setUp(self):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.repo, tools = tmp / "Vanguard3", tmp / "bin"
+        self.units = tmp / "units"
+        (self.repo / "server").mkdir(parents=True)
+        tools.mkdir()
+        self.units.mkdir()
+        shutil.copy(ROOT / "server" / "trigger.sh", self.repo / "server")
+        for name, text in {"curl": FAKE_GITHUB_CURL, "id": FAKE_ID,
+                           "systemctl": RECORDER}.items():
+            (tools / name).write_text(text)
+            (tools / name).chmod(0o755)
+        self.calls = tmp / "calls"
+        self.calls.write_text("")
+        self.env = {**os.environ, "PATH": f"{tools}:/usr/bin:/bin",
+                    "CALLS": str(self.calls), "UNIT_DIR": str(self.units)}
+        self.settings = self.repo / "ibkr_morning.env"
+
+    def trigger(self, *args, answers="", **env):
+        done = subprocess.run(
+            ["bash", str(self.repo / "server" / "trigger.sh"), *args],
+            input=answers, capture_output=True, text=True, timeout=30,
+            env={**self.env, **env})
+        return done.returncode, done.stdout + done.stderr
+
+    def test_setup_keeps_the_token_private_and_plans_the_runs(self):
+        self.settings.write_text('BRIDGE_ARGS="--port 4002"\n'
+                                 "TRIGGER_TOKEN=github_pat_old\n")
+        code, out = self.trigger("--setup", answers="github_pat_good\n")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.settings.read_text(),
+                         'BRIDGE_ARGS="--port 4002"\n'
+                         "TRIGGER_TOKEN=github_pat_good\n")
+        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn("github_pat_good", out)
+        calls = self.calls.read_text()
+        self.assertNotIn("github_pat_good", calls)
+        self.assertIn("curl [token] -fsS -m 30 -K - -X GET", calls)
+        service = (self.units / "vanguard3-trigger@.service").read_text()
+        self.assertIn(f"ExecStart=/bin/bash {self.repo}/server/trigger.sh %i",
+                      service)
+        times = {}
+        for wf in ("day-trader", "midday-news", "daily"):
+            timer = (self.units / f"vanguard3-trigger-{wf}.timer").read_text()
+            self.assertIn(f"Unit=vanguard3-trigger@{wf}.yml.service", timer)
+            times[wf] = re.search(r"OnCalendar=(.*)", timer).group(1)
+        self.assertEqual(times, {
+            "day-trader": "Mon..Fri 09:05 America/New_York",
+            "midday-news": "Mon..Fri 10:37 America/New_York",
+            "daily": "Mon..Fri 16:40 America/New_York"})
+        self.assertIn("systemctl enable --now vanguard3-trigger-day-trader."
+                      "timer vanguard3-trigger-midday-news.timer "
+                      "vanguard3-trigger-daily.timer", calls)
+
+    @unittest.skipUnless(shutil.which("systemd-analyze"),
+                         "needs systemd-analyze")
+    def test_times_are_valid_for_systemd(self):
+        self.trigger("--setup", answers="github_pat_good\n")
+        for timer in self.units.glob("vanguard3-trigger-*.timer"):
+            when = re.search(r"OnCalendar=(.*)", timer.read_text()).group(1)
+            done = subprocess.run(["systemd-analyze", "calendar", when],
+                                  capture_output=True, text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_setup_refuses_a_bad_token(self):
+        code, out = self.trigger("--setup", answers="hello\n")
+        self.assertEqual(code, 1)
+        self.assertIn("doesn't look like a GitHub token", out)
+        code, out = self.trigger("--setup", answers="github_pat_good\n",
+                                 FAKE_GITHUB_OK="0")
+        self.assertEqual(code, 1)
+        self.assertIn("did not accept", out)
+        self.assertFalse(self.settings.exists())
+        self.assertFalse(list(self.units.iterdir()))
+
+    def test_setup_needs_root(self):
+        code, out = self.trigger("--setup", FAKE_UID="1000")
+        self.assertEqual(code, 1)
+        self.assertIn("run this as root", out)
+
+    def test_starts_a_run_on_main(self):
+        self.settings.write_text("TRIGGER_TOKEN=github_pat_good\n")
+        code, out = self.trigger("day-trader.yml")
+        self.assertEqual(code, 0, out)
+        self.assertIn("started day-trader.yml", out)
+        self.assertIn(
+            "-X POST -H Accept: application/vnd.github+json -H "
+            "X-GitHub-Api-Version: 2022-11-28 -d {\"ref\":\"main\"} "
+            "https://api.github.com/repos/mauritswessels/Vanguard3/actions/"
+            "workflows/day-trader.yml/dispatches", self.calls.read_text())
+        self.assertIn("started day-trader.yml",
+                      (self.repo / "ibkr_logs" / "trigger.log").read_text())
+
+    def test_only_its_own_runs(self):
+        self.settings.write_text("TRIGGER_TOKEN=github_pat_good\n")
+        code, out = self.trigger("tests.yml")
+        self.assertEqual(code, 2)
+        self.assertIn("Not one of this server's runs", out)
+        self.assertEqual(self.calls.read_text(), "")
+
+    def test_a_refused_start_says_so_on_telegram(self):
+        self.settings.write_text("TRIGGER_TOKEN=github_pat_expired\n"
+                                 "TELEGRAM_TOKEN=1:abc\nTELEGRAM_CHAT_ID=5\n")
+        code, out = self.trigger("daily.yml")
+        self.assertEqual(code, 1)
+        self.assertIn("GitHub did not start daily.yml", out)
+        self.assertIn("api.telegram.org/bot1:abc/sendMessage",
+                      self.calls.read_text())
+
+    def test_needs_the_setup_first(self):
+        code, out = self.trigger("daily.yml")
+        self.assertEqual(code, 1)
+        self.assertIn("--setup", out)
+
+
 if __name__ == "__main__":
     unittest.main()

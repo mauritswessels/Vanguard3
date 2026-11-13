@@ -27,6 +27,7 @@ import argparse
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -44,6 +45,16 @@ logger = logging.getLogger("vanguard3.paper")
 #: Yahoo suffixes of the European exchanges on the watchlist.
 EUROPE = (".SW", ".DE", ".PA", ".AS")
 
+#: Yahoo leaves the European markets' newest day out of downloads for a few
+#: hours after midnight in Zurich (seen until about 03:30). A run that
+#: starts in that gap (GitHub sometimes starts the evening run hours late)
+#: waits for the prices until this time in Zurich, instead of booking
+#: nothing that night.
+EUROPE_WAIT_UNTIL = pd.Timedelta(hours=4, minutes=30)
+
+#: How often a waiting run downloads the prices again.
+EUROPE_RECHECK = pd.Timedelta(minutes=10)
+
 
 def last_completed_session(now_utc: pd.Timestamp | None = None
                            ) -> pd.Timestamp:
@@ -57,9 +68,20 @@ def last_completed_session(now_utc: pd.Timestamp | None = None
     return day.tz_localize(None)
 
 
+def europe_wait_deadline(now_utc: pd.Timestamp) -> pd.Timestamp | None:
+    """Until when (UTC) a run started at ``now_utc`` waits for missing
+    European prices: only inside the gap after midnight in Zurich. Before
+    midnight a missing European day means a European holiday, so the run
+    does not wait."""
+    zurich = now_utc.tz_convert("Europe/Zurich")
+    until = zurich.normalize() + EUROPE_WAIT_UNTIL
+    return until.tz_convert("UTC") if zurich < until else None
+
+
 def load_for_state(saved: dict | None, source: str,
                    paper_start: pd.Timestamp, cutoff: pd.Timestamp,
-                   seed: int = config.SYNTHETIC_SEED):
+                   seed: int = config.SYNTHETIC_SEED,
+                   cache_dir: Path | None = config.CACHE_DIR):
     """Daily bars up to ``cutoff`` for every watched market.
 
     An account holding (or about to trade) a ticker that failed to
@@ -72,6 +94,7 @@ def load_for_state(saved: dict | None, source: str,
     needed = {p["ticker"] for a in (saved or {}).get("accounts", [])
               for p in a["portfolio"]["positions"] + a["pending_orders"]}
     return load_market_data(source, data_start, cutoff, seed=seed,
+                            cache_dir=cache_dir,
                             strict=needed or {config.BENCHMARK_TICKER})
 
 
@@ -92,22 +115,53 @@ def europe_missing(market, day: pd.Timestamp) -> bool:
 
 
 def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
-            cutoff: pd.Timestamp, seed: int = config.SYNTHETIC_SEED
+            cutoff: pd.Timestamp, seed: int = config.SYNTHETIC_SEED, *,
+            wait_until: pd.Timestamp | None = None, now_fn=None,
+            sleep_fn=time.sleep, loader=None
             ) -> tuple[Simulator | None, int]:
     """Load state, simulate new sessions up to ``cutoff``, save state.
+
+    When the newest day has New York prices but none from Europe yet, it
+    downloads again every ``EUROPE_RECHECK`` until ``wait_until`` (UTC;
+    ``None``: no waiting) before leaving that day to the next run.
+    ``now_fn``, ``sleep_fn`` and ``loader`` replace the clock, the waiting
+    and the download (the tests use made-up ones).
 
     Returns the simulator (``None`` before the first session) and the number
     of sessions simulated in this call.
     """
+    now_fn = now_fn or (lambda: pd.Timestamp.now(tz="UTC"))
+    loader = loader or load_for_state
     saved = json.loads(state_path.read_text()) if state_path.exists() else None
-    market = load_for_state(saved, source, paper_start, cutoff, seed)
+    market = loader(saved, source, paper_start, cutoff, seed)
     done = pd.Timestamp(saved["last_date"]) if saved else None
-    days = market.calendar[market.calendar <= cutoff]
-    if (len(days) and (done is None or days[-1] > done)
-            and europe_missing(market, days[-1])):
+
+    def waiting_on_europe(market) -> pd.Timestamp | None:
+        days = market.calendar[market.calendar <= cutoff]
+        if (len(days) and (done is None or days[-1] > done)
+                and europe_missing(market, days[-1])):
+            return days[-1]
+        return None
+
+    day = waiting_on_europe(market)
+    while (day is not None and wait_until is not None
+           and now_fn() + EUROPE_RECHECK <= wait_until):
+        logger.info("No European prices for %s yet (Yahoo leaves them out "
+                    "for a few hours after midnight in Zurich): looking "
+                    "again in %d minutes", day.date(),
+                    EUROPE_RECHECK.total_seconds() // 60)
+        sleep_fn(EUROPE_RECHECK.total_seconds())
+        # Straight from Yahoo: the copy saved on disk lacks the new prices.
+        try:
+            market = loader(saved, source, paper_start, cutoff, seed,
+                            cache_dir=None)
+        except Exception as exc:   # keep the first download, try again
+            logger.warning("Downloading again failed: %s", exc)
+        day = waiting_on_europe(market)
+    if day is not None:
         logger.warning("No European prices for %s yet: that day is "
-                       "simulated by the next run", days[-1].date())
-        market = market.until(days[-1] - pd.Timedelta(days=1))
+                       "simulated by the next run", day.date())
+        market = market.until(day - pd.Timedelta(days=1))
 
     if saved is not None:
         sim = Simulator.from_dict(saved, market, tuner=retune)
@@ -183,8 +237,11 @@ def main() -> None:
     setup_logging(args.verbose)
 
     start = pd.Timestamp(args.start)
-    cutoff = last_completed_session()
-    sim, n_new = advance(args.state, args.source, start, cutoff)
+    now = pd.Timestamp.now(tz="UTC")
+    cutoff = last_completed_session(now)
+    sim, n_new = advance(args.state, args.source, start, cutoff,
+                         wait_until=(europe_wait_deadline(now)
+                                     if args.source == "yfinance" else None))
     # The workflow skips testing and publishing when nothing is new.
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as out:

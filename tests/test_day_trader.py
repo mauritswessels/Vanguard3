@@ -272,11 +272,44 @@ class LiveRunTest(unittest.TestCase):
         again = self.live(start=f"{DAY} 17:00")
         self.assertEqual(again.to_dict(), afternoon.to_dict())
 
-    def test_a_late_start_reads_the_opening_range_from_bars(self):
-        book = self.live(start=f"{DAY} 15:02")
+    def test_a_late_start_catches_up_on_the_missed_checks(self):
+        """GitHub started the run an hour late (11:06 New York): the checks
+        it missed are replayed on 5-minute prices first, so the day has no
+        hole in it and ends up the same as a day traded from the open."""
+        book = self.live(start=f"{DAY} 15:06")
+        self.assertTrue(book.finished)
+        self.assertEqual(book.checks, 71)
         self.assertEqual(book.ranges["AAPL"], [100.0, 101.0])
-        self.assertFalse(any(r["time"] < "11:00" and r["side"] == "BUY"
-                             for r in book.fills))
+        self.assertEqual(summary(book.fills), summary(replayed().book.fills))
+        early = [r for r in book.fills if r["time"] < "11:00"]
+        self.assertTrue(early)
+        self.assertFalse(any(r["live"] for r in early))
+        self.assertTrue(any(r["live"] for r in book.fills
+                            if r["time"] > "11:06"))
+        self.assertTrue(any("caught up" in n for n in book.notes))
+
+    def test_a_late_afternoon_part_catches_up_too(self):
+        self.live(until="12:45")
+        afternoon = self.live(start=f"{DAY} 18:31")   # 14:31 New York
+        self.assertTrue(afternoon.finished)
+        self.assertEqual(afternoon.checks, 71)
+        self.assertEqual(summary(afternoon.fills),
+                         summary(replayed().book.fills))
+
+    def test_a_late_start_without_bars_leaves_the_day_to_the_evening(self):
+        """Without 5-minute prices to catch up with, a late run trades
+        nothing live: a day with skipped checks must not count as live,
+        and the evening run replays the whole day instead."""
+        clock = Clock(pd.Timestamp(f"{DAY} 15:02", tz="UTC"))
+
+        def no_bars(tickers, day):
+            raise ConnectionError("Yahoo is down")
+        book = day_trader.run_live(
+            None, self.folder, self.state, now_fn=clock.now,
+            sleep_fn=clock.sleep, quotes_fn=live_feed(clock, market_bars()),
+            fx_fn=lambda: FX, bars_fn=no_bars)
+        self.assertIsNone(book)
+        self.assertIsNone(load_book(self.folder, DAY))
 
     def test_starts_from_the_saved_account(self):
         pf = Portfolio("Day Trader", 100_000)
