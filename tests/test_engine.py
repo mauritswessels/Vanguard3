@@ -495,6 +495,26 @@ class PersistenceTest(unittest.TestCase):
         self.assertEqual(n3, 0)
         self.assertEqual(sim.last_date, market.calendar[-1])
 
+    def test_a_download_behind_the_saved_state_changes_nothing(self):
+        """A late run whose download lacks the day another run already
+        booked (Yahoo after midnight, Sat 14 Nov 2026) stops cleanly and
+        leaves the saved accounts untouched."""
+        market = synthetic_market(days=60)
+        start, last = market.calendar[-30], market.calendar[-1]
+        behind = market.until(market.calendar[-2])
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "state.json"
+            advance(state, "synthetic", start, last)
+            before = state.read_text()
+            with mock.patch.object(daily_run, "load_for_state",
+                                   lambda *a, **k: behind):
+                with self.assertRaises(daily_run.DownloadBehind):
+                    advance(state, "synthetic", start, last)
+            self.assertEqual(state.read_text(), before)
+            # The next download with the day in it carries on as usual.
+            sim, n = advance(state, "synthetic", start, last)
+        self.assertEqual((n, sim.last_date), (0, last))
+
     def test_waits_for_the_european_prices(self):
         """A download without Europe's latest day (Yahoo after midnight in
         Zurich) leaves that day for the next run instead of simulating it

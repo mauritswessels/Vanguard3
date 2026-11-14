@@ -19,7 +19,7 @@ export interface Entry {
 export const JOURNAL: Entry[] = [
   {
     date: "2026-11-13", tag: "Infrastructure", title: "Coping with late starts",
-    text: "From 10 November GitHub started the automatic runs 3 to 7 hours late. The Day Trader began after New York had closed and sat out three days, the midday check found the market shut, and on 10 November the evening run started after midnight, when Yahoo briefly has no European prices, so that day was booked a night late. Now a late evening run waits for those prices until 04:30 Swiss time instead of giving up, a late Day Trader first catches up on the checks it missed using 5-minute prices, and the midday check never runs twice in a day. The IBKR server can also start the runs on time itself, once it has a token for it.",
+    text: "From 10 November GitHub started the automatic runs 3 to 7 hours late. The Day Trader began after New York had closed and sat out three days, the midday check found the market shut, and on 10 November the evening run started after midnight, when Yahoo briefly has no European prices, so that day was booked a night late. Now a late evening run waits for those prices until 04:30 Swiss time instead of giving up, a late Day Trader first catches up on the checks it missed using 5-minute prices, and the midday check never runs twice in a day. The IBKR server can also start the runs on time itself, once it has a token for it. On 14 November two late runs stopped with an error because Yahoo briefly left out Friday, which an earlier run had already booked; such a run now just stops quietly and changes nothing.",
   },
   {
     date: "2026-11-10", tag: "Platform", title: "The owner's own mix on the race chart",
