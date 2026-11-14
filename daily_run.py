@@ -56,6 +56,17 @@ EUROPE_WAIT_UNTIL = pd.Timedelta(hours=4, minutes=30)
 EUROPE_RECHECK = pd.Timedelta(minutes=10)
 
 
+class DownloadBehind(Exception):
+    """Yahoo's download ends before the last session already booked.
+
+    Seen on Sat 14 Nov 2026: GitHub started Friday's evening run hours
+    late, after another run had booked Friday, and for a while Yahoo left
+    Friday out for every market. There is nothing new to book then, and
+    the saved accounts must not be valued (or saved again) on prices that
+    lack their own last day.
+    """
+
+
 def last_completed_session(now_utc: pd.Timestamp | None = None
                            ) -> pd.Timestamp:
     """Latest date whose New York close has settled (bars are final)."""
@@ -162,6 +173,11 @@ def advance(state_path: Path, source: str, paper_start: pd.Timestamp,
         logger.warning("No European prices for %s yet: that day is "
                        "simulated by the next run", day.date())
         market = market.until(day - pd.Timedelta(days=1))
+    newest = market.calendar[market.calendar <= cutoff]
+    if done is not None and (not len(newest) or newest[-1] < done):
+        raise DownloadBehind(
+            f"the download ends {newest[-1].date() if len(newest) else '-'}"
+            f", before the {done.date()} already booked")
 
     if saved is not None:
         sim = Simulator.from_dict(saved, market, tuner=retune)
@@ -239,13 +255,23 @@ def main() -> None:
     start = pd.Timestamp(args.start)
     now = pd.Timestamp.now(tz="UTC")
     cutoff = last_completed_session(now)
-    sim, n_new = advance(args.state, args.source, start, cutoff,
-                         wait_until=(europe_wait_deadline(now)
-                                     if args.source == "yfinance" else None))
+    behind = False
+    try:
+        sim, n_new = advance(args.state, args.source, start, cutoff,
+                             wait_until=(europe_wait_deadline(now)
+                                         if args.source == "yfinance"
+                                         else None))
+    except DownloadBehind as exc:
+        # Nothing new to book: leave the saved state and the dashboard as
+        # they are, and let the workflow skip publishing.
+        logger.warning("Nothing to do: %s (Yahoo is still catching up)", exc)
+        sim, n_new, behind = None, 0, True
     # The workflow skips testing and publishing when nothing is new.
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as out:
             out.write(f"new_sessions={n_new}\n")
+    if behind:
+        return
 
     if sim is None:
         logger.info("Paper trading starts %s; nothing to simulate yet "

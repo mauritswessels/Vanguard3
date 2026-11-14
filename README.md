@@ -66,7 +66,9 @@ markets' newest day for a few hours (until about 03:30). GitHub sometimes
 starts the run hours late (3 to 7 hours in November 2026), so a run that
 starts after midnight downloads again every 10 minutes until those prices
 are there, at most until 04:30 Swiss time, and books the day then; after
-that it leaves the day to the next evening. To have the runs start on
+that it leaves the day to the next evening. In that gap Yahoo can even
+leave out a day for every market; when the download ends before the day
+the accounts are already at, the run stops quietly and changes nothing. To have the runs start on
 time, the IBKR server can start them itself (see "Starting the GitHub runs
 on time" below).
 GitHub Pages serves the platform in `docs/` (built from `web/`, see below)
