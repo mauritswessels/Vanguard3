@@ -42,6 +42,17 @@ when() {
     esac
 }
 
+# What GitHub is asked to start: the newest main, and for the evening run
+# no 5-year backtest (daily.yml redoes it on Fridays by itself; without
+# this, a start from here counts as "by hand" and redoes the 4 MB file
+# every evening).
+request() {
+    case "$1" in
+        daily.yml) echo '{"ref":"main","inputs":{"backtest":"false"}}' ;;
+        *)         echo '{"ref":"main"}' ;;
+    esac
+}
+
 TRIGGER_TOKEN=""
 TELEGRAM_TOKEN=""
 TELEGRAM_CHAT_ID=""
@@ -143,7 +154,7 @@ start() {
         echo "No token yet: bash $HERE/trigger.sh --setup" >&2
         exit 1
     fi
-    if github POST "/actions/workflows/$wf/dispatches" '{"ref":"main"}' \
+    if github POST "/actions/workflows/$wf/dispatches" "$(request "$wf")" \
             > /dev/null; then
         echo "$stamp started $wf" | tee -a "$LOG"
         return 0

@@ -594,6 +594,75 @@ class TriggerTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("--setup", out)
 
+    def sent(self, wf: str) -> dict:
+        """What the trigger asked GitHub to start for ``wf``."""
+        self.settings.write_text("TRIGGER_TOKEN=github_pat_good\n")
+        self.calls.write_text("")
+        code, out = self.trigger(wf)
+        self.assertEqual(code, 0, out)
+        found = re.search(r" -d (\{.*\}) https://", self.calls.read_text())
+        return json.loads(found.group(1))
+
+    def test_the_evening_start_asks_for_no_backtest(self):
+        # A start from here is a "Run workflow" start, which daily.yml
+        # treats as by hand: without this it redid the 4 MB backtest
+        # every evening instead of on Fridays.
+        self.assertEqual(self.sent("daily.yml"),
+                         {"ref": "main", "inputs": {"backtest": "false"}})
+
+    def test_every_input_it_sends_is_one_the_run_takes(self):
+        # GitHub refuses a start with an input the workflow does not have.
+        for wf in ("day-trader.yml", "midday-news.yml", "daily.yml"):
+            text = (ROOT / ".github" / "workflows" / wf).read_text()
+            manual = text.split("workflow_dispatch:", 1)[1].split("\n\n")[0]
+            for name in self.sent(wf).get("inputs", {}):
+                self.assertRegex(manual, rf"\n      {name}:", (wf, name))
+
+
+# The step that decides whether the evening run redoes the 5-year backtest.
+# ``date`` answers with FAKE_NY in New York time and FAKE_UTC otherwise.
+FAKE_DATE = """#!/bin/bash
+[ "$TZ" = America/New_York ] && echo "$FAKE_NY" || echo "$FAKE_UTC"
+"""
+
+
+@unittest.skipUnless(shutil.which("bash"), "needs bash")
+class BacktestDayTest(unittest.TestCase):
+    def setUp(self):
+        text = (ROOT / ".github" / "workflows" / "daily.yml").read_text()
+        step = text.split("- name: Backtest day?", 1)[1].split("- name:")[0]
+        lines = step.split("run: |\n", 1)[1].splitlines()
+        self.script = "\n".join(line[10:] for line in lines)
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (tmp / "date").write_text(FAKE_DATE)
+        (tmp / "date").chmod(0o755)
+        self.tmp = tmp
+
+    def refresh(self, event: str, backtest: str, ny: int, utc: int) -> bool:
+        out = self.tmp / "out"
+        out.write_text("")
+        done = subprocess.run(
+            ["bash", "-e", "-c", self.script], capture_output=True, text=True,
+            timeout=30, env={"PATH": f"{self.tmp}:/usr/bin:/bin",
+                             "EVENT": event, "BACKTEST": backtest,
+                             "FAKE_NY": str(ny), "FAKE_UTC": str(utc),
+                             "GITHUB_OUTPUT": str(out)})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return "refresh=true" in out.read_text()
+
+    def test_fridays_in_new_york(self):
+        self.assertTrue(self.refresh("schedule", "", ny=5, utc=5))
+        # Friday's run started late, after midnight UTC: still Friday.
+        self.assertTrue(self.refresh("schedule", "", ny=5, utc=6))
+        # Thursday's run started late, on Friday UTC: not yet.
+        self.assertFalse(self.refresh("schedule", "", ny=4, utc=5))
+        self.assertFalse(self.refresh("schedule", "", ny=2, utc=2))
+
+    def test_by_hand_but_not_from_the_server(self):
+        self.assertTrue(self.refresh("workflow_dispatch", "true", 2, 2))
+        self.assertFalse(self.refresh("workflow_dispatch", "false", 2, 2))
+        self.assertTrue(self.refresh("workflow_dispatch", "false", 5, 5))
+
 
 if __name__ == "__main__":
     unittest.main()
