@@ -204,29 +204,14 @@
    46.48
   ]
  },
- "held": {
-  "T": {
-   "quantity": 1058,
-   "entry": 22.6,
-   "stop": 22.37,
-   "target": 23.06,
-   "time": "10:05"
-  },
-  "VZ": {
-   "quantity": 514,
-   "entry": 46.51,
-   "stop": 46.245,
-   "target": 47.04,
-   "time": "10:05"
-  }
- },
+ "held": {},
  "traded": [
   "GE",
   "T",
   "AMZN",
   "VZ"
  ],
- "realized_chf": -472.2222897947904,
+ "realized_chf": -896.2359832320326,
  "fills": [
   {
    "time": "10:05",
@@ -331,10 +316,34 @@
    "live": true,
    "pnl_chf": -322.89,
    "check": "Bought at 330.02 (10:05); stop 326.46, target 337.14; now 325.94"
+  },
+  {
+   "time": "14:10",
+   "ticker": "VZ",
+   "side": "SELL",
+   "quantity": 514,
+   "price": 46.22,
+   "fx": 0.8394399881362915,
+   "reason": "Stop: fell to 46.22, at or under the stop at 46.24 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -190.39,
+   "check": "Bought at 46.51 (10:05); stop 46.24, target 47.04; now 46.22"
+  },
+  {
+   "time": "15:50",
+   "ticker": "T",
+   "side": "SELL",
+   "quantity": 1058,
+   "price": 22.4,
+   "fx": 0.8398299813270569,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -233.63,
+   "check": "Bought at 22.60 (10:05); stop 22.37, target 23.06; now 22.40"
   }
  ],
- "checks": 34,
- "last_check": "2026-11-17T17:45:52.610959+00:00",
- "finished": false,
+ "checks": 71,
+ "last_check": "2026-11-17T20:50:52.636679+00:00",
+ "finished": true,
  "notes": []
 }
