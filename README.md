@@ -60,8 +60,8 @@ run and saves everything (cash, positions, pending orders, trailing stops) to
 `state/paper_state.json`. The GitHub Actions workflow in
 `.github/workflows/daily.yml` runs it every weekday evening between the New
 York close and midnight in Zurich, commits the new state, and refreshes
-`docs/data/` (the 5-year backtest only on Fridays: it is 4 MB and barely
-moves in a day). After midnight in Zurich Yahoo leaves out the European
+`docs/data/` (the 5-year backtest only on Fridays, New York time, or when
+you start the run by hand: it is 4 MB and barely moves in a day). After midnight in Zurich Yahoo leaves out the European
 markets' newest day for a few hours (until about 03:30). GitHub sometimes
 starts the run hours late (3 to 7 hours in November 2026), so a run that
 starts after midnight downloads again every 10 minutes until those prices
@@ -897,7 +897,8 @@ clock is reliable, so it can ask GitHub to start each run on time
 (`server/trigger.sh`), every weekday in New York time: the Day trader at
 09:05, the midday check at 10:37 and the evening run at 16:40. GitHub's own
 timetable stays as a backup; a run that finds its work done stops after a
-minute.
+minute. The server's evening start asks for no 5-year backtest, so that
+4 MB file is still redone only on Fridays.
 
 It needs a GitHub token that can only start runs of this repository. Set
 it up once:

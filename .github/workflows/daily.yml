@@ -18,7 +18,12 @@ on:
     - cron: "5 21 * * 1-5"    # summer: a second chance before midnight
     - cron: "40 21 * * 1-5"   # winter: 22:40 Zurich, 16:40 New York
     - cron: "10 22 * * 1-5"   # winter: a second chance before midnight
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      backtest:
+        description: "Also redo the 5-year backtest"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -98,10 +103,19 @@ jobs:
       # The 5-year backtest hardly moves in a day and is 4 MB, so it is
       # redone once a week (Fridays, or when the run is started by hand)
       # to keep the repository from growing by 4 MB every evening.
+      # Friday in New York, where the trading day ends: a late Friday run
+      # that ends after midnight UTC still counts, and a late Thursday run
+      # does not. The IBKR server starts this run every weekday through
+      # the same "Run workflow" button (server/trigger.sh), so it asks for
+      # no backtest; starting it by hand still redoes it.
       - name: Backtest day?
         id: weekly
+        env:
+          EVENT: ${{ github.event_name }}
+          BACKTEST: ${{ inputs.backtest }}
         run: |
-          if [ "$(date -u +%u)" = 5 ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then
+          if [ "$(TZ=America/New_York date +%u)" = 5 ] ||
+             { [ "$EVENT" = workflow_dispatch ] && [ "$BACKTEST" != false ]; }; then
             echo "refresh=true" >> "$GITHUB_OUTPUT"
           fi
 
