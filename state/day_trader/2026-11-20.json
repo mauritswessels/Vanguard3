@@ -1,0 +1,345 @@
+{
+ "day": "2026-11-20",
+ "equity": 99724.8,
+ "source": "live",
+ "ranges": {
+  "AAPL": [
+   348.63,
+   354.34
+  ],
+  "MSFT": [
+   490.87,
+   503.55
+  ],
+  "NVDA": [
+   138.84,
+   143.725
+  ],
+  "GOOGL": [
+   272.83,
+   282.11
+  ],
+  "AMZN": [
+   251.12,
+   259.2
+  ],
+  "META": [
+   573.48,
+   587.0599
+  ],
+  "AVGO": [
+   331.52,
+   343.01
+  ],
+  "TSLA": [
+   365.14,
+   373.43
+  ],
+  "ORCL": [
+   106.3,
+   108.88
+  ],
+  "ADBE": [
+   221.27,
+   228.37
+  ],
+  "CRM": [
+   182.925,
+   187.43
+  ],
+  "AMD": [
+   453.7286,
+   473.44
+  ],
+  "CSCO": [
+   93.68,
+   94.88000000000001
+  ],
+  "INTC": [
+   53.48,
+   56.19
+  ],
+  "QCOM": [
+   159.41,
+   162.54
+  ],
+  "TXN": [
+   277.04,
+   282.545
+  ],
+  "IBM": [
+   223.7681,
+   231.49
+  ],
+  "NFLX": [
+   58.2591,
+   59.36
+  ],
+  "DIS": [
+   120.47,
+   122.0
+  ],
+  "BRK-B": [
+   571.51,
+   576.89
+  ],
+  "JPM": [
+   317.5921,
+   320.88
+  ],
+  "V": [
+   402.25,
+   408.735
+  ],
+  "MA": [
+   626.6825,
+   637.03
+  ],
+  "BAC": [
+   48.135,
+   48.765
+  ],
+  "GS": [
+   812.19,
+   835.68
+  ],
+  "UNH": [
+   337.475,
+   345.22
+  ],
+  "LLY": [
+   1354.23,
+   1366.51
+  ],
+  "JNJ": [
+   269.47,
+   272.15
+  ],
+  "ABBV": [
+   285.77,
+   288.3
+  ],
+  "MRK": [
+   133.42,
+   136.655
+  ],
+  "PFE": [
+   27.71,
+   28.005
+  ],
+  "TMO": [
+   685.34,
+   692.0
+  ],
+  "ABT": [
+   104.245,
+   105.5
+  ],
+  "PG": [
+   170.32,
+   171.6125
+  ],
+  "KO": [
+   96.765,
+   97.735
+  ],
+  "PEP": [
+   140.37,
+   142.4891
+  ],
+  "WMT": [
+   127.18,
+   129.8
+  ],
+  "COST": [
+   1099.3,
+   1109.78
+  ],
+  "HD": [
+   339.26,
+   346.98
+  ],
+  "MCD": [
+   274.765,
+   278.29
+  ],
+  "NKE": [
+   33.98,
+   34.5339
+  ],
+  "XOM": [
+   158.6,
+   160.55
+  ],
+  "CVX": [
+   205.9392,
+   208.71
+  ],
+  "CAT": [
+   524.5,
+   538.01
+  ],
+  "GE": [
+   317.14,
+   321.76
+  ],
+  "HON": [
+   215.915,
+   220.18
+  ],
+  "BA": [
+   160.15,
+   164.01
+  ],
+  "LIN": [
+   510.3,
+   515.0
+  ],
+  "T": [
+   22.06,
+   22.38
+  ],
+  "VZ": [
+   46.275,
+   46.705
+  ]
+ },
+ "held": {
+  "UNH": {
+   "quantity": 68,
+   "entry": 345.29,
+   "stop": 341.3475,
+   "target": 353.175,
+   "time": "10:05"
+  }
+ },
+ "traded": [
+  "UNH",
+  "MRK",
+  "CRM",
+  "BA"
+ ],
+ "realized_chf": -1072.8690393818106,
+ "fills": [
+  {
+   "time": "10:05",
+   "ticker": "UNH",
+   "side": "BUY",
+   "quantity": 68,
+   "price": 345.29,
+   "fx": 0.8403499722480774,
+   "reason": "Breakout: 345.29 is above the opening range (337.48 to 345.22), the share is up +4.5% on the day and SPY is above its open",
+   "check": "Opening range 337.48 to 345.22; price 345.29 at 10:05 New York; stop 341.35, target 353.18",
+   "live": true,
+   "details": {
+    "range_low": 337.475,
+    "range_high": 345.22,
+    "stop": 341.3475,
+    "target": 353.175,
+    "day_move": 0.04481,
+    "spy_move": 0.00116,
+    "lead_on_spy": 0.04365
+   }
+  },
+  {
+   "time": "10:05",
+   "ticker": "MRK",
+   "side": "BUY",
+   "quantity": 173,
+   "price": 136.81,
+   "fx": 0.8403499722480774,
+   "reason": "Breakout: 136.81 is above the opening range (133.42 to 136.66), the share is up +3.0% on the day and SPY is above its open",
+   "check": "Opening range 133.42 to 136.66; price 136.81 at 10:05 New York; stop 135.04, target 140.36",
+   "live": true,
+   "details": {
+    "range_low": 133.42,
+    "range_high": 136.655,
+    "stop": 135.0375,
+    "target": 140.355,
+    "day_move": 0.03012,
+    "spy_move": 0.00116,
+    "lead_on_spy": 0.02896
+   }
+  },
+  {
+   "time": "10:05",
+   "ticker": "CRM",
+   "side": "BUY",
+   "quantity": 125,
+   "price": 188.67,
+   "fx": 0.8403499722480774,
+   "reason": "Breakout: 188.67 is above the opening range (182.93 to 187.43), the share is up +2.9% on the day and SPY is above its open",
+   "check": "Opening range 182.93 to 187.43; price 188.67 at 10:05 New York; stop 185.18, target 195.65",
+   "live": true,
+   "details": {
+    "range_low": 182.925,
+    "range_high": 187.43,
+    "stop": 185.1775,
+    "target": 195.655,
+    "day_move": 0.02924,
+    "spy_move": 0.00116,
+    "lead_on_spy": 0.02808
+   }
+  },
+  {
+   "time": "10:05",
+   "ticker": "BA",
+   "side": "BUY",
+   "quantity": 144,
+   "price": 164.08,
+   "fx": 0.8403499722480774,
+   "reason": "Breakout: 164.08 is above the opening range (160.15 to 164.01), the share is up +2.2% on the day and SPY is above its open",
+   "check": "Opening range 160.15 to 164.01; price 164.08 at 10:05 New York; stop 162.08, target 168.08",
+   "live": true,
+   "details": {
+    "range_low": 160.15,
+    "range_high": 164.01,
+    "stop": 162.08,
+    "target": 168.08,
+    "day_move": 0.02224,
+    "spy_move": 0.00116,
+    "lead_on_spy": 0.02108
+   }
+  },
+  {
+   "time": "11:00",
+   "ticker": "BA",
+   "side": "SELL",
+   "quantity": 144,
+   "price": 162.07,
+   "fx": 0.8391900062561035,
+   "reason": "Stop: fell to 162.07, at or under the stop at 162.08 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -301.91,
+   "check": "Bought at 164.08 (10:05); stop 162.08, target 168.08; now 162.07"
+  },
+  {
+   "time": "11:30",
+   "ticker": "CRM",
+   "side": "SELL",
+   "quantity": 125,
+   "price": 185.0,
+   "fx": 0.8393599987030029,
+   "reason": "Stop: fell to 185.00, at or under the stop at 185.18 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -439.86,
+   "check": "Bought at 188.67 (10:05); stop 185.18, target 195.66; now 185.00"
+  },
+  {
+   "time": "12:05",
+   "ticker": "MRK",
+   "side": "SELL",
+   "quantity": 173,
+   "price": 134.93,
+   "fx": 0.8392300009727478,
+   "reason": "Stop: fell to 134.93, at or under the stop at 135.04 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -331.09,
+   "check": "Bought at 136.81 (10:05); stop 135.04, target 140.35; now 134.93"
+  }
+ ],
+ "checks": 34,
+ "last_check": "2026-11-20T17:45:52.561692+00:00",
+ "finished": false,
+ "notes": []
+}
