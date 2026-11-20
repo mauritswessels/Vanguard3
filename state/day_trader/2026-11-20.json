@@ -204,22 +204,14 @@
    46.705
   ]
  },
- "held": {
-  "UNH": {
-   "quantity": 68,
-   "entry": 345.29,
-   "stop": 341.3475,
-   "target": 353.175,
-   "time": "10:05"
-  }
- },
+ "held": {},
  "traded": [
   "UNH",
   "MRK",
   "CRM",
   "BA"
  ],
- "realized_chf": -1072.8690393818106,
+ "realized_chf": -1390.745142972588,
  "fills": [
   {
    "time": "10:05",
@@ -336,10 +328,22 @@
    "live": true,
    "pnl_chf": -331.09,
    "check": "Bought at 136.81 (10:05); stop 135.04, target 140.35; now 134.93"
+  },
+  {
+   "time": "15:00",
+   "ticker": "UNH",
+   "side": "SELL",
+   "quantity": 68,
+   "price": 340.91,
+   "fx": 0.8387899994850159,
+   "reason": "Stop: fell to 340.91, at or under the stop at 341.35 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -317.88,
+   "check": "Bought at 345.29 (10:05); stop 341.35, target 353.18; now 340.91"
   }
  ],
- "checks": 34,
- "last_check": "2026-11-20T17:45:52.561692+00:00",
- "finished": false,
+ "checks": 71,
+ "last_check": "2026-11-20T20:50:52.671326+00:00",
+ "finished": true,
  "notes": []
 }
