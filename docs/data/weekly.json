@@ -1,6 +1,29 @@
 {
  "reports": [
   {
+   "week_start": "2026-11-16",
+   "week_end": "2026-11-20",
+   "generated_utc": "2026-11-21T15:13+00:00",
+   "text": "It was a rough week. Every account lost money after an AI-led selloff pushed the S&P 500 into a \"correction\" (a drop of 10% or more from its high) and the Fed raised interest rates. Buy & Hold SPY fell 8.3% and Buy & Hold All Markets fell 6.1%. The Monkey, with its random picks, fell 8.5%.\n\nThe best results came from agents that sold early or held cash. Volatility Protected (fixed) lost only 2.2% and is still up 1.8% since the start, while SPY is down 10.1% over the same days. Its \"stop\" rules sold Visa after it fell back to a set price, which locked in a gain of 518 CHF. The Day Trader lost 2.3% and ended Friday fully in cash, because the shares it bought on Friday all dropped back and hit its stop. The worst were the two Bargain Hunters, down 11.5% and 10.5%. They buy shares that have fallen a lot, but this week prices kept falling. Silver (SLV) is down 9.7% and Caterpillar (CAT) down 8.1% in their portfolios. A rule to sell after 20 days also sold ABB for a 400 CHF loss.\n\nTrend Follower did nothing and lost 5.3%. Its fixed twin made only two trades, selling UNH and buying Nestlé, and lost 2.5%. The AI Learner made 10 trades and now holds 42% cash. It lost 6.1%, the same as the All Markets yardstick this week. Its Opus twin, the Opus Learner, lost only 3.4%, helped by bond funds that rose a little.\n\nBoth News Analysts sold UnitedHealth over worries about US Medicare rules. The regular News Analyst (Sonnet) lost 3.9% and holds 41% cash. Its Opus twin lost 4.7% with 15% cash. Since the start, the regular one is ahead at -1.4% against -2.2%. Both are far ahead of SPY over the same days.\n\nOne week is far too short to judge skill, so none of this proves who is better.\n\nThe lesson is that falling prices hurt less if you spread your money around or keep some cash. Buying because something looks cheap can backfire when the whole market is falling.",
+   "model": "claude-sonnet-5-5",
+   "usage": {
+    "input_tokens": 12689,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 1585,
+    "output_tokens_details": {
+     "thinking_tokens": 852
+    },
+    "service_tier": "standard",
+    "inference_geo": "global",
+    "speed": "standard"
+   }
+  },
+  {
    "week_start": "2026-11-09",
    "week_end": "2026-11-13",
    "generated_utc": "2026-11-14T14:01+00:00",
