@@ -204,43 +204,14 @@
    47.005
   ]
  },
- "held": {
-  "PFE": {
-   "quantity": 834,
-   "entry": 28.22,
-   "stop": 27.7593,
-   "target": 29.1414,
-   "time": "10:05"
-  },
-  "ABBV": {
-   "quantity": 79,
-   "entry": 295.59,
-   "stop": 292.0551,
-   "target": 302.6599,
-   "time": "10:05"
-  },
-  "T": {
-   "quantity": 1035,
-   "entry": 22.76,
-   "stop": 22.5375,
-   "target": 23.205,
-   "time": "10:05"
-  },
-  "MRK": {
-   "quantity": 170,
-   "entry": 138.01,
-   "stop": 135.83,
-   "target": 142.37,
-   "time": "10:05"
-  }
- },
+ "held": {},
  "traded": [
   "PFE",
   "ABBV",
   "T",
   "MRK"
  ],
- "realized_chf": 0.0,
+ "realized_chf": 805.6761088981912,
  "fills": [
   {
    "time": "10:05",
@@ -321,10 +292,58 @@
     "spy_move": -0.00253,
     "lead_on_spy": 0.02128
    }
+  },
+  {
+   "time": "15:50",
+   "ticker": "ABBV",
+   "side": "SELL",
+   "quantity": 79,
+   "price": 300.22,
+   "fx": 0.8355600237846375,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 246.05,
+   "check": "Bought at 295.59 (10:05); stop 292.06, target 302.66; now 300.22"
+  },
+  {
+   "time": "15:50",
+   "ticker": "MRK",
+   "side": "SELL",
+   "quantity": 170,
+   "price": 141.49,
+   "fx": 0.8355600237846375,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 434.35,
+   "check": "Bought at 138.01 (10:05); stop 135.83, target 142.37; now 141.49"
+  },
+  {
+   "time": "15:50",
+   "ticker": "PFE",
+   "side": "SELL",
+   "quantity": 834,
+   "price": 28.46,
+   "fx": 0.8355600237846375,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 107.34,
+   "check": "Bought at 28.22 (10:05); stop 27.76, target 29.14; now 28.46"
+  },
+  {
+   "time": "15:50",
+   "ticker": "T",
+   "side": "SELL",
+   "quantity": 1035,
+   "price": 22.85,
+   "fx": 0.8355600237846375,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": 17.94,
+   "check": "Bought at 22.76 (10:05); stop 22.54, target 23.20; now 22.85"
   }
  ],
- "checks": 34,
- "last_check": "2026-11-24T17:45:53.357244+00:00",
- "finished": false,
+ "checks": 70,
+ "last_check": "2026-11-24T20:50:52.735960+00:00",
+ "finished": true,
  "notes": []
 }
