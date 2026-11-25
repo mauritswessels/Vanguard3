@@ -204,43 +204,15 @@
    47.77
   ]
  },
- "held": {
-  "T": {
-   "quantity": 1030,
-   "entry": 23.27,
-   "stop": 23.03,
-   "target": 23.75,
-   "time": "12:20"
-  },
-  "PEP": {
-   "quantity": 165,
-   "entry": 145.03,
-   "stop": 144.05,
-   "target": 146.99,
-   "time": "12:20"
-  },
-  "VZ": {
-   "quantity": 501,
-   "entry": 47.85,
-   "stop": 47.555,
-   "target": 48.44,
-   "time": "12:20"
-  },
-  "ADBE": {
-   "quantity": 101,
-   "entry": 235.32,
-   "stop": 230.543,
-   "target": 244.8741,
-   "time": "12:20"
-  }
- },
+ "held": {},
  "traded": [
   "T",
   "PEP",
   "VZ",
-  "ADBE"
+  "ADBE",
+  "CVX"
  ],
- "realized_chf": 0.0,
+ "realized_chf": -496.8436893454091,
  "fills": [
   {
    "time": "12:20",
@@ -321,10 +293,90 @@
     "spy_move": -0.01334,
     "lead_on_spy": 0.0273
    }
+  },
+  {
+   "time": "14:55",
+   "ticker": "VZ",
+   "side": "SELL",
+   "quantity": 501,
+   "price": 47.54,
+   "fx": 0.8307099938392639,
+   "reason": "Stop: fell to 47.54, at or under the stop at 47.55 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -119.07,
+   "check": "Bought at 47.85 (12:20); stop 47.55, target 48.44; now 47.54"
+  },
+  {
+   "time": "14:55",
+   "ticker": "CVX",
+   "side": "BUY",
+   "quantity": 112,
+   "price": 211.78,
+   "fx": 0.8307099938392639,
+   "reason": "Breakout: 211.78 is above the opening range (207.19 to 210.93), the share is up +1.5% on the day and SPY is above its open",
+   "check": "Opening range 207.19 to 210.93; price 211.78 at 14:55 New York; stop 209.06, target 217.22",
+   "live": true,
+   "details": {
+    "range_low": 207.19,
+    "range_high": 210.93,
+    "stop": 209.06,
+    "target": 217.22,
+    "day_move": 0.01461,
+    "spy_move": -0.0016,
+    "lead_on_spy": 0.01621
+   }
+  },
+  {
+   "time": "15:35",
+   "ticker": "PEP",
+   "side": "SELL",
+   "quantity": 165,
+   "price": 144.0,
+   "fx": 0.830590009689331,
+   "reason": "Stop: fell to 144.00, at or under the stop at 144.05 (the middle of the opening range)",
+   "live": true,
+   "pnl_chf": -134.09,
+   "check": "Bought at 145.03 (12:20); stop 144.05, target 146.99; now 144.00"
+  },
+  {
+   "time": "15:50",
+   "ticker": "ADBE",
+   "side": "SELL",
+   "quantity": 101,
+   "price": 233.67,
+   "fx": 0.830839991569519,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -125.53,
+   "check": "Bought at 235.32 (12:20); stop 230.54, target 244.87; now 233.67"
+  },
+  {
+   "time": "15:50",
+   "ticker": "CVX",
+   "side": "SELL",
+   "quantity": 112,
+   "price": 211.78,
+   "fx": 0.830839991569519,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -28.5,
+   "check": "Bought at 211.78 (14:55); stop 209.06, target 217.22; now 211.78"
+  },
+  {
+   "time": "15:50",
+   "ticker": "T",
+   "side": "SELL",
+   "quantity": 1030,
+   "price": 23.15,
+   "fx": 0.830839991569519,
+   "reason": "Day's end: sold before the close, a day trader holds nothing overnight",
+   "live": true,
+   "pnl_chf": -89.65,
+   "check": "Bought at 23.27 (12:20); stop 23.03, target 23.75; now 23.15"
   }
  ],
- "checks": 34,
- "last_check": "2026-11-25T17:45:52.573934+00:00",
- "finished": false,
+ "checks": 71,
+ "last_check": "2026-11-25T20:50:52.581338+00:00",
+ "finished": true,
  "notes": []
 }
