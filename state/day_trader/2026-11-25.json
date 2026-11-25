@@ -1,0 +1,330 @@
+{
+ "day": "2026-11-25",
+ "equity": 99460.22,
+ "source": "live",
+ "ranges": {
+  "AAPL": [
+   347.7,
+   353.84
+  ],
+  "MSFT": [
+   477.39,
+   487.715
+  ],
+  "NVDA": [
+   141.17,
+   147.16
+  ],
+  "GOOGL": [
+   262.73,
+   270.05
+  ],
+  "AMZN": [
+   237.61,
+   246.2925
+  ],
+  "META": [
+   567.75,
+   586.21
+  ],
+  "AVGO": [
+   278.0,
+   291.16
+  ],
+  "TSLA": [
+   357.64,
+   374.2275
+  ],
+  "ORCL": [
+   99.34,
+   104.72
+  ],
+  "ADBE": [
+   227.71,
+   233.3759
+  ],
+  "CRM": [
+   188.2045,
+   192.89
+  ],
+  "AMD": [
+   371.5,
+   390.445
+  ],
+  "CSCO": [
+   91.03,
+   92.66000000000001
+  ],
+  "INTC": [
+   49.9101,
+   52.574999999999996
+  ],
+  "QCOM": [
+   155.38,
+   160.79
+  ],
+  "TXN": [
+   244.8108,
+   254.18
+  ],
+  "IBM": [
+   232.17,
+   237.55
+  ],
+  "NFLX": [
+   57.085,
+   58.26
+  ],
+  "DIS": [
+   120.97,
+   122.59
+  ],
+  "BRK-B": [
+   573.28,
+   579.2
+  ],
+  "JPM": [
+   309.49,
+   312.78
+  ],
+  "V": [
+   413.47,
+   417.4158
+  ],
+  "MA": [
+   639.19,
+   647.035
+  ],
+  "BAC": [
+   46.94,
+   47.825
+  ],
+  "GS": [
+   772.74,
+   786.3299
+  ],
+  "UNH": [
+   334.8,
+   340.8599
+  ],
+  "LLY": [
+   1375.01,
+   1414.53
+  ],
+  "JNJ": [
+   273.46,
+   279.88
+  ],
+  "ABBV": [
+   297.14,
+   302.98
+  ],
+  "MRK": [
+   139.63,
+   142.565
+  ],
+  "PFE": [
+   28.09,
+   28.67
+  ],
+  "TMO": [
+   673.1501,
+   682.99
+  ],
+  "ABT": [
+   105.53,
+   107.5
+  ],
+  "PG": [
+   172.54,
+   173.62
+  ],
+  "KO": [
+   97.49,
+   98.36
+  ],
+  "PEP": [
+   143.5,
+   144.6
+  ],
+  "WMT": [
+   131.87,
+   133.1899
+  ],
+  "COST": [
+   1086.245,
+   1098.0
+  ],
+  "HD": [
+   350.7,
+   357.07
+  ],
+  "MCD": [
+   279.555,
+   282.35
+  ],
+  "NKE": [
+   35.435,
+   35.87
+  ],
+  "XOM": [
+   156.8345,
+   159.32
+  ],
+  "CVX": [
+   207.19,
+   210.93
+  ],
+  "CAT": [
+   512.51,
+   524.48
+  ],
+  "GE": [
+   306.02,
+   312.29
+  ],
+  "HON": [
+   217.53,
+   221.145
+  ],
+  "BA": [
+   159.55,
+   162.18
+  ],
+  "LIN": [
+   513.0001,
+   517.51
+  ],
+  "T": [
+   22.89,
+   23.17
+  ],
+  "VZ": [
+   47.34,
+   47.77
+  ]
+ },
+ "held": {
+  "T": {
+   "quantity": 1030,
+   "entry": 23.27,
+   "stop": 23.03,
+   "target": 23.75,
+   "time": "12:20"
+  },
+  "PEP": {
+   "quantity": 165,
+   "entry": 145.03,
+   "stop": 144.05,
+   "target": 146.99,
+   "time": "12:20"
+  },
+  "VZ": {
+   "quantity": 501,
+   "entry": 47.85,
+   "stop": 47.555,
+   "target": 48.44,
+   "time": "12:20"
+  },
+  "ADBE": {
+   "quantity": 101,
+   "entry": 235.32,
+   "stop": 230.543,
+   "target": 244.8741,
+   "time": "12:20"
+  }
+ },
+ "traded": [
+  "T",
+  "PEP",
+  "VZ",
+  "ADBE"
+ ],
+ "realized_chf": 0.0,
+ "fills": [
+  {
+   "time": "12:20",
+   "ticker": "T",
+   "side": "BUY",
+   "quantity": 1030,
+   "price": 23.27,
+   "fx": 0.8289700150489807,
+   "reason": "Breakout: 23.27 is above the opening range (22.89 to 23.17), the share is up +1.7% on the day and SPY is above its open",
+   "check": "Opening range 22.89 to 23.17; price 23.27 at 12:20 New York; stop 23.03, target 23.75",
+   "live": true,
+   "details": {
+    "range_low": 22.89,
+    "range_high": 23.17,
+    "stop": 23.03,
+    "target": 23.75,
+    "day_move": 0.01705,
+    "spy_move": -0.01334,
+    "lead_on_spy": 0.03039
+   }
+  },
+  {
+   "time": "12:20",
+   "ticker": "PEP",
+   "side": "BUY",
+   "quantity": 165,
+   "price": 145.03,
+   "fx": 0.8289700150489807,
+   "reason": "Breakout: 145.03 is above the opening range (143.50 to 144.60), the share is up +1.6% on the day and SPY is above its open",
+   "check": "Opening range 143.50 to 144.60; price 145.03 at 12:20 New York; stop 144.05, target 146.99",
+   "live": true,
+   "details": {
+    "range_low": 143.5,
+    "range_high": 144.6,
+    "stop": 144.05,
+    "target": 146.99,
+    "day_move": 0.01647,
+    "spy_move": -0.01334,
+    "lead_on_spy": 0.02981
+   }
+  },
+  {
+   "time": "12:20",
+   "ticker": "VZ",
+   "side": "BUY",
+   "quantity": 501,
+   "price": 47.85,
+   "fx": 0.8289700150489807,
+   "reason": "Breakout: 47.85 is above the opening range (47.34 to 47.77), the share is up +1.5% on the day and SPY is above its open",
+   "check": "Opening range 47.34 to 47.77; price 47.85 at 12:20 New York; stop 47.56, target 48.44",
+   "live": true,
+   "details": {
+    "range_low": 47.34,
+    "range_high": 47.77,
+    "stop": 47.555,
+    "target": 48.44,
+    "day_move": 0.01463,
+    "spy_move": -0.01334,
+    "lead_on_spy": 0.02797
+   }
+  },
+  {
+   "time": "12:20",
+   "ticker": "ADBE",
+   "side": "BUY",
+   "quantity": 101,
+   "price": 235.32,
+   "fx": 0.8289700150489807,
+   "reason": "Breakout: 235.32 is above the opening range (227.71 to 233.38), the share is up +1.4% on the day and SPY is above its open",
+   "check": "Opening range 227.71 to 233.38; price 235.32 at 12:20 New York; stop 230.54, target 244.87",
+   "live": true,
+   "details": {
+    "range_low": 227.71,
+    "range_high": 233.3759,
+    "stop": 230.543,
+    "target": 244.8741,
+    "day_move": 0.01396,
+    "spy_move": -0.01334,
+    "lead_on_spy": 0.0273
+   }
+  }
+ ],
+ "checks": 34,
+ "last_check": "2026-11-25T17:45:52.573934+00:00",
+ "finished": false,
+ "notes": []
+}
