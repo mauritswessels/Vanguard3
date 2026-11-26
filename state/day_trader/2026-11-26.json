@@ -7,10 +7,12 @@
  "traded": [],
  "realized_chf": 0.0,
  "fills": [],
- "checks": 0,
- "last_check": null,
+ "checks": 5,
+ "last_check": "2026-11-26T15:20:00+00:00",
  "finished": false,
  "notes": [
-  "No live prices from 10:25 on: the live run stopped"
+  "No live prices from 10:25 on: the live run stopped",
+  "Started late: the checks until 10:20 were caught up on 5-minute prices",
+  "No live prices from 10:50 on: the live run stopped"
  ]
 }
