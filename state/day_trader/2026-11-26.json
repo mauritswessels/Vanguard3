@@ -1,0 +1,16 @@
+{
+ "day": "2026-11-26",
+ "equity": 98963.38,
+ "source": "live",
+ "ranges": {},
+ "held": {},
+ "traded": [],
+ "realized_chf": 0.0,
+ "fills": [],
+ "checks": 0,
+ "last_check": null,
+ "finished": false,
+ "notes": [
+  "No live prices from 10:25 on: the live run stopped"
+ ]
+}
