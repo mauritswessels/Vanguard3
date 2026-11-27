@@ -208,8 +208,8 @@
  "traded": [],
  "realized_chf": 0.0,
  "fills": [],
- "checks": 34,
- "last_check": "2026-11-27T17:45:52.624969+00:00",
- "finished": false,
+ "checks": 35,
+ "last_check": "2026-11-27T17:50:52.631892+00:00",
+ "finished": true,
  "notes": []
 }
